@@ -1,0 +1,43 @@
+# Node dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Vite cache
+.vite/
+vite.config.local.*
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# macOS files
+.DS_Store
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+.idea/
+*.swp
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Optional: keep lockfiles or ignore if switching package managers often
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# For GitHub Codespaces / devcontainers (if added later)
+.devcontainer/
