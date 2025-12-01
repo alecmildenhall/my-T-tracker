@@ -1,0 +1,33 @@
+Copyright (c) 2025 Alec Mildenhall
+
+All Rights Reserved.
+
+Permission is granted to view this source code for personal, educational, and
+non-commercial purposes only. No other rights are granted.
+
+You may not copy, modify, redistribute, sell, sublicense, publish, or create
+derivative works based on this code or any portion of it without express written
+permission from the copyright holder.
+
+To protect the safety and privacy of transgender and gender-diverse users who
+may rely on this software to track sensitive health information, you may not:
+
+- Reuse or adapt this code for any commercial product.
+- Clone, rebrand, or publish this software to any app store without written
+  permission.
+- Collect, store, transmit, or process user data derived from this project
+  without explicit privacy safeguards, transparent documentation, and written
+  approval from the copyright holder.
+
+This software is provided "as is," without warranty of any kind, express or
+implied, including but not limited to the warranties of merchantability, fitness
+for a particular purpose, and noninfringement. In no event shall the author be
+liable for any claim, damages, or other liability arising from the use of this
+software.
+
+If you wish to contribute code, you must be individually approved by the project
+maintainer and must agree to the terms in the Contributor License Agreement
+(CLA) found in `CLA.md`.
+
+Unauthorized reproduction or distribution of this project, or any portion of it,
+is strictly prohibited.
