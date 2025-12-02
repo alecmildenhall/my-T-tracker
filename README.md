@@ -18,52 +18,224 @@ This project is explicitly designed around **trans user safety and privacy**.
 
 ## Tech Stack (MVP)
 
-- [React](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/)
-- [Vite](https://vitejs.dev/) for development
-- `localStorage` for data persistence (local-only)
+- React + TypeScript  
+- Vite (bundler & dev server)  
+- Browser `localStorage` for local-only persistence  
 - No backend, no analytics, no third-party tracking
 
 Future phases may add:
 
-- PWA support
-- Encrypted backend for anonymous accounts
-- Charts (e.g. Recharts) for visualizing trends
+- PWA support  
+- Charts (e.g., Recharts)  
+- Anonymous encrypted backend  
+- Secure sync using user-held keys
 
 ---
 
 ## Privacy & Safety
 
-This project is built with the following constraints:
+This project follows strict privacy requirements:
 
-- **No PII by default**  
-  The app does not ask for your name, email, or location.
-- **Local-only storage (current phase)**  
-  All data stays in your browser’s `localStorage`. There is **no server** and no network sync in the MVP.
-- **No analytics or tracking**  
-  No Google Analytics, no crash reporting, no third-party SDKs by default.
-- **Trans-focused safety**  
-  All features are designed to respect the safety of trans and gender-diverse users.
+- **No PII collected by default.**  
+  No name, email, account, or location.
 
-For details, see:
+- **Local-only storage (current phase).**  
+  All data stays in the browser’s `localStorage`.  
+  There is **no server** and no network sync.
 
-- `LICENSE`
-- `CLA.md`
-- `CODE_OF_CONDUCT.md`
-- `CONTRIBUTING.md`
+- **No analytics or telemetry.**  
+  No Google Analytics, crash reporters, or tracking SDKs.
+
+- **Safety-first for trans users.**  
+  Features are designed to avoid exposing sensitive health data.
+
+See:
+
+- `LICENSE`  
+- `CLA.md`  
+- `CONTRIBUTING.md`  
+- `CODE_OF_CONDUCT.md`  
+
+for legal and ethical collaboration constraints.
 
 ---
 
-## Getting Started (Development)
+## Development Setup
 
 ```bash
-# install dependencies
 npm install
-
-# start dev server
 npm run dev
+```
 
-# build for production
+Then open the dev URL shown in the terminal (usually `http://localhost:5173`).
+
+To create a production build:
+
+```bash
 npm run build
-
-# preview production build
 npm run preview
+```
+
+---
+
+## Current Features (MVP)
+
+- Log a shot with:
+  - Date  
+  - Time (optional)  
+  - Dose (optional)  
+  - Injection site (optional)  
+  - Pain score (optional)  
+  - Mood (optional)  
+  - Notes (optional)  
+
+- View a list of past entries (sorted newest-first)
+- Delete entries
+- All data is stored locally on your device
+
+---
+
+# Next Steps / Upcoming Features
+
+The HRT Shot Tracker is currently in an early MVP state. The roadmap below outlines the planned evolution of the project, designed to uphold trans-focused privacy, local-first data ownership, and long-term maintainability.
+
+This section also includes **Feature 1 candidates** with explanations to help guide early development decisions.
+
+---
+
+## High-Level Roadmap
+
+### Short-Term (MVP → v0.2)
+
+- Add the ability to **edit existing shot entries**
+- Add **filters** (e.g., last 30 days, only high-pain days, only thigh injections)
+- Add **simple charts** (pain over time, mood trends)
+- Improve UI layout and styling
+- Add a **developer data viewer** (raw JSON, export panel)
+- Strengthen accessibility (labels, keyboard navigation)
+
+### Mid-Term (v0.3 → v0.5)
+
+- Add **CSV export** for clinical conversations
+- Add **PWA support** (installable, offline-first)
+- Add optional **symptom tagging** (fatigue, anxiety, headache)
+- Add a local-only **“shot due soon”** reminder
+- Add improved **mood encoding** (emoji scale or fixed categories)
+- Add **theme support** (dark, light, high-contrast)
+
+### Long-Term (Post-MVP)
+
+- Anonymous **encrypted syncing backend** (no user accounts required)
+- End-to-end **encrypted exports / backup bundles**
+- Cross-device sync using private keys
+- StoryGraph-style **trend analytics** and correlations
+- Optional **user-defined custom fields**
+- Smarter visualizations (moving averages, streaks, clusters)
+
+---
+
+## Feature 1 Candidates (Choose Your Direction)
+
+### Option A — Edit Existing Entries
+
+**Why choose this:**
+
+- Makes the tracker significantly more usable
+- Reinforces UI state management patterns
+- Core logic reused in every future feature
+- Completely local and safe
+
+**Difficulty:** Moderate  
+**Impact:** Very High
+
+---
+
+### Option B — Filtering and Sorting Improvements
+
+**Why choose this:**
+
+- Makes history easier to navigate as it grows
+- Lays groundwork for charts and trends
+- Straightforward logic but very useful
+
+**Examples:**
+
+- Last 30 days  
+- Injection site  
+- Pain score ranges  
+- Entries with notes  
+
+**Difficulty:** Easy  
+**Impact:** High
+
+---
+
+### Option C — Add First Graphs (Pain Over Time)
+
+**Why choose this:**
+
+- Brings the StoryGraph-style vision to life  
+- Adds immediate visual insights  
+- Great intro to charting libraries
+
+**What’s involved:**
+
+- Line chart of pain vs date  
+- Handling missing values  
+- Sorting and preparing data  
+
+**Difficulty:** Moderate  
+**Impact:** High
+
+---
+
+### Option D — Create a `useShots` Abstraction Layer
+
+**Why choose this:**
+
+- Dramatically improves architecture
+- Clean separation of storage and UI
+- Makes swapping localStorage for encrypted backend trivial
+
+**Potential API:**
+
+- `getAllShots()`  
+- `addShot()`  
+- `updateShot()`  
+- `deleteShot()`
+
+**Difficulty:** Easy  
+**Impact:** Extremely High (future-proofing)
+
+---
+
+### Option E — CSV Export (Local-Only)
+
+**Why choose this:**
+
+- Useful for medical appointments  
+- Zero privacy risk (local download only)
+- Easy win that adds real value
+
+**Difficulty:** Easy  
+**Impact:** Medium
+
+---
+
+## Contributing
+
+Contributions must follow:
+
+- `CONTRIBUTING.md`
+- `CLA.md`
+- `CODE_OF_CONDUCT.md`
+- `LICENSE`
+
+Unapproved contributors should not open PRs modifying app logic or data flows.
+
+---
+
+## License
+
+This project uses a **proprietary license** with restrictions specific to trans-safety, data privacy, and controlled collaboration.  
+See `LICENSE` for full terms.
