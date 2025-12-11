@@ -85,6 +85,7 @@ npm run preview
   - Time (optional)  
   - Dose (optional)  
   - Injection site (optional)  
+  - Testosterone prep / carrier oil (optional)  
   - Pain score (optional)  
   - Mood (optional)  
   - Notes (optional)  
@@ -113,12 +114,12 @@ This section also includes **Feature 1 candidates** with explanations to help gu
 - Improve UI layout and styling
 - Add a **developer data viewer** (raw JSON, export panel)
 - Strengthen accessibility (labels, keyboard navigation)
+ - Add support for selecting different testosterone preparations and carrier oils, and save the last-used selection for faster logging
 
 ### Mid-Term (v0.3 → v0.5)
 
 - Add **CSV export** for clinical conversations
-- Add **PWA support** (installable, offline-first)
-- Add optional **symptom tagging** (fatigue, anxiety, headache)
+- Add **PWA support** (installable, offline-first)- Add **app disguise mode**: change app icon and name for discretion (presets: clock, calculator, football, weather)- Add optional **symptom tagging** (fatigue, anxiety, headache)
 - Add a local-only **“shot due soon”** reminder
 - Add improved **mood encoding** (emoji scale or fixed categories)
 - Add **theme support** (dark, light, high-contrast)
@@ -219,6 +220,49 @@ This section also includes **Feature 1 candidates** with explanations to help gu
 
 **Difficulty:** Easy  
 **Impact:** Medium
+
+---
+
+### Option F — Testosterone Prep & Carrier Oil Selection
+
+**Why choose this:**
+
+- Different carrier oils (cottonseed, sesame, grapeseed, etc.) can cause varying reactions
+- Remembering last-used selection makes logging faster and safer
+- Helps identify patterns between formulations and side effects
+- Completely local and private
+
+**What's involved:**
+
+- Dropdown for common T preparations and carrier oils
+- Optional free-text field for uncommon formulations
+- Persist last-used selection in `localStorage`
+- Display prep/oil in shot history
+
+**Difficulty:** Easy  
+**Impact:** High
+
+---
+
+### Option G — App Disguise / Stealth Mode
+
+**Why choose this:**
+
+- Critical safety feature for users in unsafe living situations
+- Allows app to appear as something mundane (clock, calculator, football scores, weather)
+- Customizable app name and icon
+- Protects user privacy without compromising functionality
+
+**What's involved:**
+
+- Settings panel to change app display name
+- Icon picker with preset options (clock, calculator, sports, weather, etc.)
+- Update document title and favicon dynamically
+- Persist disguise settings in `localStorage`
+- (Future: integrate with PWA manifest for installed apps)
+
+**Difficulty:** Easy (basic), Moderate (full PWA integration)  
+**Impact:** Extremely High (safety-critical for vulnerable users)
 
 ---
 
