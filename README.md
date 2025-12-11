@@ -78,6 +78,37 @@ npm run preview
 
 ---
 
+## Testing
+
+The project uses [Vitest](https://vitest.dev/) for unit testing with React Testing Library.
+
+### Running Tests
+
+```bash
+# Run tests in watch mode (interactive)
+npm test
+
+# Run tests once (CI mode)
+npm test -- --run
+```
+
+### Test Structure
+
+Tests are located next to the code they test in `__tests__` directories:
+
+- `src/hooks/__tests__/` - Hook tests (e.g., `useLocalStorage.test.ts`)
+- `src/types/__tests__/` - Type validation tests (e.g., `shot.test.ts`)
+
+### Writing Tests
+
+Test files use the `.test.ts` or `.test.tsx` extension and are automatically discovered by Vitest. The test environment is configured with:
+
+- **jsdom** for DOM simulation
+- **@testing-library/react** for component testing
+- **@testing-library/jest-dom** for enhanced matchers
+
+---
+
 ## Current Features (MVP)
 
 - Log a shot with:
