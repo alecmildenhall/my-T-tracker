@@ -90,9 +90,6 @@ npm test
 
 # Run tests once (CI mode)
 npm test -- --run
-
-# Run tests with coverage
-npm test -- --coverage
 ```
 
 ### Test Structure
@@ -109,20 +106,6 @@ Test files use the `.test.ts` or `.test.tsx` extension and are automatically dis
 - **jsdom** for DOM simulation
 - **@testing-library/react** for component testing
 - **@testing-library/jest-dom** for enhanced matchers
-
-Example:
-
-```typescript
-import { renderHook, act } from '@testing-library/react'
-import { describe, it, expect } from 'vitest'
-
-describe('useLocalStorage', () => {
-  it('should store and retrieve values', () => {
-    const { result } = renderHook(() => useLocalStorage('key', 'initial'))
-    expect(result.current[0]).toBe('initial')
-  })
-})
-```
 
 ---
 
