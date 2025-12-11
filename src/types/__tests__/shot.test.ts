@@ -54,10 +54,10 @@ describe('ShotEntry type', () => {
       const shot: ShotEntry = {
         id: 'abc123',
         date: '2025-12-11',
-        doseMg: 5.5,
+        doseMg: 100,
       }
       
-      expect(shot.doseMg).toBe(5.5)
+      expect(shot.doseMg).toBe(100)
       expect(typeof shot.doseMg).toBe('number')
     })
 
@@ -115,7 +115,7 @@ describe('ShotEntry type', () => {
         id: 'abc123',
         date: '2025-12-11',
         time: '14:30',
-        doseMg: 5.5,
+        doseMg: 75,
         injectionSite: 'thigh',
         painScore: 2,
         mood: 'energetic',
@@ -126,7 +126,7 @@ describe('ShotEntry type', () => {
         id: 'abc123',
         date: '2025-12-11',
         time: '14:30',
-        doseMg: 5.5,
+        doseMg: 75,
         injectionSite: 'thigh',
         painScore: 2,
         mood: 'energetic',
@@ -165,13 +165,13 @@ describe('ShotEntry type', () => {
         {
           id: '1',
           date: '2025-12-01',
-          doseMg: 5,
+          doseMg: 50,
           injectionSite: 'thigh',
         },
         {
           id: '2',
           date: '2025-12-08',
-          doseMg: 5,
+          doseMg: 75,
           injectionSite: 'glute',
           painScore: 1,
         },
@@ -179,7 +179,7 @@ describe('ShotEntry type', () => {
           id: '3',
           date: '2025-12-11',
           time: '10:00',
-          doseMg: 5.5,
+          doseMg: 100,
           injectionSite: 'stomach',
           painScore: 0,
           mood: 'great',

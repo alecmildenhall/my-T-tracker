@@ -28,6 +28,17 @@ describe('useLocalStorage', () => {
       expect(initialValueFn).toHaveBeenCalledOnce()
     })
 
+    // Tests that initializer function is NOT called when stored value exists
+    it('should not call initializer function when localStorage has value', () => {
+      localStorage.setItem('test-key', JSON.stringify('stored-value'))
+      const initialValueFn = vi.fn(() => 'computed-value')
+      
+      const { result } = renderHook(() => useLocalStorage('test-key', initialValueFn))
+      
+      expect(result.current[0]).toBe('stored-value')
+      expect(initialValueFn).not.toHaveBeenCalled()
+    })
+
     // Tests that hook correctly initializes with complex object values
     it('should handle objects as initial values', () => {
       const initialValue = { name: 'test', count: 42 }
@@ -104,6 +115,29 @@ describe('useLocalStorage', () => {
       const stored = localStorage.getItem('test-key')
       expect(stored).toBe(JSON.stringify({ name: 'updated', count: 42 }))
     })
+
+    // Tests error handling when localStorage.setItem throws
+    it('should handle write errors gracefully', () => {
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const setItemSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new Error('Storage quota exceeded')
+      })
+      
+      const { result } = renderHook(() => useLocalStorage('test-key', 'initial'))
+      
+      act(() => {
+        result.current[1]('updated')
+      })
+      
+      expect(result.current[0]).toBe('updated')
+      expect(consoleSpy).toHaveBeenCalledWith(
+        '[useLocalStorage] Failed to write to localStorage:',
+        expect.any(Error)
+      )
+      
+      setItemSpy.mockRestore()
+      consoleSpy.mockRestore()
+    })
   })
 
   describe('updating value', () => {
@@ -138,6 +172,27 @@ describe('useLocalStorage', () => {
         result.current[1](3)
       })
       expect(result.current[0]).toBe(3)
+    })
+
+    // Tests that functional updater pattern persists correctly to localStorage
+    it('should support functional updater pattern', () => {
+      const { result } = renderHook(() => useLocalStorage('test-key', 10))
+      
+      act(() => {
+        result.current[1]((prev) => prev + 5)
+      })
+      
+      expect(result.current[0]).toBe(15)
+      
+      const stored = localStorage.getItem('test-key')
+      expect(stored).toBe(JSON.stringify(15))
+      
+      act(() => {
+        result.current[1]((prev) => prev * 2)
+      })
+      
+      expect(result.current[0]).toBe(30)
+      expect(localStorage.getItem('test-key')).toBe(JSON.stringify(30))
     })
   })
 
@@ -179,6 +234,38 @@ describe('useLocalStorage', () => {
       
       expect(result1.current[0]).toBe('updated1')
       expect(result2.current[0]).toBe('value2')
+    })
+  })
+
+  describe('key-change behavior', () => {
+    // Tests that changing the key writes to the new localStorage key
+    it('should write to new key when key prop changes', () => {
+      const { result, rerender } = renderHook(
+        ({ storageKey }) => useLocalStorage(storageKey, 'default'),
+        { initialProps: { storageKey: 'key-a' } }
+      )
+      
+      expect(result.current[0]).toBe('default')
+      
+      act(() => {
+        result.current[1]('value-a')
+      })
+      
+      expect(localStorage.getItem('key-a')).toBe(JSON.stringify('value-a'))
+      
+      // Change the key - note: the hook maintains its internal state but writes to new key
+      rerender({ storageKey: 'key-b' })
+      
+      // Value persists in state (not re-read from localStorage)
+      expect(result.current[0]).toBe('value-a')
+      
+      // But updates now go to the new key
+      act(() => {
+        result.current[1]('value-b')
+      })
+      
+      expect(localStorage.getItem('key-b')).toBe(JSON.stringify('value-b'))
+      expect(localStorage.getItem('key-a')).toBe(JSON.stringify('value-a'))
     })
   })
 })
