@@ -4,6 +4,7 @@ import type { ShotEntry } from '../shot'
 
 describe('ShotEntry type', () => {
   describe('required fields', () => {
+    // Tests that ShotEntry can be created with only required fields
     it('should accept valid ShotEntry with required fields only', () => {
       const shot: ShotEntry = {
         id: 'abc123',
@@ -14,6 +15,7 @@ describe('ShotEntry type', () => {
       expect(shot.date).toBe('2025-12-11')
     })
 
+    // Tests that id field is typed as string
     it('should have string type for id field', () => {
       const shot: ShotEntry = {
         id: 'test-id-123',
@@ -23,6 +25,7 @@ describe('ShotEntry type', () => {
       expect(typeof shot.id).toBe('string')
     })
 
+    // Tests that date field is typed as string
     it('should have string type for date field', () => {
       const shot: ShotEntry = {
         id: 'test-id',
@@ -34,6 +37,7 @@ describe('ShotEntry type', () => {
   })
 
   describe('optional fields', () => {
+    // Tests that optional time field accepts string values
     it('should accept ShotEntry with time field', () => {
       const shot: ShotEntry = {
         id: 'abc123',
@@ -45,6 +49,7 @@ describe('ShotEntry type', () => {
       expect(typeof shot.time).toBe('string')
     })
 
+    // Tests that optional doseMg field accepts numeric values
     it('should accept ShotEntry with doseMg field', () => {
       const shot: ShotEntry = {
         id: 'abc123',
@@ -56,6 +61,7 @@ describe('ShotEntry type', () => {
       expect(typeof shot.doseMg).toBe('number')
     })
 
+    // Tests that optional injectionSite field accepts string values
     it('should accept ShotEntry with injectionSite field', () => {
       const shot: ShotEntry = {
         id: 'abc123',
@@ -67,6 +73,7 @@ describe('ShotEntry type', () => {
       expect(typeof shot.injectionSite).toBe('string')
     })
 
+    // Tests that optional painScore field accepts numeric values
     it('should accept ShotEntry with painScore field', () => {
       const shot: ShotEntry = {
         id: 'abc123',
@@ -78,6 +85,7 @@ describe('ShotEntry type', () => {
       expect(typeof shot.painScore).toBe('number')
     })
 
+    // Tests that optional mood field accepts string values
     it('should accept ShotEntry with mood field', () => {
       const shot: ShotEntry = {
         id: 'abc123',
@@ -89,6 +97,7 @@ describe('ShotEntry type', () => {
       expect(typeof shot.mood).toBe('string')
     })
 
+    // Tests that optional notes field accepts string values
     it('should accept ShotEntry with notes field', () => {
       const shot: ShotEntry = {
         id: 'abc123',
@@ -100,6 +109,7 @@ describe('ShotEntry type', () => {
       expect(typeof shot.notes).toBe('string')
     })
 
+    // Tests that ShotEntry accepts all fields populated at once
     it('should accept ShotEntry with all fields populated', () => {
       const shot: ShotEntry = {
         id: 'abc123',
@@ -124,6 +134,7 @@ describe('ShotEntry type', () => {
       })
     })
 
+    // Tests that optional fields can be explicitly set to undefined
     it('should allow undefined optional fields', () => {
       const shot: ShotEntry = {
         id: 'abc123',
@@ -148,6 +159,7 @@ describe('ShotEntry type', () => {
   })
 
   describe('type structure validation', () => {
+    // Tests that ShotEntry arrays can hold entries with varying optional fields
     it('should create valid shot entries with different data', () => {
       const shots: ShotEntry[] = [
         {
@@ -181,6 +193,7 @@ describe('ShotEntry type', () => {
       expect(shots[2].notes).toBe('Best injection yet!')
     })
 
+    // Tests that date field accepts YYYY-MM-DD format strings
     it('should work with date formats', () => {
       const shot: ShotEntry = {
         id: 'test',
@@ -191,6 +204,7 @@ describe('ShotEntry type', () => {
       expect(shot.date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
     })
 
+    // Tests that painScore field accepts values in the 0-10 range
     it('should handle numeric ranges for painScore', () => {
       const minPainShot: ShotEntry = {
         id: 'min',

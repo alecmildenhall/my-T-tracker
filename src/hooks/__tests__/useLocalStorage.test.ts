@@ -12,12 +12,14 @@ describe('useLocalStorage', () => {
   })
 
   describe('initial value behavior', () => {
+    // Tests that hook returns a static value when localStorage is empty
     it('should use static initial value when localStorage is empty', () => {
       const { result } = renderHook(() => useLocalStorage('test-key', 'default-value'))
       
       expect(result.current[0]).toBe('default-value')
     })
 
+    // Tests that hook calls initializer function when localStorage is empty
     it('should use function initial value when localStorage is empty', () => {
       const initialValueFn = vi.fn(() => 'computed-value')
       const { result } = renderHook(() => useLocalStorage('test-key', initialValueFn))
@@ -26,6 +28,7 @@ describe('useLocalStorage', () => {
       expect(initialValueFn).toHaveBeenCalledOnce()
     })
 
+    // Tests that hook correctly initializes with complex object values
     it('should handle objects as initial values', () => {
       const initialValue = { name: 'test', count: 42 }
       const { result } = renderHook(() => useLocalStorage('test-key', initialValue))
@@ -35,6 +38,7 @@ describe('useLocalStorage', () => {
   })
 
   describe('reading from localStorage', () => {
+    // Tests that hook retrieves previously stored values from localStorage
     it('should read existing value from localStorage', () => {
       localStorage.setItem('test-key', JSON.stringify('stored-value'))
       
@@ -43,6 +47,7 @@ describe('useLocalStorage', () => {
       expect(result.current[0]).toBe('stored-value')
     })
 
+    // Tests that hook correctly deserializes nested objects from localStorage
     it('should read complex objects from localStorage', () => {
       const storedValue = { id: '123', name: 'test', nested: { value: 42 } }
       localStorage.setItem('test-key', JSON.stringify(storedValue))
@@ -52,6 +57,7 @@ describe('useLocalStorage', () => {
       expect(result.current[0]).toEqual(storedValue)
     })
 
+    // Tests error handling when localStorage contains malformed JSON data
     it('should use initial value when localStorage contains invalid JSON', () => {
       localStorage.setItem('test-key', 'invalid-json{')
       const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -66,6 +72,7 @@ describe('useLocalStorage', () => {
   })
 
   describe('writing to localStorage', () => {
+    // Tests that hook persists initial value to localStorage on mount
     it('should write initial value to localStorage', () => {
       renderHook(() => useLocalStorage('test-key', 'initial-value'))
       
@@ -73,6 +80,7 @@ describe('useLocalStorage', () => {
       expect(stored).toBe(JSON.stringify('initial-value'))
     })
 
+    // Tests that hook syncs state changes to localStorage
     it('should update localStorage when value changes', () => {
       const { result } = renderHook(() => useLocalStorage('test-key', 'initial-value'))
       
@@ -85,6 +93,7 @@ describe('useLocalStorage', () => {
       expect(result.current[0]).toBe('updated-value')
     })
 
+    // Tests that hook correctly serializes objects when writing to localStorage
     it('should write complex objects to localStorage', () => {
       const { result } = renderHook(() => useLocalStorage<{ name: string; count: number }>('test-key', { name: 'test', count: 0 }))
       
@@ -98,6 +107,7 @@ describe('useLocalStorage', () => {
   })
 
   describe('updating value', () => {
+    // Tests that setter function updates state correctly
     it('should update value using setter function', () => {
       const { result } = renderHook(() => useLocalStorage('test-key', 10))
       
@@ -110,6 +120,7 @@ describe('useLocalStorage', () => {
       expect(result.current[0]).toBe(20)
     })
 
+    // Tests that hook handles sequential state updates correctly
     it('should update value multiple times', () => {
       const { result } = renderHook(() => useLocalStorage('test-key', 0))
       
@@ -131,6 +142,7 @@ describe('useLocalStorage', () => {
   })
 
   describe('localStorage sync across hook instances', () => {
+    // Tests that new hook instances read updated values from localStorage
     it('should share state between multiple hook instances with same key', () => {
       const { result: result1 } = renderHook(() => useLocalStorage('shared-key', 'initial'))
       const { result: result2 } = renderHook(() => useLocalStorage('shared-key', 'initial'))
@@ -153,6 +165,7 @@ describe('useLocalStorage', () => {
       expect(result3.current[0]).toBe('updated')
     })
 
+    // Tests that different keys maintain independent state in localStorage
     it('should keep different keys independent', () => {
       const { result: result1 } = renderHook(() => useLocalStorage('key1', 'value1'))
       const { result: result2 } = renderHook(() => useLocalStorage('key2', 'value2'))
