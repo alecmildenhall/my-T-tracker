@@ -107,6 +107,27 @@ Test files use the `.test.ts` or `.test.tsx` extension and are automatically dis
 - **@testing-library/react** for component testing
 - **@testing-library/jest-dom** for enhanced matchers
 
+### Test Coverage
+
+To generate a code coverage report:
+
+```bash
+# Run tests with coverage
+npm test -- --coverage
+
+# Or run tests once with coverage (CI mode)
+npm test -- --run --coverage
+```
+
+This creates a `coverage/` directory with:
+- **index.html** - Interactive HTML report (open in browser)
+- **coverage-final.json** - Raw coverage data
+- **clover.xml** - For CI/CD integration
+
+View the HTML report by opening `coverage/index.html` in your browser to see line-by-line coverage visualization.
+
+> **Note:** The `coverage/` directory is gitignored and regenerated on each test run.
+
 ---
 
 ## Current Features (MVP)
