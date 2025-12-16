@@ -34,6 +34,9 @@ pnpm-debug.log*
 # TypeScript build info
 *.tsbuildinfo
 
+# Test coverage
+coverage/
+
 # Optional: keep lockfiles or ignore if switching package managers often
 # package-lock.json
 # yarn.lock
