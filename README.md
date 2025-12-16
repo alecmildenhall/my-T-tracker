@@ -78,6 +78,58 @@ npm run preview
 
 ---
 
+## Testing
+
+The project uses [Vitest](https://vitest.dev/) for unit testing with React Testing Library.
+
+### Running Tests
+
+```bash
+# Run tests in watch mode (interactive)
+npm test
+
+# Run tests once (CI mode)
+npm test -- --run
+```
+
+### Test Structure
+
+Tests are located next to the code they test in `__tests__` directories:
+
+- `src/hooks/__tests__/` - Hook tests (e.g., `useLocalStorage.test.ts`)
+- `src/types/__tests__/` - Type validation tests (e.g., `shot.test.ts`)
+
+### Writing Tests
+
+Test files use the `.test.ts` or `.test.tsx` extension and are automatically discovered by Vitest. The test environment is configured with:
+
+- **jsdom** for DOM simulation
+- **@testing-library/react** for component testing
+- **@testing-library/jest-dom** for enhanced matchers
+
+### Test Coverage
+
+To generate a code coverage report:
+
+```bash
+# Run tests with coverage
+npm test -- --coverage
+
+# Or run tests once with coverage (CI mode)
+npm test -- --run --coverage
+```
+
+This creates a `coverage/` directory with:
+- **index.html** - Interactive HTML report (open in browser)
+- **coverage-final.json** - Raw coverage data
+- **clover.xml** - For CI/CD integration
+
+View the HTML report by opening `coverage/index.html` in your browser to see line-by-line coverage visualization.
+
+> **Note:** The `coverage/` directory is gitignored and regenerated on each test run.
+
+---
+
 ## Current Features (MVP)
 
 - Log a shot with:
