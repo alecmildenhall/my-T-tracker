@@ -385,11 +385,15 @@ describe('useShots', () => {
 
     it('should handle corrupted localStorage data', () => {
       localStorage.setItem('hrt-shot-tracker:v1:shots', 'invalid-json{')
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
       
       const { result } = renderHook(() => useShots())
       
       // Should fall back to empty array
       expect(result.current.shots).toEqual([])
+      expect(consoleSpy).toHaveBeenCalled()
+      
+      consoleSpy.mockRestore()
     })
   })
 
