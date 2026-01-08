@@ -113,7 +113,9 @@ Test files use the `.test.ts` or `.test.tsx` extension and are automatically dis
 npm test -- --coverage
 ```
 
-Generates a `coverage/` directory with an interactive HTML report (`index.html`), raw JSON data, and CI-friendly formats. The directory is gitignored and regenerated on each run.
+Generates a `coverage/` directory with an interactive HTML report. The directory is gitignored and regenerated on each run.
+
+To view the report, open `coverage/index.html` in your browser (alternatively use Live Server in VS Code) or navigate to http://localhost:5500/coverage/index.html. Your port may differ.
 
 ---
 
