@@ -2,21 +2,10 @@
 import React from "react";
 import { ShotForm } from "./components/ShotForm";
 import { ShotList } from "./components/ShotList";
-import { useLocalStorage } from "./hooks/useLocalStorage";
-import type { ShotEntry } from "./types/shot";
-
-const STORAGE_KEY = "hrt-shot-tracker:v1:shots";
+import { useShots } from "./hooks/useShots";
 
 const App: React.FC = () => {
-  const [shots, setShots] = useLocalStorage<ShotEntry[]>(STORAGE_KEY, []);
-
-  const handleAddShot = (shot: ShotEntry) => {
-    setShots((prev) => [...prev, shot]);
-  };
-
-  const handleDeleteShot = (id: string) => {
-    setShots((prev) => prev.filter((shot) => shot.id !== id));
-  };
+  const { shots, addShot, deleteShot } = useShots();
 
   return (
     <div className="app-root">
@@ -33,8 +22,8 @@ const App: React.FC = () => {
       </header>
 
       <main className="app-main">
-        <ShotForm onAddShot={handleAddShot} />
-        <ShotList shots={shots} onDeleteShot={handleDeleteShot} />
+        <ShotForm onAddShot={addShot} />
+        <ShotList shots={shots} onDeleteShot={deleteShot} />
       </main>
 
       <footer className="app-footer">

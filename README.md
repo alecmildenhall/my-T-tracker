@@ -109,24 +109,13 @@ Test files use the `.test.ts` or `.test.tsx` extension and are automatically dis
 
 ### Test Coverage
 
-To generate a code coverage report:
-
 ```bash
-# Run tests with coverage
 npm test -- --coverage
-
-# Or run tests once with coverage (CI mode)
-npm test -- --run --coverage
 ```
 
-This creates a `coverage/` directory with:
-- **index.html** - Interactive HTML report (open in browser)
-- **coverage-final.json** - Raw coverage data
-- **clover.xml** - For CI/CD integration
+Generates a `coverage/` directory with an interactive HTML report. The directory is gitignored and regenerated on each run.
 
-View the HTML report by opening `coverage/index.html` in your browser to see line-by-line coverage visualization.
-
-> **Note:** The `coverage/` directory is gitignored and regenerated on each test run.
+To view the report, open `coverage/index.html` in your browser (alternatively use Live Server in VS Code) or navigate to http://localhost:5500/coverage/index.html. Your port may differ.
 
 ---
 
