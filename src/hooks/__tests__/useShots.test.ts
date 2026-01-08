@@ -11,6 +11,7 @@ describe('useShots', () => {
   })
 
   describe('initial state', () => {
+    // Tests that hook returns an empty array when localStorage is empty
     it('should initialize with empty shots array', () => {
       const { result } = renderHook(() => useShots())
       
@@ -18,6 +19,7 @@ describe('useShots', () => {
       expect(Array.isArray(result.current.shots)).toBe(true)
     })
 
+    // Tests that hook loads existing data from localStorage on initialization
     it('should load existing shots from localStorage', () => {
       const existingShots: ShotEntry[] = [
         {
@@ -42,12 +44,14 @@ describe('useShots', () => {
       expect(result.current.shots).toHaveLength(2)
     })
 
+    // Tests that hook exposes the addShot function in its API
     it('should provide addShot function', () => {
       const { result } = renderHook(() => useShots())
       
       expect(typeof result.current.addShot).toBe('function')
     })
 
+    // Tests that hook exposes the deleteShot function in its API
     it('should provide deleteShot function', () => {
       const { result } = renderHook(() => useShots())
       
@@ -56,6 +60,7 @@ describe('useShots', () => {
   })
 
   describe('addShot', () => {
+    // Tests adding a single shot to an initially empty array
     it('should add a shot to empty array', () => {
       const { result } = renderHook(() => useShots())
       
@@ -74,6 +79,7 @@ describe('useShots', () => {
       expect(result.current.shots[0]).toEqual(newShot)
     })
 
+    // Tests that multiple shots can be added sequentially
     it('should add multiple shots', () => {
       const { result } = renderHook(() => useShots())
       
@@ -104,6 +110,7 @@ describe('useShots', () => {
       expect(result.current.shots[1]).toEqual(shot2)
     })
 
+    // Tests that shots with all optional fields are correctly stored
     it('should add shot with all optional fields', () => {
       const { result } = renderHook(() => useShots())
       
@@ -125,6 +132,7 @@ describe('useShots', () => {
       expect(result.current.shots[0]).toEqual(fullShot)
     })
 
+    // Tests that shots with only required fields (id and date) work correctly
     it('should add shot with minimal required fields', () => {
       const { result } = renderHook(() => useShots())
       
@@ -140,6 +148,7 @@ describe('useShots', () => {
       expect(result.current.shots[0]).toEqual(minimalShot)
     })
 
+    // Tests that added shots are immediately persisted to localStorage
     it('should persist added shot to localStorage', () => {
       const { result } = renderHook(() => useShots())
       
@@ -157,6 +166,7 @@ describe('useShots', () => {
       expect(stored).toBe(JSON.stringify([newShot]))
     })
 
+    // Tests that addShot function reference is stable (useCallback working correctly)
     it('should maintain function reference across renders', () => {
       const { result, rerender } = renderHook(() => useShots())
       
@@ -169,6 +179,7 @@ describe('useShots', () => {
   })
 
   describe('deleteShot', () => {
+    // Tests that a shot can be deleted by its ID
     it('should delete a shot by id', () => {
       const { result } = renderHook(() => useShots())
       
@@ -199,6 +210,7 @@ describe('useShots', () => {
       expect(result.current.shots[0]).toEqual(shot2)
     })
 
+    // Tests that only the specified shot is deleted when multiple shots exist
     it('should delete the correct shot from multiple shots', () => {
       const { result } = renderHook(() => useShots())
       
@@ -222,6 +234,7 @@ describe('useShots', () => {
       expect(result.current.shots.map(s => s.id)).toEqual(['shot-1', 'shot-3'])
     })
 
+    // Tests that deleting a non-existent ID doesn't affect existing shots
     it('should do nothing when deleting non-existent shot', () => {
       const { result } = renderHook(() => useShots())
       
@@ -245,6 +258,7 @@ describe('useShots', () => {
       expect(result.current.shots[0]).toEqual(shot)
     })
 
+    // Tests that calling deleteShot on an empty array doesn't cause errors
     it('should do nothing when deleting from empty array', () => {
       const { result } = renderHook(() => useShots())
       
@@ -257,6 +271,7 @@ describe('useShots', () => {
       expect(result.current.shots).toHaveLength(0)
     })
 
+    // Tests that deletions are immediately persisted to localStorage
     it('should persist deletion to localStorage', () => {
       const { result } = renderHook(() => useShots())
       
@@ -285,6 +300,7 @@ describe('useShots', () => {
       expect(stored).toBe(JSON.stringify([shot2]))
     })
 
+    // Tests that deleteShot function reference is stable (useCallback working correctly)
     it('should maintain function reference across renders', () => {
       const { result, rerender } = renderHook(() => useShots())
       
@@ -295,6 +311,7 @@ describe('useShots', () => {
       expect(result.current.deleteShot).toBe(firstDeleteShot)
     })
 
+    // Tests that all shots can be deleted sequentially until array is empty
     it('should handle deleting all shots one by one', () => {
       const { result } = renderHook(() => useShots())
       
@@ -331,6 +348,7 @@ describe('useShots', () => {
   })
 
   describe('localStorage persistence', () => {
+    // Tests that data persists when creating multiple hook instances
     it('should load and persist state across hook instances', () => {
       const { result: result1 } = renderHook(() => useShots())
       
@@ -351,6 +369,7 @@ describe('useShots', () => {
       expect(result2.current.shots[0]).toEqual(shot)
     })
 
+    // Tests that shots with complex data (all fields populated) persist correctly
     it('should handle complex shot data with all fields', () => {
       const { result } = renderHook(() => useShots())
       
@@ -375,6 +394,7 @@ describe('useShots', () => {
       expect(result2.current.shots[0]).toEqual(complexShot)
     })
 
+    // Tests that hook initializes correctly when localStorage has no data
     it('should handle empty localStorage gracefully', () => {
       localStorage.clear()
       
@@ -383,6 +403,7 @@ describe('useShots', () => {
       expect(result.current.shots).toEqual([])
     })
 
+    // Tests that hook falls back to empty array when localStorage contains invalid JSON
     it('should handle corrupted localStorage data', () => {
       localStorage.setItem('hrt-shot-tracker:v1:shots', 'invalid-json{')
       const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -398,6 +419,7 @@ describe('useShots', () => {
   })
 
   describe('edge cases', () => {
+    // Tests that multiple operations performed in quick succession work correctly
     it('should handle rapid consecutive operations', () => {
       const { result } = renderHook(() => useShots())
       
@@ -420,6 +442,7 @@ describe('useShots', () => {
       expect(result.current.shots.map(s => s.id)).toEqual(['shot-1', 'shot-3', 'shot-4'])
     })
 
+    // Tests that shots with duplicate IDs are both added (no deduplication)
     it('should handle shots with duplicate ids (keeps both)', () => {
       const { result } = renderHook(() => useShots())
       
@@ -441,6 +464,7 @@ describe('useShots', () => {
       expect(result.current.shots).toHaveLength(2)
     })
 
+    // Tests that deleteShot removes all shots with matching ID (filter behavior)
     it('should handle deleting shot with duplicate ids (removes first match)', () => {
       const { result } = renderHook(() => useShots())
       
@@ -467,6 +491,7 @@ describe('useShots', () => {
       expect(result.current.shots).toHaveLength(0)
     })
 
+    // Tests that special characters (emojis, quotes, symbols) are handled correctly
     it('should handle shots with special characters in fields', () => {
       const { result } = renderHook(() => useShots())
       
@@ -489,6 +514,7 @@ describe('useShots', () => {
       expect(parsed[0]).toEqual(specialShot)
     })
 
+    // Tests that hook can handle large datasets (100+ shots) without performance issues
     it('should handle large numbers of shots', () => {
       const { result } = renderHook(() => useShots())
       
