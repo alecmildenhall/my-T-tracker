@@ -1,14 +1,22 @@
 // src/components/ShotForm.tsx
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import type { ShotEntry } from "../types/shot";
 
 interface ShotFormProps {
   onAddShot: (shot: ShotEntry) => void;
+  onUpdateShot?: (shot: ShotEntry) => void;
+  editingShot?: ShotEntry | null;
+  onCancelEdit?: () => void;
 }
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
-export const ShotForm: React.FC<ShotFormProps> = ({ onAddShot }) => {
+export const ShotForm: React.FC<ShotFormProps> = ({
+  onAddShot,
+  onUpdateShot,
+  editingShot,
+  onCancelEdit,
+}) => {
   const [date, setDate] = useState<string>(todayISO());
   const [time, setTime] = useState<string>("");
   const [doseMg, setDoseMg] = useState<string>("");
@@ -17,12 +25,28 @@ export const ShotForm: React.FC<ShotFormProps> = ({ onAddShot }) => {
   const [mood, setMood] = useState<string>("");
   const [notes, setNotes] = useState<string>("");
 
+  // Populate form when editing
+  useEffect(() => {
+    if (editingShot) {
+      /* eslint-disable react-hooks/set-state-in-effect */
+      setDate(editingShot.date);
+      setTime(editingShot.time || "");
+      setDoseMg(editingShot.doseMg?.toString() || "");
+      setInjectionSite(editingShot.injectionSite || "");
+      setPainScore(editingShot.painScore?.toString() || "5");
+      setMood(editingShot.mood || "");
+      setNotes(editingShot.notes || "");
+      /* eslint-enable react-hooks/set-state-in-effect */
+    }
+  }, [editingShot]);
+
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
 
     const newShot: ShotEntry = {
-      id:
-        typeof crypto !== "undefined" && "randomUUID" in crypto
+      id: editingShot
+        ? editingShot.id
+        : typeof crypto !== "undefined" && "randomUUID" in crypto
           ? crypto.randomUUID()
           : `shot-${Date.now()}`,
       date,
@@ -34,9 +58,29 @@ export const ShotForm: React.FC<ShotFormProps> = ({ onAddShot }) => {
       notes: notes || undefined,
     };
 
-    onAddShot(newShot);
+    if (editingShot && onUpdateShot) {
+      onUpdateShot(newShot);
+    } else {
+      onAddShot(newShot);
+    }
 
     // reset (keep date so you can log multiple shots for same day easily)
+    if (!editingShot) {
+      setTime("");
+      setDoseMg("");
+      setInjectionSite("");
+      setPainScore("5");
+      setMood("");
+      setNotes("");
+    }
+  };
+
+  const handleCancel = () => {
+    if (onCancelEdit) {
+      onCancelEdit();
+    }
+    // Reset form to default values
+    setDate(todayISO());
     setTime("");
     setDoseMg("");
     setInjectionSite("");
@@ -47,7 +91,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({ onAddShot }) => {
 
   return (
     <form className="shot-form" onSubmit={handleSubmit}>
-      <h2>Log a Shot</h2>
+      <h2>{editingShot ? "Edit Shot" : "Log a Shot"}</h2>
 
       <div className="form-row">
         <label>
@@ -131,8 +175,17 @@ export const ShotForm: React.FC<ShotFormProps> = ({ onAddShot }) => {
       </label>
 
       <button type="submit" className="primary-button">
-        Save shot
+        {editingShot ? "Update shot" : "Save shot"}
       </button>
+      {editingShot && onCancelEdit && (
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={handleCancel}
+        >
+          Cancel
+        </button>
+      )}
     </form>
   );
 };

@@ -8,6 +8,7 @@ const STORAGE_KEY = "hrt-shot-tracker:v1:shots";
 export interface UseShots {
   shots: ShotEntry[];
   addShot: (shot: ShotEntry) => void;
+  updateShot: (id: string, updatedShot: ShotEntry) => void;
   deleteShot: (id: string) => void;
 }
 
@@ -26,6 +27,15 @@ export function useShots(): UseShots {
     [setShots]
   );
 
+  const updateShot = useCallback(
+    (id: string, updatedShot: ShotEntry) => {
+      setShots((prev) =>
+        prev.map((shot) => (shot.id === id ? updatedShot : shot))
+      );
+    },
+    [setShots]
+  );
+
   const deleteShot = useCallback(
     (id: string) => {
       setShots((prev) => prev.filter((shot) => shot.id !== id));
@@ -36,6 +46,7 @@ export function useShots(): UseShots {
   return {
     shots,
     addShot,
+    updateShot,
     deleteShot,
   };
 }

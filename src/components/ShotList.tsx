@@ -6,9 +6,14 @@ import { ShotListItem } from "./ShotListItem";
 interface ShotListProps {
   shots: ShotEntry[];
   onDeleteShot?: (id: string) => void;
+  onEditShot?: (shot: ShotEntry) => void;
 }
 
-export const ShotList: React.FC<ShotListProps> = ({ shots, onDeleteShot }) => {
+export const ShotList: React.FC<ShotListProps> = ({
+  shots,
+  onDeleteShot,
+  onEditShot,
+}) => {
   if (shots.length === 0) {
     return (
       <section className="shot-list">
@@ -34,6 +39,7 @@ export const ShotList: React.FC<ShotListProps> = ({ shots, onDeleteShot }) => {
             key={shot.id}
             shot={shot}
             onDelete={onDeleteShot}
+            onEdit={onEditShot}
           />
         ))}
       </ul>
