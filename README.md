@@ -140,6 +140,7 @@ To view the report, open `coverage/index.html` in your browser (alternatively us
 # Next Steps / Upcoming Features
 
 The HRT Shot Tracker is currently in an early MVP state. The roadmap below outlines the planned evolution of the project, designed to uphold trans-focused privacy, local-first data ownership, and long-term maintainability.
+
 ---
 
 ## High-Level Roadmap
