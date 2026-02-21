@@ -1,11 +1,28 @@
 // src/App.tsx
-import React from "react";
+import React, { useState } from "react";
 import { ShotForm } from "./components/ShotForm";
 import { ShotList } from "./components/ShotList";
 import { useShots } from "./hooks/useShots";
+import type { ShotEntry } from "./types/shot";
 
 const App: React.FC = () => {
-  const { shots, addShot, deleteShot } = useShots();
+  const { shots, addShot, updateShot, deleteShot } = useShots();
+  const [editingShot, setEditingShot] = useState<ShotEntry | null>(null);
+
+  const handleEditShot = (shot: ShotEntry) => {
+    setEditingShot(shot);
+    // Scroll to top so the form is visible
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleUpdateShot = (shot: ShotEntry) => {
+    updateShot(shot.id, shot);
+    setEditingShot(null);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingShot(null);
+  };
 
   return (
     <div className="app-root">
@@ -22,8 +39,17 @@ const App: React.FC = () => {
       </header>
 
       <main className="app-main">
-        <ShotForm onAddShot={addShot} />
-        <ShotList shots={shots} onDeleteShot={deleteShot} />
+        <ShotForm
+          onAddShot={addShot}
+          onUpdateShot={handleUpdateShot}
+          editingShot={editingShot}
+          onCancelEdit={handleCancelEdit}
+        />
+        <ShotList
+          shots={shots}
+          onDeleteShot={deleteShot}
+          onEditShot={handleEditShot}
+        />
       </main>
 
       <footer className="app-footer">

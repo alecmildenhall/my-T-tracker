@@ -105,6 +105,10 @@ body {
   gap: 0.8rem;
 }
 
+.shot-form .secondary-button {
+  margin-top: 0.5rem;
+}
+
 .form-row {
   display: flex;
   gap: 0.75rem;
@@ -250,6 +254,12 @@ textarea {
   font-size: 0.8rem;
   margin: 0 0 0.3rem;
   line-height: 1.4;
+}
+
+.shot-list-item__actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
 }
 
 .empty-state {

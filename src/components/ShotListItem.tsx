@@ -5,11 +5,13 @@ import type { ShotEntry } from "../types/shot";
 interface ShotListItemProps {
   shot: ShotEntry;
   onDelete?: (id: string) => void;
+  onEdit?: (shot: ShotEntry) => void;
 }
 
 export const ShotListItem: React.FC<ShotListItemProps> = ({
   shot,
   onDelete,
+  onEdit,
 }) => {
   const dateLabel = shot.date;
   const timeLabel = shot.time || "—";
@@ -36,15 +38,26 @@ export const ShotListItem: React.FC<ShotListItemProps> = ({
 
       {shot.notes && <p className="shot-list-item__notes">{shot.notes}</p>}
 
-      {onDelete && (
-        <button
-          type="button"
-          className="secondary-button secondary-button--danger"
-          onClick={() => onDelete(shot.id)}
-        >
-          Delete
-        </button>
-      )}
+      <div className="shot-list-item__actions">
+        {onEdit && (
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => onEdit(shot)}
+          >
+            Edit
+          </button>
+        )}
+        {onDelete && (
+          <button
+            type="button"
+            className="secondary-button secondary-button--danger"
+            onClick={() => onDelete(shot.id)}
+          >
+            Delete
+          </button>
+        )}
+      </div>
     </li>
   );
 };

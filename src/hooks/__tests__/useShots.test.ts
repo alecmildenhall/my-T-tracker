@@ -57,6 +57,13 @@ describe('useShots', () => {
       
       expect(typeof result.current.deleteShot).toBe('function')
     })
+
+    // Tests that hook exposes the updateShot function in its API
+    it('should provide updateShot function', () => {
+      const { result } = renderHook(() => useShots())
+      
+      expect(typeof result.current.updateShot).toBe('function')
+    })
   })
 
   describe('addShot', () => {
@@ -175,6 +182,183 @@ describe('useShots', () => {
       rerender()
       
       expect(result.current.addShot).toBe(firstAddShot)
+    })
+  })
+
+  describe('updateShot', () => {
+    // Tests updating a single shot by id
+    it('should update a shot by id', () => {
+      const { result } = renderHook(() => useShots())
+      
+      const originalShot: ShotEntry = {
+        id: 'shot-1',
+        date: '2024-01-15',
+        doseMg: 50,
+        injectionSite: 'thigh'
+      }
+      
+      act(() => {
+        result.current.addShot(originalShot)
+      })
+      
+      const updatedShot: ShotEntry = {
+        id: 'shot-1',
+        date: '2024-01-15',
+        doseMg: 75,
+        injectionSite: 'glute',
+        painScore: 3
+      }
+      
+      act(() => {
+        result.current.updateShot('shot-1', updatedShot)
+      })
+      
+      expect(result.current.shots).toHaveLength(1)
+      expect(result.current.shots[0]).toEqual(updatedShot)
+    })
+
+    // Tests that only the specified shot is updated when multiple shots exist
+    it('should update only the specified shot', () => {
+      const { result } = renderHook(() => useShots())
+      
+      const shot1: ShotEntry = {
+        id: 'shot-1',
+        date: '2024-01-15',
+        doseMg: 50
+      }
+      
+      const shot2: ShotEntry = {
+        id: 'shot-2',
+        date: '2024-01-22',
+        doseMg: 50
+      }
+      
+      const shot3: ShotEntry = {
+        id: 'shot-3',
+        date: '2024-01-29',
+        doseMg: 50
+      }
+      
+      act(() => {
+        result.current.addShot(shot1)
+        result.current.addShot(shot2)
+        result.current.addShot(shot3)
+      })
+      
+      const updatedShot2: ShotEntry = {
+        id: 'shot-2',
+        date: '2024-01-22',
+        doseMg: 100,
+        mood: 'great'
+      }
+      
+      act(() => {
+        result.current.updateShot('shot-2', updatedShot2)
+      })
+      
+      expect(result.current.shots).toHaveLength(3)
+      expect(result.current.shots[0]).toEqual(shot1)
+      expect(result.current.shots[1]).toEqual(updatedShot2)
+      expect(result.current.shots[2]).toEqual(shot3)
+    })
+
+    // Tests that updating a non-existent shot does nothing
+    it('should do nothing when updating non-existent shot', () => {
+      const { result } = renderHook(() => useShots())
+      
+      const shot: ShotEntry = {
+        id: 'shot-1',
+        date: '2024-01-15',
+        doseMg: 50
+      }
+      
+      act(() => {
+        result.current.addShot(shot)
+      })
+      
+      const nonExistentShot: ShotEntry = {
+        id: 'non-existent',
+        date: '2024-01-22',
+        doseMg: 100
+      }
+      
+      act(() => {
+        result.current.updateShot('non-existent', nonExistentShot)
+      })
+      
+      expect(result.current.shots).toHaveLength(1)
+      expect(result.current.shots[0]).toEqual(shot)
+    })
+
+    // Tests that updates are persisted to localStorage
+    it('should persist updated shot to localStorage', () => {
+      const { result } = renderHook(() => useShots())
+      
+      const originalShot: ShotEntry = {
+        id: 'shot-1',
+        date: '2024-01-15',
+        doseMg: 50
+      }
+      
+      act(() => {
+        result.current.addShot(originalShot)
+      })
+      
+      const updatedShot: ShotEntry = {
+        id: 'shot-1',
+        date: '2024-01-15',
+        doseMg: 75,
+        mood: 'good'
+      }
+      
+      act(() => {
+        result.current.updateShot('shot-1', updatedShot)
+      })
+      
+      const stored = localStorage.getItem('hrt-shot-tracker:v1:shots')
+      expect(stored).toBe(JSON.stringify([updatedShot]))
+    })
+
+    // Tests that updateShot function reference is stable (useCallback working correctly)
+    it('should maintain function reference across renders', () => {
+      const { result, rerender } = renderHook(() => useShots())
+      
+      const firstUpdateShot = result.current.updateShot
+      
+      rerender()
+      
+      expect(result.current.updateShot).toBe(firstUpdateShot)
+    })
+
+    // Tests updating a shot with all optional fields
+    it('should update shot with all optional fields', () => {
+      const { result } = renderHook(() => useShots())
+      
+      const minimalShot: ShotEntry = {
+        id: 'shot-1',
+        date: '2024-01-15'
+      }
+      
+      act(() => {
+        result.current.addShot(minimalShot)
+      })
+      
+      const fullShot: ShotEntry = {
+        id: 'shot-1',
+        date: '2024-01-15',
+        time: '14:30',
+        doseMg: 50,
+        injectionSite: 'thigh',
+        painScore: 3,
+        mood: 'good',
+        notes: 'Updated with full details'
+      }
+      
+      act(() => {
+        result.current.updateShot('shot-1', fullShot)
+      })
+      
+      expect(result.current.shots[0]).toEqual(fullShot)
     })
   })
 
