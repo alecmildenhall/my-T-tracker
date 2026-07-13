@@ -1,5 +1,5 @@
 # Code of Conduct  
-HRT Shot Tracker
+T-Shot Tracker
 
 This project is dedicated to creating software that supports transgender and gender-diverse people in safely tracking their hormone replacement therapy (HRT). Because this project deals with **sensitive health-related data**, the community that contributes to it must follow strong standards of respect, privacy, and ethical conduct.
 

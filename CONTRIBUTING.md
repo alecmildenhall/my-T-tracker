@@ -1,4 +1,4 @@
-# Contributing to the HRT Shot Tracker
+# Contributing to the T-Shot Tracker
 
 Thank you for your interest in contributing!  
 Because this project relates to transgender health data and user safety, special

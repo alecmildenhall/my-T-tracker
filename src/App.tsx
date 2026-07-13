@@ -2,12 +2,15 @@
 import React, { useState } from "react";
 import { ShotForm } from "./components/ShotForm";
 import { ShotList } from "./components/ShotList";
+import { Settings } from "./components/Settings";
 import { useShots } from "./hooks/useShots";
 import type { ShotEntry } from "./types/shot";
 
 const App: React.FC = () => {
-  const { shots, addShot, updateShot, deleteShot } = useShots();
+  const { shots, addShot, updateShot, deleteShot, renameValue, clearValue } =
+    useShots();
   const [editingShot, setEditingShot] = useState<ShotEntry | null>(null);
+  const [view, setView] = useState<"log" | "settings">("log");
 
   const handleEditShot = (shot: ShotEntry) => {
     setEditingShot(shot);
@@ -27,7 +30,17 @@ const App: React.FC = () => {
   return (
     <div className="app-root">
       <header className="app-header">
-        <h1>HRT Shot Tracker</h1>
+        {view === "log" && (
+          <button
+            type="button"
+            className="settings-button"
+            aria-label="Settings"
+            onClick={() => setView("settings")}
+          >
+            ⚙
+          </button>
+        )}
+        <h1>T-Shot Tracker</h1>
         <p className="app-tagline">
           Log testosterone (HRT) shots and how they feel — privately, on your
           device.
@@ -38,19 +51,29 @@ const App: React.FC = () => {
         </p>
       </header>
 
-      <main className="app-main">
-        <ShotForm
-          onAddShot={addShot}
-          onUpdateShot={handleUpdateShot}
-          editingShot={editingShot}
-          onCancelEdit={handleCancelEdit}
-        />
-        <ShotList
+      {view === "log" ? (
+        <main className="app-main">
+          <ShotForm
+            onAddShot={addShot}
+            onUpdateShot={handleUpdateShot}
+            editingShot={editingShot}
+            onCancelEdit={handleCancelEdit}
+            shots={shots}
+          />
+          <ShotList
+            shots={shots}
+            onDeleteShot={deleteShot}
+            onEditShot={handleEditShot}
+          />
+        </main>
+      ) : (
+        <Settings
           shots={shots}
-          onDeleteShot={deleteShot}
-          onEditShot={handleEditShot}
+          onRenameValue={renameValue}
+          onClearValue={clearValue}
+          onBack={() => setView("log")}
         />
-      </main>
+      )}
 
       <footer className="app-footer">
         <small>

@@ -3,6 +3,7 @@ import { renderHook, act } from '@testing-library/react'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useShots } from '../useShots'
 import type { ShotEntry } from '../../types/shot'
+import { STORAGE_KEYS } from '../../storageKeys'
 
 describe('useShots', () => {
   beforeEach(() => {
@@ -36,7 +37,7 @@ describe('useShots', () => {
         }
       ]
       
-      localStorage.setItem('hrt-shot-tracker:v1:shots', JSON.stringify(existingShots))
+      localStorage.setItem(STORAGE_KEYS.shots, JSON.stringify(existingShots))
       
       const { result } = renderHook(() => useShots())
       
@@ -127,6 +128,9 @@ describe('useShots', () => {
         time: '14:30',
         doseMg: 50,
         injectionSite: 'thigh',
+        injectionSitePosition: 'left',
+        testosteroneEster: 'cypionate',
+        carrierOil: 'cottonseed',
         painScore: 3,
         mood: 'good',
         notes: 'Felt great after this one'
@@ -169,7 +173,7 @@ describe('useShots', () => {
         result.current.addShot(newShot)
       })
       
-      const stored = localStorage.getItem('hrt-shot-tracker:v1:shots')
+      const stored = localStorage.getItem(STORAGE_KEYS.shots)
       expect(stored).toBe(JSON.stringify([newShot]))
     })
 
@@ -315,7 +319,7 @@ describe('useShots', () => {
         result.current.updateShot('shot-1', updatedShot)
       })
       
-      const stored = localStorage.getItem('hrt-shot-tracker:v1:shots')
+      const stored = localStorage.getItem(STORAGE_KEYS.shots)
       expect(stored).toBe(JSON.stringify([updatedShot]))
     })
 
@@ -349,6 +353,9 @@ describe('useShots', () => {
         time: '14:30',
         doseMg: 50,
         injectionSite: 'thigh',
+        injectionSitePosition: 'right',
+        testosteroneEster: 'enanthate',
+        carrierOil: 'sesame',
         painScore: 3,
         mood: 'good',
         notes: 'Updated with full details'
@@ -480,7 +487,7 @@ describe('useShots', () => {
         result.current.deleteShot('shot-1')
       })
       
-      const stored = localStorage.getItem('hrt-shot-tracker:v1:shots')
+      const stored = localStorage.getItem(STORAGE_KEYS.shots)
       expect(stored).toBe(JSON.stringify([shot2]))
     })
 
@@ -526,7 +533,7 @@ describe('useShots', () => {
       })
       expect(result.current.shots).toHaveLength(0)
       
-      const stored = localStorage.getItem('hrt-shot-tracker:v1:shots')
+      const stored = localStorage.getItem(STORAGE_KEYS.shots)
       expect(stored).toBe(JSON.stringify([]))
     })
   })
@@ -589,7 +596,7 @@ describe('useShots', () => {
 
     // Tests that hook falls back to empty array when localStorage contains invalid JSON
     it('should handle corrupted localStorage data', () => {
-      localStorage.setItem('hrt-shot-tracker:v1:shots', 'invalid-json{')
+      localStorage.setItem(STORAGE_KEYS.shots, 'invalid-json{')
       const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
       
       const { result } = renderHook(() => useShots())
@@ -693,7 +700,7 @@ describe('useShots', () => {
       
       expect(result.current.shots[0]).toEqual(specialShot)
       
-      const stored = localStorage.getItem('hrt-shot-tracker:v1:shots')
+      const stored = localStorage.getItem(STORAGE_KEYS.shots)
       const parsed = JSON.parse(stored!)
       expect(parsed[0]).toEqual(specialShot)
     })
@@ -720,6 +727,75 @@ describe('useShots', () => {
       
       expect(result.current.shots).toHaveLength(99)
       expect(result.current.shots.find(s => s.id === 'shot-50')).toBeUndefined()
+    })
+  })
+
+  describe('renameValue', () => {
+    it('renames every matching occurrence in a field', () => {
+      const { result } = renderHook(() => useShots())
+      act(() => {
+        result.current.addShot({ id: '1', date: '2024-01-01', testosteroneEster: 'cyp' })
+        result.current.addShot({ id: '2', date: '2024-01-02', testosteroneEster: 'cyp' })
+        result.current.addShot({ id: '3', date: '2024-01-03', testosteroneEster: 'enanthate' })
+      })
+
+      act(() => {
+        result.current.renameValue('testosteroneEster', 'cyp', 'cypionate')
+      })
+
+      const esters = result.current.shots.map(s => s.testosteroneEster)
+      expect(esters).toEqual(['cypionate', 'cypionate', 'enanthate'])
+    })
+
+    it('matches case-insensitively so renaming onto an existing value merges them', () => {
+      const { result } = renderHook(() => useShots())
+      act(() => {
+        result.current.addShot({ id: '1', date: '2024-01-01', injectionSite: 'test cyp' })
+        result.current.addShot({ id: '2', date: '2024-01-02', injectionSite: 'thigh' })
+      })
+
+      act(() => {
+        // rename onto an existing value (any case) -> both now read 'thigh'
+        result.current.renameValue('injectionSite', 'TEST CYP', 'thigh')
+      })
+
+      expect(result.current.shots.map(s => s.injectionSite)).toEqual(['thigh', 'thigh'])
+    })
+
+    it('ignores an empty new name', () => {
+      const { result } = renderHook(() => useShots())
+      act(() => {
+        result.current.addShot({ id: '1', date: '2024-01-01', carrierOil: 'sesame' })
+      })
+
+      act(() => {
+        result.current.renameValue('carrierOil', 'sesame', '   ')
+      })
+
+      expect(result.current.shots[0].carrierOil).toBe('sesame')
+    })
+  })
+
+  describe('clearValue', () => {
+    it('clears the field on every shot using the value, leaving others intact', () => {
+      const { result } = renderHook(() => useShots())
+      act(() => {
+        result.current.addShot({ id: '1', date: '2024-01-01', carrierOil: 'sesame', doseMg: 50 })
+        result.current.addShot({ id: '2', date: '2024-01-02', carrierOil: 'Sesame ' })
+        result.current.addShot({ id: '3', date: '2024-01-03', carrierOil: 'cottonseed' })
+      })
+
+      act(() => {
+        result.current.clearValue('carrierOil', 'sesame')
+      })
+
+      expect(result.current.shots.map(s => s.carrierOil)).toEqual([
+        undefined,
+        undefined,
+        'cottonseed',
+      ])
+      // other fields on affected shots are untouched
+      expect(result.current.shots[0].doseMg).toBe(50)
     })
   })
 })

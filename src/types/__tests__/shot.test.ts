@@ -73,6 +73,42 @@ describe('ShotEntry type', () => {
       expect(typeof shot.injectionSite).toBe('string')
     })
 
+    // Tests that optional injectionSitePosition field accepts string values
+    it('should accept ShotEntry with injectionSitePosition field', () => {
+      const shot: ShotEntry = {
+        id: 'abc123',
+        date: '2025-12-11',
+        injectionSitePosition: 'left',
+      }
+      
+      expect(shot.injectionSitePosition).toBe('left')
+      expect(typeof shot.injectionSitePosition).toBe('string')
+    })
+
+    // Tests that optional testosteroneEster field accepts string values
+    it('should accept ShotEntry with testosteroneEster field', () => {
+      const shot: ShotEntry = {
+        id: 'abc123',
+        date: '2025-12-11',
+        testosteroneEster: 'cypionate',
+      }
+      
+      expect(shot.testosteroneEster).toBe('cypionate')
+      expect(typeof shot.testosteroneEster).toBe('string')
+    })
+
+    // Tests that optional carrierOil field accepts string values
+    it('should accept ShotEntry with carrierOil field', () => {
+      const shot: ShotEntry = {
+        id: 'abc123',
+        date: '2025-12-11',
+        carrierOil: 'cottonseed',
+      }
+      
+      expect(shot.carrierOil).toBe('cottonseed')
+      expect(typeof shot.carrierOil).toBe('string')
+    })
+
     // Tests that optional painScore field accepts numeric values
     it('should accept ShotEntry with painScore field', () => {
       const shot: ShotEntry = {
@@ -117,6 +153,9 @@ describe('ShotEntry type', () => {
         time: '14:30',
         doseMg: 75,
         injectionSite: 'thigh',
+        injectionSitePosition: 'left',
+        testosteroneEster: 'cypionate',
+        carrierOil: 'cottonseed',
         painScore: 2,
         mood: 'energetic',
         notes: 'Everything went smoothly',
@@ -128,6 +167,9 @@ describe('ShotEntry type', () => {
         time: '14:30',
         doseMg: 75,
         injectionSite: 'thigh',
+        injectionSitePosition: 'left',
+        testosteroneEster: 'cypionate',
+        carrierOil: 'cottonseed',
         painScore: 2,
         mood: 'energetic',
         notes: 'Everything went smoothly',
@@ -142,6 +184,9 @@ describe('ShotEntry type', () => {
         time: undefined,
         doseMg: undefined,
         injectionSite: undefined,
+        injectionSitePosition: undefined,
+        testosteroneEster: undefined,
+        carrierOil: undefined,
         painScore: undefined,
         mood: undefined,
         notes: undefined,
@@ -152,6 +197,9 @@ describe('ShotEntry type', () => {
       expect(shot.time).toBeUndefined()
       expect(shot.doseMg).toBeUndefined()
       expect(shot.injectionSite).toBeUndefined()
+      expect(shot.injectionSitePosition).toBeUndefined()
+      expect(shot.testosteroneEster).toBeUndefined()
+      expect(shot.carrierOil).toBeUndefined()
       expect(shot.painScore).toBeUndefined()
       expect(shot.mood).toBeUndefined()
       expect(shot.notes).toBeUndefined()
@@ -181,6 +229,9 @@ describe('ShotEntry type', () => {
           time: '10:00',
           doseMg: 100,
           injectionSite: 'stomach',
+          injectionSitePosition: 'upper right',
+          testosteroneEster: 'cypionate',
+          carrierOil: 'sesame',
           painScore: 0,
           mood: 'great',
           notes: 'Best injection yet!',
