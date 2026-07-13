@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { suggestionsFor } from "../suggestions";
+import { suggestionsFor, valueGroupsFor } from "../suggestions";
 import type { ShotEntry } from "../../types/shot";
 
 let counter = 0;
@@ -72,5 +72,33 @@ describe("suggestionsFor", () => {
     expect(suggestionsFor(shots, "injectionSite")).toEqual(["thigh"]);
     expect(suggestionsFor(shots, "carrierOil")).toEqual(["sesame"]);
     expect(suggestionsFor(shots, "testosteroneEster")).toEqual([]);
+  });
+});
+
+describe("valueGroupsFor", () => {
+  it("counts distinct values, most-used first then alphabetical", () => {
+    const shots = [
+      shot({ injectionSite: "thigh" }),
+      shot({ injectionSite: "glute" }),
+      shot({ injectionSite: "thigh" }),
+      shot({ injectionSite: "abdomen" }),
+    ];
+    expect(valueGroupsFor(shots, "injectionSite")).toEqual([
+      { value: "thigh", count: 2 },
+      { value: "abdomen", count: 1 },
+      { value: "glute", count: 1 },
+    ]);
+  });
+
+  it("folds case/whitespace variants into one counted group", () => {
+    const shots = [
+      shot({ testosteroneEster: "Cypionate" }),
+      shot({ testosteroneEster: "cypionate " }),
+      shot({ testosteroneEster: "test cyp" }),
+    ];
+    expect(valueGroupsFor(shots, "testosteroneEster")).toEqual([
+      { value: "cypionate", count: 2 },
+      { value: "test cyp", count: 1 },
+    ]);
   });
 });

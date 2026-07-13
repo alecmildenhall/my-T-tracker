@@ -4,30 +4,39 @@ import type { ShotEntry } from "../types/shot";
 /** Canonical form for matching values: trimmed and lower-cased. */
 export const normalizeValue = (value: string): string => value.trim().toLowerCase();
 
-/** Fields that can be reused from past entries as tap suggestions. */
-export type SuggestField =
+/** Free-text categorical fields users can reuse and manage. */
+export type TextField =
   | "injectionSite"
   | "injectionSitePosition"
   | "testosteroneEster"
   | "carrierOil"
-  | "mood"
-  | "doseMg";
+  | "mood";
+
+/** Fields that can be reused from past entries as tap suggestions. */
+export type SuggestField = TextField | "doseMg";
+
+/** A distinct value and how many shots use it. */
+export interface ValueGroup {
+  value: string;
+  count: number;
+}
+
+interface Accum {
+  display: string;
+  count: number;
+  lastIndex: number;
+}
 
 /**
- * Distinct values a user has previously entered for a field, **most recently
- * used first**. `shots` is expected in chronological order (oldest first) —
- * which is how `useShots` stores them, appending each new entry — so the value
- * from the latest shot appears first, and re-using a value moves it back to the
- * front. Matching is case-insensitive and trimmed, so "Cypionate", "cypionate "
- * and "CYPIONATE" collapse to a single suggestion; the display form kept is the
- * one from the most recent entry. Numeric fields (e.g. doseMg) are stringified,
- * so a dose of 50 suggests "50".
- *
- * Shot history is the single source of truth — there is no separate stored
- * list of options to keep in sync.
+ * Collapse a field's values across shots into distinct entries. Matching is
+ * case-insensitive and trimmed, so "Cypionate", "cypionate " and "CYPIONATE"
+ * fold into one; the display form kept is the one from the most recent entry.
+ * Numeric fields (e.g. doseMg) are stringified, so a dose of 50 yields "50".
+ * Expects `shots` in chronological order (oldest first) — how `useShots` stores
+ * them — so `lastIndex` reflects recency.
  */
-export function suggestionsFor(shots: ShotEntry[], field: SuggestField): string[] {
-  const seen = new Map<string, { display: string; lastIndex: number }>();
+function accumulate(shots: ShotEntry[], field: SuggestField): Accum[] {
+  const seen = new Map<string, Accum>();
 
   shots.forEach((shot, index) => {
     const raw = shot[field];
@@ -41,13 +50,38 @@ export function suggestionsFor(shots: ShotEntry[], field: SuggestField): string[
     }
     if (!value) return;
 
-    // Iterating oldest→newest, each occurrence overwrites with its (larger)
-    // index and latest display form, so the map holds each value's last use.
-    seen.set(normalizeValue(value), { display: value, lastIndex: index });
+    const key = normalizeValue(value);
+    const existing = seen.get(key);
+    if (existing) {
+      existing.count += 1;
+      existing.lastIndex = index;
+      existing.display = value; // most recent display form wins
+    } else {
+      seen.set(key, { display: value, count: 1, lastIndex: index });
+    }
   });
 
-  // Most recently used first.
-  return [...seen.values()]
+  return [...seen.values()];
+}
+
+/**
+ * Distinct values a user has previously entered for a field, **most recently
+ * used first**, for one-tap reuse while logging. Shot history is the single
+ * source of truth — there is no separate stored list to keep in sync.
+ */
+export function suggestionsFor(shots: ShotEntry[], field: SuggestField): string[] {
+  return accumulate(shots, field)
     .sort((a, b) => b.lastIndex - a.lastIndex)
     .map((entry) => entry.display);
+}
+
+/**
+ * Distinct values for a categorical field with a usage count each, most-used
+ * first (ties alphabetical). Used by the manage-values screen so the canonical
+ * value floats to the top and stray one-offs are easy to spot and clean up.
+ */
+export function valueGroupsFor(shots: ShotEntry[], field: TextField): ValueGroup[] {
+  return accumulate(shots, field)
+    .sort((a, b) => b.count - a.count || a.display.localeCompare(b.display))
+    .map((entry) => ({ value: entry.display, count: entry.count }));
 }

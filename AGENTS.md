@@ -4,7 +4,7 @@ Instructions for AI coding agents (GitHub Copilot CLI, Copilot coding agent, and
 
 ## Project overview
 
-HRT Shot Tracker: a privacy-first, local-only web app for logging testosterone injections and contextual data (pain, mood, notes). Trans and gender-diverse users are the primary audience — privacy and safety are the top design constraint, not an afterthought.
+T-Shot Tracker: a privacy-first, local-only web app for logging testosterone injections and contextual data (pain, mood, notes). Trans and gender-diverse users are the primary audience — privacy and safety are the top design constraint, not an afterthought.
 
 ## Tech stack
 

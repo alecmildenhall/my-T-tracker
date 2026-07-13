@@ -1,4 +1,4 @@
-# HRT Shot Tracker
+# T-Shot Tracker
 
 A privacy-focused web app for logging testosterone (HRT) injections and how they *feel* — pain, mood, and notes — designed with trans and gender-diverse users’ safety in mind.
 
@@ -198,7 +198,7 @@ To view the report, open `coverage/index.html` in your browser (alternatively us
 
 # Next Steps / Upcoming Features
 
-The HRT Shot Tracker is currently in an early MVP state. The roadmap below outlines the planned evolution of the project, designed to uphold trans-focused privacy, local-first data ownership, and long-term maintainability.
+The T-Shot Tracker is currently in an early MVP state. The roadmap below outlines the planned evolution of the project, designed to uphold trans-focused privacy, local-first data ownership, and long-term maintainability.
 
 ---
 

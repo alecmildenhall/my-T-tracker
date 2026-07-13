@@ -729,4 +729,73 @@ describe('useShots', () => {
       expect(result.current.shots.find(s => s.id === 'shot-50')).toBeUndefined()
     })
   })
+
+  describe('renameValue', () => {
+    it('renames every matching occurrence in a field', () => {
+      const { result } = renderHook(() => useShots())
+      act(() => {
+        result.current.addShot({ id: '1', date: '2024-01-01', testosteroneEster: 'cyp' })
+        result.current.addShot({ id: '2', date: '2024-01-02', testosteroneEster: 'cyp' })
+        result.current.addShot({ id: '3', date: '2024-01-03', testosteroneEster: 'enanthate' })
+      })
+
+      act(() => {
+        result.current.renameValue('testosteroneEster', 'cyp', 'cypionate')
+      })
+
+      const esters = result.current.shots.map(s => s.testosteroneEster)
+      expect(esters).toEqual(['cypionate', 'cypionate', 'enanthate'])
+    })
+
+    it('matches case-insensitively so renaming onto an existing value merges them', () => {
+      const { result } = renderHook(() => useShots())
+      act(() => {
+        result.current.addShot({ id: '1', date: '2024-01-01', injectionSite: 'test cyp' })
+        result.current.addShot({ id: '2', date: '2024-01-02', injectionSite: 'thigh' })
+      })
+
+      act(() => {
+        // rename onto an existing value (any case) -> both now read 'thigh'
+        result.current.renameValue('injectionSite', 'TEST CYP', 'thigh')
+      })
+
+      expect(result.current.shots.map(s => s.injectionSite)).toEqual(['thigh', 'thigh'])
+    })
+
+    it('ignores an empty new name', () => {
+      const { result } = renderHook(() => useShots())
+      act(() => {
+        result.current.addShot({ id: '1', date: '2024-01-01', carrierOil: 'sesame' })
+      })
+
+      act(() => {
+        result.current.renameValue('carrierOil', 'sesame', '   ')
+      })
+
+      expect(result.current.shots[0].carrierOil).toBe('sesame')
+    })
+  })
+
+  describe('clearValue', () => {
+    it('clears the field on every shot using the value, leaving others intact', () => {
+      const { result } = renderHook(() => useShots())
+      act(() => {
+        result.current.addShot({ id: '1', date: '2024-01-01', carrierOil: 'sesame', doseMg: 50 })
+        result.current.addShot({ id: '2', date: '2024-01-02', carrierOil: 'Sesame ' })
+        result.current.addShot({ id: '3', date: '2024-01-03', carrierOil: 'cottonseed' })
+      })
+
+      act(() => {
+        result.current.clearValue('carrierOil', 'sesame')
+      })
+
+      expect(result.current.shots.map(s => s.carrierOil)).toEqual([
+        undefined,
+        undefined,
+        'cottonseed',
+      ])
+      // other fields on affected shots are untouched
+      expect(result.current.shots[0].doseMg).toBe(50)
+    })
+  })
 })
