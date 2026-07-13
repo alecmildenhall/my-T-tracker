@@ -259,19 +259,19 @@ Milestones should be configurable eventually, but the first version should avoid
 
 ### Short-Term (MVP → v0.2)
 
-- Add optional testosterone start date for HRT milestones
-- Add optional display name / preferred name for affirming milestone messages
-- Add milestone logic for three-month intervals during year one, then six-month intervals after that
-- Add a gentle post-log celebration, such as confetti or another feel-good animation
-- Add saved custom injection site/position options for faster repeated logging
-- Redesign the UI around a phone-first, warm, readable, non-corporate visual direction
-- Add **CSV export** for clinical conversations
-- Add **JSON backup export/import** so users can move or restore local data
-- Add **filters** (e.g., last 30 days, only high-pain days, only thigh injections)
-- Add **simple charts** (pain over time, mood trends)
-- Improve UI layout and styling
-- Add a **developer data viewer** (raw JSON, export panel)
-- Strengthen accessibility (labels, keyboard navigation)
+- [ ] Add optional testosterone start date for HRT milestones
+- [ ] Add optional display name / preferred name for affirming milestone messages
+- [ ] Add milestone logic for three-month intervals during year one, then six-month intervals after that
+- [ ] Add a gentle post-log celebration, such as confetti or another feel-good animation
+- [x] Add saved custom injection site/position options for faster repeated logging — _reuse chips on the log form plus a Settings → Manage saved values panel to rename/remove them_
+- [ ] Redesign the UI around a phone-first, warm, readable, non-corporate visual direction
+- [ ] Add **CSV export** for clinical conversations
+- [ ] Add **JSON backup export/import** so users can move or restore local data
+- [ ] Add **filters** (e.g., last 30 days, only high-pain days, only thigh injections)
+- [ ] Add **simple charts** (pain over time, mood trends)
+- [ ] Improve UI layout and styling
+- [ ] Add a **developer data viewer** (raw JSON, export panel)
+- [ ] Strengthen accessibility (labels, keyboard navigation)
 
 ### Mid-Term (v0.3 → v0.5)
 
