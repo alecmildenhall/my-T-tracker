@@ -181,6 +181,9 @@ To view the report, open `coverage/index.html` in your browser (alternatively us
   - Time (optional)  
   - Dose (optional)  
   - Injection site (optional)  
+  - Injection position, such as left/right (optional)  
+  - Type of testosterone / ester (optional)  
+  - Carrier oil (optional)  
   - Pain score (optional)  
   - Mood (optional)  
   - Notes (optional)  
@@ -188,6 +191,7 @@ To view the report, open `coverage/index.html` in your browser (alternatively us
 - View a list of past entries (sorted newest-first)
 - Edit existing entries
 - Delete entries
+- Reuse values from past entries (injection site, position, testosterone type, carrier oil) with one tap
 - All data is stored locally on your device
 
 ---
@@ -219,7 +223,7 @@ The preferred path is to keep one React app as the core product and avoid buildi
 
 The major UI overhaul should happen after the core logging data model is stable, but before PWA/app-store work. The goal is to avoid polishing screens that may change, while still making the app feel trustworthy before it reaches real users.
 
-Practically, this means doing the overhaul after the important data features are in place: testosterone prep / carrier oil, optional T start date, optional display name, basic milestones, and export/import.
+Practically, this means doing the overhaul after the important data features are in place: testosterone type / carrier oil, optional T start date, optional display name, basic milestones, and export/import.
 
 The interface should be designed mobile-first and tested across common phone sizes from the beginning. Desktop web can remain available as a secondary experience, especially for larger charts, data review, exports, and printable doctor-facing summaries.
 
@@ -255,11 +259,11 @@ Milestones should be configurable eventually, but the first version should avoid
 
 ### Short-Term (MVP → v0.2)
 
-- Add support for selecting different testosterone preparations and carrier oils, and save the last-used selection for faster logging
 - Add optional testosterone start date for HRT milestones
 - Add optional display name / preferred name for affirming milestone messages
 - Add milestone logic for three-month intervals during year one, then six-month intervals after that
 - Add a gentle post-log celebration, such as confetti or another feel-good animation
+- Add saved custom injection site/position options for faster repeated logging
 - Redesign the UI around a phone-first, warm, readable, non-corporate visual direction
 - Add **CSV export** for clinical conversations
 - Add **JSON backup export/import** so users can move or restore local data
@@ -277,6 +281,7 @@ Milestones should be configurable eventually, but the first version should avoid
 - Add optional **symptom tagging** (fatigue, anxiety, headache)
 - Add a local-only **“shot due soon”** reminder
 - Add improved **mood encoding** (emoji scale or fixed categories)
+- Replace the raw 0–10 pain number with a friendlier **pain scale**: tappable None / Mild / Moderate / Severe chips, supported by emoji or color, mirroring how period/symptom trackers log intensity
 - Add PDF export with charts and summary information for healthcare conversations
 - Improve desktop web layout for charts, review, exporting, and printing
 - Add **theme support** (dark, light, high-contrast)

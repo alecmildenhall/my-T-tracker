@@ -115,6 +115,14 @@ body {
   flex-wrap: wrap;
 }
 
+/* Mobile-first: one field per row on phones so labels and chips stay readable.
+   Wider screens keep the multi-column grouping. */
+@media (max-width: 560px) {
+  .form-row {
+    flex-direction: column;
+  }
+}
+
 .form-column {
   display: flex;
   flex-direction: column;
@@ -155,6 +163,55 @@ textarea:focus {
 textarea {
   resize: vertical;
   min-height: 80px;
+}
+
+/* Suggestion chips (reuse a value from a past entry) */
+
+.field-cell {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.field-cell > label {
+  flex: 0 0 auto;
+}
+
+.suggestion-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.suggestion-chips .chip {
+  display: inline-flex;
+  align-items: center;
+  font-family: inherit;
+  font-size: 0.8rem;
+  color: #cbd5e1;
+  background: rgba(148, 163, 184, 0.08);
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  padding: 0.4rem 0.85rem;
+  min-height: 44px; /* Apple HIG minimum tap target */
+  cursor: pointer;
+}
+
+.suggestion-chips .chip:hover {
+  border-color: #334155;
+}
+
+.suggestion-chips .chip--active {
+  background: var(--accent-soft);
+  border-color: rgba(56, 189, 248, 0.6);
+  color: #e0f2fe;
+}
+
+.suggestion-chips .chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* Buttons */

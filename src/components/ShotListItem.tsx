@@ -33,6 +33,11 @@ export const ShotListItem: React.FC<ShotListItemProps> = ({
       <div className="shot-list-item__meta">
         {shot.doseMg !== undefined && <span> Dose: {shot.doseMg} mg</span>}
         {shot.injectionSite && <span> • Site: {shot.injectionSite}</span>}
+        {shot.injectionSitePosition && (
+          <span> • Position: {shot.injectionSitePosition}</span>
+        )}
+        {shot.testosteroneEster && <span> • Type: {shot.testosteroneEster}</span>}
+        {shot.carrierOil && <span> • Oil: {shot.carrierOil}</span>}
         {shot.mood && <span> • Mood: {shot.mood}</span>}
       </div>
 

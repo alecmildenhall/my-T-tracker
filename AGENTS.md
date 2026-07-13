@@ -39,7 +39,9 @@ IDs: `crypto.randomUUID()`, fallback `` `shot-${Date.now()}` ``. Components are 
 
 ## Testing
 
-Clear storage before every test:
+In tests that read or write `localStorage` (hooks, components), clear it first so
+state can't leak between tests. Pure-function tests that never touch storage don't
+need this.
 
 ```ts
 beforeEach(() => localStorage.clear());

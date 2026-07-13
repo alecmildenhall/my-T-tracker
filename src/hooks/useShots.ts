@@ -2,8 +2,7 @@
 import { useCallback } from "react";
 import { useLocalStorage } from "./useLocalStorage";
 import type { ShotEntry } from "../types/shot";
-
-const STORAGE_KEY = "hrt-shot-tracker:v1:shots";
+import { STORAGE_KEYS } from "../storageKeys";
 
 export interface UseShots {
   shots: ShotEntry[];
@@ -18,7 +17,10 @@ export interface UseShots {
  * for adding, deleting, and retrieving shots.
  */
 export function useShots(): UseShots {
-  const [shots, setShots] = useLocalStorage<ShotEntry[]>(STORAGE_KEY, []);
+  const [shots, setShots] = useLocalStorage<ShotEntry[]>(
+    STORAGE_KEYS.shots,
+    []
+  );
 
   const addShot = useCallback(
     (shot: ShotEntry) => {

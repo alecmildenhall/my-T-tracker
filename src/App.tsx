@@ -44,6 +44,7 @@ const App: React.FC = () => {
           onUpdateShot={handleUpdateShot}
           editingShot={editingShot}
           onCancelEdit={handleCancelEdit}
+          shots={shots}
         />
         <ShotList
           shots={shots}
