@@ -37,6 +37,9 @@ pnpm-debug.log*
 # Test coverage
 coverage/
 
+# Playwright MCP scratch output (screenshots, snapshots, downloads)
+.playwright-mcp/
+
 # Optional: keep lockfiles or ignore if switching package managers often
 # package-lock.json
 # yarn.lock

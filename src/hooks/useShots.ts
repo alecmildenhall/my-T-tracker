@@ -14,6 +14,8 @@ export interface UseShots {
   renameValue: (field: TextField, from: string, to: string) => void;
   /** Remove a value from a field on every shot that uses it (clears it to undefined). */
   clearValue: (field: TextField, value: string) => void;
+  /** Replace the entire shot list atomically (used when restoring a backup). */
+  replaceAll: (next: ShotEntry[]) => void;
 }
 
 /**
@@ -82,6 +84,13 @@ export function useShots(): UseShots {
     [setShots]
   );
 
+  const replaceAll = useCallback(
+    (next: ShotEntry[]) => {
+      setShots(next);
+    },
+    [setShots]
+  );
+
   return {
     shots,
     addShot,
@@ -89,5 +98,6 @@ export function useShots(): UseShots {
     deleteShot,
     renameValue,
     clearValue,
+    replaceAll,
   };
 }

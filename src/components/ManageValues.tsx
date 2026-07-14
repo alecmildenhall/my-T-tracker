@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import type { ShotEntry } from "../types/shot";
 import { normalizeValue, valueGroupsFor, type TextField } from "../utils/suggestions";
+import { pluralizeEntries as entries } from "../utils/format";
 
 interface ManageValuesProps {
   shots: ShotEntry[];
@@ -20,8 +21,6 @@ type Dialog =
   | { mode: "remove"; field: TextField; value: string; count: number }
   | { mode: "rename"; field: TextField; value: string; count: number }
   | { mode: "combine"; field: TextField; value: string; count: number; target: string };
-
-const entries = (n: number) => (n === 1 ? "1 entry" : `${n} entries`);
 
 export const ManageValues: React.FC<ManageValuesProps> = ({
   shots,

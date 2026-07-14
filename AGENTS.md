@@ -11,7 +11,7 @@ T-Shot Tracker: a privacy-first, local-only web app for logging testosterone inj
 - React 19 + TypeScript 5.9, strict mode (`noUnusedLocals`, `noUnusedParameters`, `erasableSyntaxOnly`, `verbatimModuleSyntax`), target ES2022
 - Vite 7 for dev server and build
 - Vitest 4 + React Testing Library + jsdom for tests
-- No backend, no runtime dependencies beyond React — all data lives in browser `localStorage`
+- No backend — all data lives in browser `localStorage`. Runtime dependencies are kept minimal: React, plus Zod for validating untrusted input (imported backup files). Any new runtime dependency must be offline-only with no network or telemetry.
 
 ## Commands
 
@@ -62,7 +62,7 @@ Follow CONTRIBUTING.md, CLA.md, and CODE_OF_CONDUCT.md. Only approved contributo
 - Changing the data model (`src/types/shot.ts`) or the storage key (`src/storageKeys.ts`).
 
 **Never**
-- Add analytics, telemetry, crash reporters, or any third-party SDK.
+- Add analytics, telemetry, crash reporters, or any SDK that phones home. (Offline-only libraries with no network or telemetry — e.g. Zod for input validation — are permitted, but still `Ask first` as a new dependency.)
 - Add a network layer (fetch/API calls) without explicit user opt-in surfaced in the app itself.
 - Load fonts, scripts, or stylesheets from a CDN — everything ships local or inline.
 - Store PII: name, email, location, device identifiers.

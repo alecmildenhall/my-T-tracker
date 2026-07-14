@@ -98,15 +98,16 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       onAddShot(newShot);
     }
 
-    // reset (keep date so you can log multiple shots for same day easily).
-    // Optional fields clear; the value just used is now the first suggestion chip.
+    // Reset for the next shot. Keep only the values that genuinely stay the same
+    // shot-to-shot — dose, type of T, carrier oil — so their field stays filled
+    // and their chip stays selected, with no re-tapping. Everything else clears,
+    // including injection site/position (commonly rotated). Within a single shot
+    // nothing clears until save, so a value you just typed never needs
+    // re-selecting on the shot you're on. Keep the date for quick same-day logs.
     if (!editingShot) {
       setTime("");
-      setDoseMg("");
       setInjectionSite("");
       setInjectionSitePosition("");
-      setTestosteroneEster("");
-      setCarrierOil("");
       setPainScore("");
       setMood("");
       setNotes("");
