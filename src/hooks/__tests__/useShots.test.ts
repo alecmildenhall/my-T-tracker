@@ -798,4 +798,36 @@ describe('useShots', () => {
       expect(result.current.shots[0].doseMg).toBe(50)
     })
   })
+
+  describe('replaceAll', () => {
+    it('swaps the entire list and persists it', () => {
+      const { result } = renderHook(() => useShots())
+      act(() => {
+        result.current.addShot({ id: 'old', date: '2024-01-01' })
+      })
+
+      const next: ShotEntry[] = [
+        { id: 'a', date: '2024-02-01', doseMg: 50 },
+        { id: 'b', date: '2024-02-08' },
+      ]
+      act(() => {
+        result.current.replaceAll(next)
+      })
+
+      expect(result.current.shots).toEqual(next)
+      // persisted to localStorage under the shots key
+      expect(JSON.parse(localStorage.getItem(STORAGE_KEYS.shots) as string)).toEqual(
+        next
+      )
+    })
+
+    it('can clear all shots', () => {
+      const { result } = renderHook(() => useShots())
+      act(() => {
+        result.current.addShot({ id: 'x', date: '2024-01-01' })
+        result.current.replaceAll([])
+      })
+      expect(result.current.shots).toEqual([])
+    })
+  })
 })

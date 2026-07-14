@@ -39,22 +39,53 @@ describe("ShotForm suggestion chips", () => {
     expect(screen.queryByRole("button", { name: "cottonseed" })).toBeNull();
   });
 
-  it("saves the chosen values and clears optional fields after adding", () => {
+  it("keeps only dose/type/oil filled after adding, and clears injection site", () => {
     const onAddShot = vi.fn();
     render(<ShotForm onAddShot={onAddShot} shots={history} />);
 
+    fireEvent.click(screen.getByRole("button", { name: "50" }));
     fireEvent.click(screen.getByRole("button", { name: "cypionate" }));
     fireEvent.click(screen.getByRole("button", { name: "cottonseed" }));
+    fireEvent.click(screen.getByRole("button", { name: "thigh" }));
     fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
 
     expect(onAddShot).toHaveBeenCalledTimes(1);
-    const saved = onAddShot.mock.calls[0][0] as ShotEntry;
-    expect(saved.testosteroneEster).toBe("cypionate");
-    expect(saved.carrierOil).toBe("cottonseed");
 
-    // optional fields reset so the next shot starts clean
-    expect(esterInput().value).toBe("");
-    expect(oilInput().value).toBe("");
+    const doseInput = screen.getByPlaceholderText("e.g. 50") as HTMLInputElement;
+    const siteInput = screen.getByPlaceholderText(
+      /thigh, glute, stomach/i
+    ) as HTMLInputElement;
+
+    // Values that stay the same shot-to-shot persist, so a repeat needs no re-entry.
+    expect(doseInput.value).toBe("50");
+    expect(esterInput().value).toBe("cypionate");
+    expect(oilInput().value).toBe("cottonseed");
+    // Injection site clears — it's commonly rotated.
+    expect(siteInput.value).toBe("");
+  });
+
+  it("clears per-shot fields (site, position, pain, mood, notes) after adding", () => {
+    const onAddShot = vi.fn();
+    render(<ShotForm onAddShot={onAddShot} shots={history} />);
+
+    const site = screen.getByPlaceholderText(/thigh, glute, stomach/i) as HTMLInputElement;
+    const position = screen.getByPlaceholderText(/left, right, upper left/i) as HTMLInputElement;
+    const pain = screen.getByPlaceholderText("e.g. 3") as HTMLInputElement;
+    const mood = screen.getByPlaceholderText(/low, okay, good/i) as HTMLInputElement;
+    const notes = screen.getByPlaceholderText(/remember for later/i) as HTMLTextAreaElement;
+    fireEvent.change(site, { target: { value: "bicep" } });
+    fireEvent.change(position, { target: { value: "left" } });
+    fireEvent.change(pain, { target: { value: "4" } });
+    fireEvent.change(mood, { target: { value: "good" } });
+    fireEvent.change(notes, { target: { value: "felt fine" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+
+    expect(site.value).toBe("");
+    expect(position.value).toBe("");
+    expect(pain.value).toBe("");
+    expect(mood.value).toBe("");
+    expect(notes.value).toBe("");
   });
 
   it("offers a dose chip from history and fills the dose field when tapped", () => {

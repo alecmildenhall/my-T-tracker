@@ -10,6 +10,13 @@
   --accent: #0ea5e9;
   --accent-soft: rgba(14, 165, 233, 0.15);
   --danger: #f97373;
+  /* Subtle neutral surface, defined once. Used for the resting suggestion chip
+     and for the hover/press ("engaged") fill of neutral buttons, so those
+     surfaces stay in sync and can never drift apart. */
+  --surface-subtle: rgba(148, 163, 184, 0.08);
+  /* Danger hover/press surfaces (engaged-only). */
+  --danger-engaged-bg: rgba(248, 113, 113, 0.18);
+  --danger-engaged-border: rgba(248, 113, 113, 0.85);
   --radius-lg: 16px;
   --radius-md: 10px;
   --shadow-soft: 0 16px 40px rgba(0, 0, 0, 0.45);
@@ -59,11 +66,22 @@ body {
   border-radius: 999px;
   color: var(--text-muted);
   cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease,
+    background-color 0.15s ease, transform 0.08s ease;
 }
 
-.settings-button:hover {
+@media (hover: hover) {
+  .settings-button:hover {
+    color: var(--text);
+    border-color: var(--accent);
+    background: var(--surface-subtle);
+  }
+}
+.settings-button:active {
   color: var(--text);
-  border-color: #334155;
+  border-color: var(--accent);
+  background: var(--surface-subtle);
+  transform: scale(0.97);
 }
 
 .settings-button:focus-visible {
@@ -220,16 +238,27 @@ textarea {
   font-family: inherit;
   font-size: 0.8rem;
   color: #cbd5e1;
-  background: rgba(148, 163, 184, 0.08);
+  background: var(--surface-subtle);
   border: 1px solid var(--border-subtle);
   border-radius: 999px;
   padding: 0.4rem 0.85rem;
   min-height: 44px; /* Apple HIG minimum tap target */
   cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease,
+    color 0.15s ease, transform 0.08s ease;
 }
 
-.suggestion-chips .chip:hover {
-  border-color: #334155;
+/* Chips keep a distinct model: hover/press only brighten the border (the
+   accent FILL is reserved for the selected `--active` value, below). */
+@media (hover: hover) {
+  .suggestion-chips .chip:hover {
+    border-color: #334155;
+  }
+}
+/* Press feedback is the squeeze only — no border change, so it never fights the
+   selected chip's accent border (.chip--active). */
+.suggestion-chips .chip:active {
+  transform: scale(0.97);
 }
 
 .suggestion-chips .chip--active {
@@ -258,16 +287,14 @@ textarea {
   align-items: center;
   justify-content: center;
   gap: 0.3rem;
+  transition: filter 0.15s ease, background-color 0.15s ease,
+    border-color 0.15s ease, color 0.15s ease, transform 0.08s ease;
 }
 
 .primary-button {
   background: linear-gradient(135deg, var(--accent), #22c55e);
   color: #020617;
   margin-top: 0.25rem;
-}
-
-.primary-button:hover {
-  filter: brightness(1.05);
 }
 
 .secondary-button {
@@ -283,8 +310,61 @@ textarea {
   font-size: 0.78rem;
 }
 
-.secondary-button--danger:hover {
-  background: rgba(248, 113, 113, 0.12);
+/* Interaction states share one model across buttons: hover (pointer devices
+   only, gated by @media hover) and press (:active, every device incl. touch)
+   use the SAME "engaged" colour per role, so a mobile tap gives the feedback a
+   desktop hover does; :active also squeezes for tactile confirmation. Colour
+   signals intent — accent = affirmative, neutral = secondary, red = destructive. */
+
+/* Affirmative */
+@media (hover: hover) {
+  .primary-button:hover {
+    filter: brightness(1.08);
+  }
+}
+.primary-button:active {
+  filter: brightness(1.08);
+}
+
+/* Neutral */
+@media (hover: hover) {
+  .secondary-button:hover {
+    border-color: var(--accent);
+    color: var(--text);
+    background: var(--surface-subtle);
+  }
+}
+.secondary-button:active {
+  border-color: var(--accent);
+  color: var(--text);
+  background: var(--surface-subtle);
+}
+
+/* Destructive (overrides the neutral rule above for danger buttons) */
+@media (hover: hover) {
+  .secondary-button--danger:hover {
+    border-color: var(--danger-engaged-border);
+    color: #fecaca;
+    background: var(--danger-engaged-bg);
+  }
+}
+.secondary-button--danger:active {
+  border-color: var(--danger-engaged-border);
+  color: #fecaca;
+  background: var(--danger-engaged-bg);
+}
+
+/* Tactile press (all buttons) */
+.primary-button:active,
+.secondary-button:active {
+  transform: scale(0.97);
+}
+
+/* Visible keyboard focus indicator (WCAG 2.4.7) */
+.primary-button:focus-visible,
+.secondary-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* Shot list */
@@ -380,6 +460,10 @@ textarea {
   box-shadow: var(--shadow-soft);
 }
 
+.settings-section + .settings-section {
+  margin-top: 1.25rem;
+}
+
 .settings-section__title {
   margin: 0 0 0.35rem;
   font-size: 1.05rem;
@@ -462,11 +546,23 @@ textarea {
   padding: 0.4rem 0.75rem;
   min-height: 36px;
   cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease,
+    background-color 0.15s ease, transform 0.08s ease;
 }
 
-.manage-row__action:hover {
+/* Neutral (matches .secondary-button's engaged look) */
+@media (hover: hover) {
+  .manage-row__action:hover {
+    color: var(--text);
+    border-color: var(--accent);
+    background: var(--surface-subtle);
+  }
+}
+.manage-row__action:active {
   color: var(--text);
-  border-color: #334155;
+  border-color: var(--accent);
+  background: var(--surface-subtle);
+  transform: scale(0.97);
 }
 
 .manage-row__remove {
@@ -483,10 +579,21 @@ textarea {
   font-size: 1.1rem;
   line-height: 1;
   cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease,
+    transform 0.08s ease;
 }
 
-.manage-row__remove:hover {
-  background: rgba(248, 113, 113, 0.12);
+/* Destructive */
+@media (hover: hover) {
+  .manage-row__remove:hover {
+    border-color: rgba(248, 113, 113, 0.6);
+    background: var(--danger-engaged-bg);
+  }
+}
+.manage-row__remove:active {
+  border-color: rgba(248, 113, 113, 0.6);
+  background: var(--danger-engaged-bg);
+  transform: scale(0.97);
 }
 
 .manage-row__action:focus-visible,
@@ -570,6 +677,14 @@ textarea {
   flex: 1;
 }
 
+/* A modal moves focus to a button on open (e.g. the confirm dialog auto-focuses
+   Cancel). Use :focus, not :focus-visible, so that programmatic focus is still
+   shown — Chrome won't mark auto-focus as :focus-visible. */
+.dialog-actions button:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .dialog-danger,
 .dialog-go {
   border-radius: 999px;
@@ -579,6 +694,8 @@ textarea {
   font-weight: 600;
   cursor: pointer;
   border: 1px solid transparent;
+  transition: filter 0.15s ease, background-color 0.15s ease,
+    border-color 0.15s ease, transform 0.08s ease;
 }
 
 .dialog-danger {
@@ -587,15 +704,114 @@ textarea {
   color: #fecaca;
 }
 
-.dialog-danger:hover {
-  background: rgba(248, 113, 113, 0.22);
-}
-
 .dialog-go {
   background: linear-gradient(135deg, var(--accent), #22c55e);
   color: #020617;
 }
 
-.dialog-go:hover {
-  filter: brightness(1.05);
+/* Destructive confirm */
+@media (hover: hover) {
+  .dialog-danger:hover {
+    background: rgba(248, 113, 113, 0.22);
+    border-color: rgba(248, 113, 113, 0.7);
+  }
+}
+.dialog-danger:active {
+  background: rgba(248, 113, 113, 0.22);
+  border-color: rgba(248, 113, 113, 0.7);
+  transform: scale(0.97);
+}
+
+/* Affirmative confirm */
+@media (hover: hover) {
+  .dialog-go:hover {
+    filter: brightness(1.08);
+  }
+}
+.dialog-go:active {
+  filter: brightness(1.08);
+  transform: scale(0.97);
+}
+
+/* Your data — export / import */
+
+/* Stack full-width so buttons never wrap side-by-side and never shift position
+   when a label changes (e.g. the "✓ Exported" flash) — Import stays put. */
+.data-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.data-actions .secondary-button {
+  width: 100%;
+  min-height: 44px;
+}
+
+/* Confirmed-export state: mirrors the reuse chip's selected accent look. */
+.secondary-button--flash {
+  background: var(--accent-soft);
+  border-color: rgba(56, 189, 248, 0.6);
+  color: #e0f2fe;
+}
+
+.data-warning {
+  margin: 1rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.data-status--ok,
+.data-status--error {
+  margin: 0.85rem 0 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.data-status--ok {
+  color: #86efac;
+}
+
+.data-status--error {
+  color: var(--danger);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Honour reduced-motion: make state changes instant (no colour fade) and drop
+   the press-squeeze on every button. Placed last so it overrides the transitions
+   and each :active transform above. */
+@media (prefers-reduced-motion: reduce) {
+  .primary-button,
+  .secondary-button,
+  .settings-button,
+  .suggestion-chips .chip,
+  .manage-row__action,
+  .manage-row__remove,
+  .dialog-danger,
+  .dialog-go {
+    transition: none;
+  }
+
+  .primary-button:active,
+  .secondary-button:active,
+  .settings-button:active,
+  .suggestion-chips .chip:active,
+  .manage-row__action:active,
+  .manage-row__remove:active,
+  .dialog-danger:active,
+  .dialog-go:active {
+    transform: none;
+  }
 }

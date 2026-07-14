@@ -7,8 +7,15 @@ import { useShots } from "./hooks/useShots";
 import type { ShotEntry } from "./types/shot";
 
 const App: React.FC = () => {
-  const { shots, addShot, updateShot, deleteShot, renameValue, clearValue } =
-    useShots();
+  const {
+    shots,
+    addShot,
+    updateShot,
+    deleteShot,
+    renameValue,
+    clearValue,
+    replaceAll,
+  } = useShots();
   const [editingShot, setEditingShot] = useState<ShotEntry | null>(null);
   const [view, setView] = useState<"log" | "settings">("log");
 
@@ -25,6 +32,14 @@ const App: React.FC = () => {
 
   const handleCancelEdit = () => {
     setEditingShot(null);
+  };
+
+  const handleReplaceAll = (next: ShotEntry[]) => {
+    // Restoring a backup swaps the whole list, so any in-progress edit points at
+    // a shot that may no longer exist. Drop it so a later Save can't silently
+    // no-op against a missing id.
+    setEditingShot(null);
+    replaceAll(next);
   };
 
   return (
@@ -71,6 +86,7 @@ const App: React.FC = () => {
           shots={shots}
           onRenameValue={renameValue}
           onClearValue={clearValue}
+          onReplaceAll={handleReplaceAll}
           onBack={() => setView("log")}
         />
       )}
