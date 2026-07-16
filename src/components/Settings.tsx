@@ -3,6 +3,7 @@ import React from "react";
 import { useShotsContext } from "../context/ShotsContext";
 import { ManageValues } from "./ManageValues";
 import { DataManagement } from "./DataManagement";
+import { JourneySettings } from "./JourneySettings";
 
 interface SettingsProps {
   onBack: () => void;
@@ -20,6 +21,16 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
           ← Back
         </button>
         <h2>Settings</h2>
+      </div>
+
+      <div className="settings-section">
+        <h3 className="settings-section__title">Your journey</h3>
+        <p className="settings-section__desc">
+          Optionally add when you started T and how you&apos;d like to be
+          addressed, so the app can celebrate your milestones. Both are optional
+          and stay on this device.
+        </p>
+        <JourneySettings />
       </div>
 
       <div className="settings-section">

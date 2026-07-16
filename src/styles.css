@@ -478,6 +478,28 @@ textarea {
   line-height: 1.45;
 }
 
+.journey-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.journey-settings .form-column {
+  gap: 0.3rem;
+}
+
+/* Small helper text under a field — quieter than the section description. */
+.field-hint {
+  margin: 0 0 0.9rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.field-hint:last-child {
+  margin-bottom: 0;
+}
+
 .manage-group {
   margin-bottom: 1.4rem;
 }

@@ -2,9 +2,21 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import App from "../App";
 import { ShotsProvider } from "../context/ShotsContext";
+import { ProfileProvider } from "../context/ProfileContext";
 import type { ShotEntry } from "../types/shot";
 import { STORAGE_KEYS } from "../storageKeys";
 import { toJson } from "../utils/exportData";
+
+// App reads both stores via context (Settings uses the profile store), so mount
+// it under the same providers main.tsx does.
+const renderApp = () =>
+  render(
+    <ShotsProvider>
+      <ProfileProvider>
+        <App />
+      </ProfileProvider>
+    </ShotsProvider>
+  );
 
 // Real downloads need object URLs jsdom doesn't provide; the replace path only
 // cares that the safety backup *succeeds*, so stub the download layer.
@@ -31,11 +43,7 @@ beforeEach(() => localStorage.clear());
 describe("App — import while editing", () => {
   it("drops the in-progress edit when a backup replaces the list", async () => {
     seedShots([{ id: "orig", date: "2026-06-01", notes: "original" }]);
-    render(
-      <ShotsProvider>
-        <App />
-      </ShotsProvider>
-    );
+    renderApp();
 
     // Start editing the existing shot.
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
@@ -71,11 +79,7 @@ describe("App — import while editing", () => {
       { id: "keep", date: "2026-06-01", notes: "keep me" },
       { id: "gone", date: "2026-06-02", notes: "delete me" },
     ]);
-    render(
-      <ShotsProvider>
-        <App />
-      </ShotsProvider>
-    );
+    renderApp();
 
     // Edit the shot we're about to delete.
     const goneRow = screen.getByText("delete me").closest("li")!;
