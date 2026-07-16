@@ -1,6 +1,7 @@
 // src/components/ShotList.tsx
 import React from "react";
 import type { ShotEntry } from "../types/shot";
+import { compareShotsChrono } from "../utils/sortShots";
 import { ShotListItem } from "./ShotListItem";
 
 interface ShotListProps {
@@ -25,10 +26,10 @@ export const ShotList: React.FC<ShotListProps> = ({
     );
   }
 
-  const sorted = [...shots].sort((a, b) => {
-    if (a.date === b.date) return a.id < b.id ? 1 : -1;
-    return a.date < b.date ? 1 : -1;
-  });
+  // Newest first: reverse of the shared chronological (oldest-first) comparator,
+  // so same-day shots order by time (not by random id) and the list agrees with
+  // the export ordering.
+  const sorted = [...shots].sort((a, b) => -compareShotsChrono(a, b));
 
   return (
     <section className="shot-list">

@@ -1,6 +1,7 @@
 // src/utils/download.ts
 // Trigger a client-side file download for exported data. No network — the file
 // is built in memory and handed to the browser via a temporary object URL.
+import { localISODate } from "./datetime";
 
 // Object URLs must be revoked to free memory — but revoking too soon cancels the
 // still-in-progress download, producing an empty file. The download read is
@@ -27,8 +28,8 @@ export function downloadTextFile(
   setTimeout(() => URL.revokeObjectURL(url), REVOKE_DELAY_MS);
 }
 
-/** Timestamped filename stem, e.g. `t-shot-backup-2026-07-13`. */
+/** Timestamped filename stem, e.g. `t-shot-backup-2026-07-13`. Uses the local
+ *  date so the filename matches the day the user is actually having. */
 export function backupFilename(stem: string, ext: string): string {
-  const date = new Date().toISOString().slice(0, 10);
-  return `${stem}-${date}.${ext}`;
+  return `${stem}-${localISODate()}.${ext}`;
 }
