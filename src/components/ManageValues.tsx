@@ -1,8 +1,9 @@
 // src/components/ManageValues.tsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { ShotEntry } from "../types/shot";
 import { normalizeValue, valueGroupsFor, type TextField } from "../utils/suggestions";
 import { pluralizeEntries as entries } from "../utils/format";
+import { Modal } from "./Modal";
 
 interface ManageValuesProps {
   shots: ShotEntry[];
@@ -34,23 +35,42 @@ export const ManageValues: React.FC<ManageValuesProps> = ({
 
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [renameInput, setRenameInput] = useState("");
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
+  // The row button that opened the dialog, captured explicitly so focus returns
+  // to it on close (WAI-ARIA APG). We can't rely on document.activeElement:
+  // Safari/iOS don't focus a <button> on click, so the "previously focused"
+  // element would be <body>, not the opener.
+  const openerRef = useRef<HTMLElement | null>(null);
+  // Logical focus fallback when a confirm removes the opener's row (see Modal).
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  // Close the dialog on Escape.
+  // The rename step focuses its input; destructive/combine steps focus Cancel.
+  // When rename collides and switches to the combine step in place (the Modal
+  // stays mounted, so its open-time focus doesn't re-run), move focus to Cancel.
   useEffect(() => {
-    if (!dialog) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setDialog(null);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [dialog]);
+    if (dialog?.mode === "combine") cancelRef.current?.focus();
+  }, [dialog?.mode]);
 
   const close = () => setDialog(null);
 
-  const openRemove = (field: TextField, value: string, count: number) =>
+  const openRemove = (
+    opener: HTMLElement,
+    field: TextField,
+    value: string,
+    count: number
+  ) => {
+    openerRef.current = opener;
     setDialog({ mode: "remove", field, value, count });
+  };
 
-  const openRename = (field: TextField, value: string, count: number) => {
+  const openRename = (
+    opener: HTMLElement,
+    field: TextField,
+    value: string,
+    count: number
+  ) => {
+    openerRef.current = opener;
     setRenameInput(value);
     setDialog({ mode: "rename", field, value, count });
   };
@@ -101,7 +121,10 @@ export const ManageValues: React.FC<ManageValuesProps> = ({
   };
 
   return (
-    <div className="manage-values">
+    // tabIndex={-1} makes the panel programmatically focusable (not tabbable) so
+    // it can be the logical focus target when a confirm removes the row that
+    // opened the dialog.
+    <div className="manage-values" ref={containerRef} tabIndex={-1}>
       {groups.map(({ field, title, values }) => (
         <section className="manage-group" key={field}>
           <h4 className="manage-group__title">{title}</h4>
@@ -118,7 +141,7 @@ export const ManageValues: React.FC<ManageValuesProps> = ({
                   <button
                     type="button"
                     className="manage-row__action"
-                    onClick={() => openRename(field, value, count)}
+                    onClick={(e) => openRename(e.currentTarget, field, value, count)}
                   >
                     Rename
                   </button>
@@ -126,7 +149,7 @@ export const ManageValues: React.FC<ManageValuesProps> = ({
                     type="button"
                     className="manage-row__remove"
                     aria-label={`Remove ${value}`}
-                    onClick={() => openRemove(field, value, count)}
+                    onClick={(e) => openRemove(e.currentTarget, field, value, count)}
                   >
                     ×
                   </button>
@@ -138,86 +161,82 @@ export const ManageValues: React.FC<ManageValuesProps> = ({
       ))}
 
       {dialog && (
-        <div
-          className="dialog-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="dialog-title"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) close();
-          }}
+        <Modal
+          labelledBy="dialog-title"
+          onClose={close}
+          initialFocusRef={dialog.mode === "rename" ? renameInputRef : cancelRef}
+          restoreFocusRef={openerRef}
+          fallbackFocusRef={containerRef}
         >
-          <div className="dialog">
-            {dialog.mode === "remove" && (
-              <>
-                <h3 id="dialog-title">Remove “{dialog.value}”?</h3>
-                <p className="dialog-text">
-                  This removes it from <b>{entries(dialog.count)}</b>. Those entries
-                  keep everything else.
-                </p>
-                <div className="dialog-actions">
-                  <button type="button" className="secondary-button" onClick={close}>
-                    Cancel
-                  </button>
-                  <button type="button" className="dialog-danger" onClick={confirmRemove}>
-                    Remove
-                  </button>
-                </div>
-              </>
-            )}
+          {dialog.mode === "remove" && (
+            <>
+              <h3 id="dialog-title">Remove “{dialog.value}”?</h3>
+              <p className="dialog-text">
+                This removes it from <b>{entries(dialog.count)}</b>. Those entries
+                keep everything else.
+              </p>
+              <div className="dialog-actions">
+                <button ref={cancelRef} type="button" className="secondary-button" onClick={close}>
+                  Cancel
+                </button>
+                <button type="button" className="dialog-danger" onClick={confirmRemove}>
+                  Remove
+                </button>
+              </div>
+            </>
+          )}
 
-            {dialog.mode === "rename" && (
-              <>
-                <h3 id="dialog-title">Rename “{dialog.value}”</h3>
-                <label className="dialog-field">
-                  New name
-                  <input
-                    type="text"
-                    autoFocus
-                    value={renameInput}
-                    onChange={(e) => setRenameInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        submitRename();
-                      }
-                    }}
-                  />
-                </label>
-                <p className="dialog-text">
-                  Updates the name on all <b>{entries(dialog.count)}</b>. If you rename
-                  it to something you already use, they’ll be combined.
-                </p>
-                <div className="dialog-actions">
-                  <button type="button" className="secondary-button" onClick={close}>
-                    Cancel
-                  </button>
-                  <button type="button" className="dialog-go" onClick={submitRename}>
-                    Rename
-                  </button>
-                </div>
-              </>
-            )}
+          {dialog.mode === "rename" && (
+            <>
+              <h3 id="dialog-title">Rename “{dialog.value}”</h3>
+              <label className="dialog-field">
+                New name
+                <input
+                  ref={renameInputRef}
+                  type="text"
+                  value={renameInput}
+                  onChange={(e) => setRenameInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      submitRename();
+                    }
+                  }}
+                />
+              </label>
+              <p className="dialog-text">
+                Updates the name on all <b>{entries(dialog.count)}</b>. If you rename
+                it to something you already use, they’ll be combined.
+              </p>
+              <div className="dialog-actions">
+                <button ref={cancelRef} type="button" className="secondary-button" onClick={close}>
+                  Cancel
+                </button>
+                <button type="button" className="dialog-go" onClick={submitRename}>
+                  Rename
+                </button>
+              </div>
+            </>
+          )}
 
-            {dialog.mode === "combine" && (
-              <>
-                <h3 id="dialog-title">“{dialog.target}” already exists</h3>
-                <p className="dialog-text">
-                  Renaming will combine them — the <b>{entries(dialog.count)}</b> logged
-                  as “{dialog.value}” will be relabeled “{dialog.target}”.
-                </p>
-                <div className="dialog-actions">
-                  <button type="button" className="secondary-button" onClick={close}>
-                    Cancel
-                  </button>
-                  <button type="button" className="dialog-go" onClick={confirmCombine}>
-                    Combine
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
+          {dialog.mode === "combine" && (
+            <>
+              <h3 id="dialog-title">“{dialog.target}” already exists</h3>
+              <p className="dialog-text">
+                Renaming will combine them — the <b>{entries(dialog.count)}</b> logged
+                as “{dialog.value}” will be relabeled “{dialog.target}”.
+              </p>
+              <div className="dialog-actions">
+                <button ref={cancelRef} type="button" className="secondary-button" onClick={close}>
+                  Cancel
+                </button>
+                <button type="button" className="dialog-go" onClick={confirmCombine}>
+                  Combine
+                </button>
+              </div>
+            </>
+          )}
+        </Modal>
       )}
     </div>
   );

@@ -1,7 +1,9 @@
 // src/components/ShotForm.tsx
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import type { ShotEntry } from "../types/shot";
 import { suggestionsFor } from "../utils/suggestions";
+import { todayLocalISO, nowHHMM } from "../utils/datetime";
+import { newId } from "../utils/id";
 import { SuggestionChips } from "./SuggestionChips";
 
 interface ShotFormProps {
@@ -13,15 +15,6 @@ interface ShotFormProps {
   shots?: ShotEntry[];
 }
 
-const todayISO = () => new Date().toISOString().slice(0, 10);
-
-const nowHHMM = () => {
-  const now = new Date();
-  const hh = String(now.getHours()).padStart(2, "0");
-  const mm = String(now.getMinutes()).padStart(2, "0");
-  return `${hh}:${mm}`;
-};
-
 export const ShotForm: React.FC<ShotFormProps> = ({
   onAddShot,
   onUpdateShot,
@@ -29,7 +22,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   onCancelEdit,
   shots = [],
 }) => {
-  const [date, setDate] = useState<string>(todayISO());
+  const [date, setDate] = useState<string>(todayLocalISO());
   const [time, setTime] = useState<string>("");
   const [doseMg, setDoseMg] = useState<string>("");
   const [injectionSite, setInjectionSite] = useState<string>("");
@@ -53,7 +46,28 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     [shots]
   );
 
-  // Populate form when editing
+  // A fresh, empty "Log a Shot" form. The single source of truth for what the
+  // default form looks like, so the editing-sync effect and Cancel can't drift.
+  // Stable (setters are stable), so it's safe in the effect's dependency list.
+  const resetForm = useCallback(() => {
+    setDate(todayLocalISO());
+    setTime("");
+    setDoseMg("");
+    setInjectionSite("");
+    setInjectionSitePosition("");
+    setTestosteroneEster("");
+    setCarrierOil("");
+    setPainScore("");
+    setMood("");
+    setNotes("");
+  }, []);
+
+  // Keep the form in sync with the shot being edited. Populate its fields while
+  // editing; clear back to a fresh "Log a Shot" form when editing ends — which
+  // includes the shot vanishing out from under us (deleted from the list, or
+  // wiped by a backup import, so the parent drops it to null). Without the reset
+  // the deleted shot's values would linger in what is now the new-shot form, and
+  // saving would silently recreate the entry the user just removed.
   useEffect(() => {
     if (editingShot) {
       /* eslint-disable react-hooks/set-state-in-effect */
@@ -68,18 +82,16 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       setMood(editingShot.mood || "");
       setNotes(editingShot.notes || "");
       /* eslint-enable react-hooks/set-state-in-effect */
+    } else {
+      resetForm();
     }
-  }, [editingShot]);
+  }, [editingShot, resetForm]);
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
 
     const newShot: ShotEntry = {
-      id: editingShot
-        ? editingShot.id
-        : typeof crypto !== "undefined" && "randomUUID" in crypto
-          ? crypto.randomUUID()
-          : `shot-${Date.now()}`,
+      id: editingShot ? editingShot.id : newId(),
       date,
       time: time || undefined,
       doseMg: doseMg ? Number(doseMg) : undefined,
@@ -115,20 +127,11 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   };
 
   const handleCancel = () => {
-    if (onCancelEdit) {
-      onCancelEdit();
-    }
-    // Reset form to default values
-    setDate(todayISO());
-    setTime("");
-    setDoseMg("");
-    setInjectionSite("");
-    setInjectionSitePosition("");
-    setTestosteroneEster("");
-    setCarrierOil("");
-    setPainScore("");
-    setMood("");
-    setNotes("");
+    onCancelEdit?.();
+    // The editing-sync effect also resets once onCancelEdit clears editingShot;
+    // resetting here too keeps ShotForm self-contained if a parent's onCancelEdit
+    // doesn't drop the edit.
+    resetForm();
   };
 
   return (

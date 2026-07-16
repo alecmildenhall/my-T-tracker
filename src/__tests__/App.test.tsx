@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import App from "../App";
+import { ShotsProvider } from "../context/ShotsContext";
 import type { ShotEntry } from "../types/shot";
 import { STORAGE_KEYS } from "../storageKeys";
 import { toJson } from "../utils/exportData";
@@ -30,7 +31,11 @@ beforeEach(() => localStorage.clear());
 describe("App — import while editing", () => {
   it("drops the in-progress edit when a backup replaces the list", async () => {
     seedShots([{ id: "orig", date: "2026-06-01", notes: "original" }]);
-    render(<App />);
+    render(
+      <ShotsProvider>
+        <App />
+      </ShotsProvider>
+    );
 
     // Start editing the existing shot.
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
@@ -59,5 +64,44 @@ describe("App — import while editing", () => {
     expect(
       screen.queryByRole("heading", { name: "Edit Shot" })
     ).not.toBeInTheDocument();
+  });
+
+  it("drops the in-progress edit when the edited shot is deleted from the list", () => {
+    seedShots([
+      { id: "keep", date: "2026-06-01", notes: "keep me" },
+      { id: "gone", date: "2026-06-02", notes: "delete me" },
+    ]);
+    render(
+      <ShotsProvider>
+        <App />
+      </ShotsProvider>
+    );
+
+    // Edit the shot we're about to delete.
+    const goneRow = screen.getByText("delete me").closest("li")!;
+    fireEvent.click(within(goneRow).getByRole("button", { name: "Edit" }));
+    expect(
+      screen.getByRole("heading", { name: "Edit Shot" })
+    ).toBeInTheDocument();
+
+    // Delete it from the list while its edit is open.
+    fireEvent.click(within(goneRow).getByRole("button", { name: "Delete" }));
+
+    // Editing ends on its own — no stale edit against a missing id.
+    expect(
+      screen.getByRole("heading", { name: "Log a Shot" })
+    ).toBeInTheDocument();
+
+    // ...and the form clears, so the deleted shot's values don't linger in what
+    // is now the new-shot form (saving them would silently recreate the entry).
+    const notes = screen.getByPlaceholderText(
+      /remember for later/i
+    ) as HTMLTextAreaElement;
+    expect(notes.value).toBe("");
+
+    // The remaining shot is untouched, and a Save now would add a fresh entry,
+    // not resurrect "delete me".
+    expect(screen.getByText("keep me")).toBeInTheDocument();
+    expect(screen.queryByText("delete me")).not.toBeInTheDocument();
   });
 });

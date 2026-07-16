@@ -7,14 +7,11 @@
 import type { ShotEntry } from "../types/shot";
 import { APP_NAME, APP_VERSION, FORMAT_VERSION } from "../appMeta";
 import type { Backup } from "./shotSchema";
+import { compareShotsChrono } from "./sortShots";
 
 /** Oldest-first, matching how shots are stored and how a reader expects a log. */
 function chronological(shots: ShotEntry[]): ShotEntry[] {
-  return [...shots].sort((a, b) => {
-    const da = `${a.date}T${a.time ?? "00:00"}`;
-    const db = `${b.date}T${b.time ?? "00:00"}`;
-    return da < db ? -1 : da > db ? 1 : 0;
-  });
+  return [...shots].sort(compareShotsChrono);
 }
 
 /** Assemble the versioned backup envelope. Shots are copied, not referenced. */

@@ -9,6 +9,7 @@ import { toCsv, toJson } from "../utils/exportData";
 import { parseBackup } from "../utils/importData";
 import { backupFilename, downloadTextFile } from "../utils/download";
 import { pluralizeEntries } from "../utils/format";
+import { Modal } from "./Modal";
 
 interface DataManagementProps {
   shots: ShotEntry[];
@@ -52,50 +53,13 @@ export const DataManagement: React.FC<DataManagementProps> = ({
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const importButtonRef = useRef<HTMLButtonElement>(null);
-  const dialogRef = useRef<HTMLDivElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const [pending, setPending] = useState<PendingImport | null>(null);
   // Which export button just fired, so it can briefly show a confirmed state —
   // the same accent treatment the reuse chips use when selected.
   const [flashed, setFlashed] = useState<"json" | "csv" | null>(null);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Close the confirm dialog on Escape.
-  useEffect(() => {
-    if (!pending) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setPending(null);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [pending]);
-
-  // Return focus to the Import button when the dialog closes (WAI-ARIA APG:
-  // restore focus to the control that opened the modal).
-  useEffect(() => {
-    if (!pending) return;
-    const trigger = importButtonRef.current;
-    return () => trigger?.focus();
-  }, [pending]);
-
-  // Trap Tab within the modal so keyboard/screen-reader users can't reach the
-  // obscured background controls (aria-modal alone is advisory only).
-  const trapTab = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== "Tab") return;
-    const focusables = dialogRef.current?.querySelectorAll<HTMLElement>(
-      'a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])'
-    );
-    if (!focusables || focusables.length === 0) return;
-    const first = focusables[0];
-    const last = focusables[focusables.length - 1];
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
-  };
 
   // Clear any pending flash timer on unmount.
   useEffect(() => () => {
@@ -246,43 +210,38 @@ export const DataManagement: React.FC<DataManagementProps> = ({
       )}
 
       {pending && (
-        <div
-          className="dialog-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="import-dialog-title"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setPending(null);
-          }}
+        <Modal
+          labelledBy="import-dialog-title"
+          onClose={() => setPending(null)}
+          initialFocusRef={cancelRef}
+          restoreFocusRef={importButtonRef}
         >
-          <div className="dialog" ref={dialogRef} onKeyDown={trapTab}>
-            <h3 id="import-dialog-title">Replace your data?</h3>
-            <p className="dialog-text">
-              This replaces your current{" "}
-              <b>{pluralizeEntries(pending.currentCount)}</b> with{" "}
-              <b>{pluralizeEntries(pending.incoming.length)}</b> from the backup.
-              A backup of your current data downloads first — keep that file so
-              you can undo this.
-            </p>
-            <div className="dialog-actions">
-              <button
-                type="button"
-                className="secondary-button"
-                autoFocus
-                onClick={() => setPending(null)}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="dialog-danger"
-                onClick={confirmReplace}
-              >
-                Replace
-              </button>
-            </div>
+          <h3 id="import-dialog-title">Replace your data?</h3>
+          <p className="dialog-text">
+            This replaces your current{" "}
+            <b>{pluralizeEntries(pending.currentCount)}</b> with{" "}
+            <b>{pluralizeEntries(pending.incoming.length)}</b> from the backup. A
+            backup of your current data downloads first — keep that file so you
+            can undo this.
+          </p>
+          <div className="dialog-actions">
+            <button
+              ref={cancelRef}
+              type="button"
+              className="secondary-button"
+              onClick={() => setPending(null)}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="dialog-danger"
+              onClick={confirmReplace}
+            >
+              Replace
+            </button>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

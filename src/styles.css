@@ -189,6 +189,7 @@ textarea {
   border-radius: var(--radius-md);
   border: 1px solid var(--border-subtle);
   padding: 0.55rem 0.6rem;
+  min-height: 44px; /* comfortable tap target for phone logging */
   font-size: 0.85rem;
   font-family: inherit;
   background: var(--bg-card-soft);
@@ -278,6 +279,7 @@ textarea {
 .secondary-button {
   border-radius: 999px;
   padding: 0.55rem 1.2rem;
+  min-height: 44px; /* comfortable, thumb-sized tap target (Apple HIG) */
   border: none;
   font-size: 0.85rem;
   font-weight: 500;
