@@ -268,4 +268,99 @@ describe('useLocalStorage', () => {
       expect(localStorage.getItem('key-a')).toBe(JSON.stringify('value-a'))
     })
   })
+
+  describe('cross-tab sync (storage event)', () => {
+    it('updates state when another tab changes the same key', () => {
+      const { result } = renderHook(() => useLocalStorage('shared', 'a'))
+
+      act(() => {
+        // Simulate another tab writing, then broadcasting the storage event.
+        localStorage.setItem('shared', JSON.stringify('from-other-tab'))
+        window.dispatchEvent(
+          new StorageEvent('storage', {
+            key: 'shared',
+            newValue: JSON.stringify('from-other-tab'),
+            storageArea: localStorage,
+          })
+        )
+      })
+
+      expect(result.current[0]).toBe('from-other-tab')
+    })
+
+    it('resets to the initial value when the key is removed in another tab', () => {
+      localStorage.setItem('shared', JSON.stringify('x'))
+      const { result } = renderHook(() => useLocalStorage('shared', 'fallback'))
+      expect(result.current[0]).toBe('x')
+
+      act(() => {
+        localStorage.removeItem('shared')
+        window.dispatchEvent(
+          new StorageEvent('storage', {
+            key: 'shared',
+            newValue: null,
+            storageArea: localStorage,
+          })
+        )
+      })
+
+      expect(result.current[0]).toBe('fallback')
+    })
+
+    it('ignores storage events for other keys', () => {
+      const { result } = renderHook(() => useLocalStorage('mine', 'keep'))
+
+      act(() => {
+        window.dispatchEvent(
+          new StorageEvent('storage', {
+            key: 'someone-else',
+            newValue: JSON.stringify('nope'),
+            storageArea: localStorage,
+          })
+        )
+      })
+
+      expect(result.current[0]).toBe('keep')
+    })
+
+    it('runs sanitize on a value synced from another tab', () => {
+      const sanitize = (raw: unknown): number[] =>
+        Array.isArray(raw) ? raw.filter((n): n is number => typeof n === 'number') : []
+      const { result } = renderHook(() =>
+        useLocalStorage<number[]>('nums', [], { sanitize })
+      )
+
+      act(() => {
+        window.dispatchEvent(
+          new StorageEvent('storage', {
+            key: 'nums',
+            newValue: JSON.stringify([1, 'x', 2]),
+            storageArea: localStorage,
+          })
+        )
+      })
+
+      expect(result.current[0]).toEqual([1, 2])
+    })
+  })
+
+  describe('sanitize option', () => {
+    it('normalizes a malformed stored value on read', () => {
+      localStorage.setItem('cfg', JSON.stringify('not-an-array'))
+      const sanitize = (raw: unknown): string[] => (Array.isArray(raw) ? raw : [])
+      const { result } = renderHook(() =>
+        useLocalStorage<string[]>('cfg', [], { sanitize })
+      )
+      expect(result.current[0]).toEqual([])
+    })
+
+    it('passes a valid stored value through sanitize unchanged', () => {
+      localStorage.setItem('cfg', JSON.stringify(['a', 'b']))
+      const sanitize = (raw: unknown): string[] => (Array.isArray(raw) ? raw : [])
+      const { result } = renderHook(() =>
+        useLocalStorage<string[]>('cfg', [], { sanitize })
+      )
+      expect(result.current[0]).toEqual(['a', 'b'])
+    })
+  })
 })

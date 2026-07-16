@@ -1,23 +1,27 @@
 // src/App.tsx
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { ShotForm } from "./components/ShotForm";
 import { ShotList } from "./components/ShotList";
 import { Settings } from "./components/Settings";
-import { useShots } from "./hooks/useShots";
+import { useShotsContext } from "./context/ShotsContext";
 import type { ShotEntry } from "./types/shot";
 
 const App: React.FC = () => {
-  const {
-    shots,
-    addShot,
-    updateShot,
-    deleteShot,
-    renameValue,
-    clearValue,
-    replaceAll,
-  } = useShots();
+  const { shots, addShot, updateShot, deleteShot } = useShotsContext();
   const [editingShot, setEditingShot] = useState<ShotEntry | null>(null);
   const [view, setView] = useState<"log" | "settings">("log");
+
+  // Only edit a shot that still exists. If the one being edited disappears —
+  // deleted from the list, or wiped by a backup import — editing ends on its own
+  // instead of a later Save silently no-op'ing against a missing id. Declarative,
+  // so it covers every way the list can change.
+  const activeEditingShot = useMemo(
+    () =>
+      editingShot && shots.some((s) => s.id === editingShot.id)
+        ? editingShot
+        : null,
+    [editingShot, shots]
+  );
 
   const handleEditShot = (shot: ShotEntry) => {
     setEditingShot(shot);
@@ -32,14 +36,6 @@ const App: React.FC = () => {
 
   const handleCancelEdit = () => {
     setEditingShot(null);
-  };
-
-  const handleReplaceAll = (next: ShotEntry[]) => {
-    // Restoring a backup swaps the whole list, so any in-progress edit points at
-    // a shot that may no longer exist. Drop it so a later Save can't silently
-    // no-op against a missing id.
-    setEditingShot(null);
-    replaceAll(next);
   };
 
   return (
@@ -71,7 +67,7 @@ const App: React.FC = () => {
           <ShotForm
             onAddShot={addShot}
             onUpdateShot={handleUpdateShot}
-            editingShot={editingShot}
+            editingShot={activeEditingShot}
             onCancelEdit={handleCancelEdit}
             shots={shots}
           />
@@ -82,13 +78,7 @@ const App: React.FC = () => {
           />
         </main>
       ) : (
-        <Settings
-          shots={shots}
-          onRenameValue={renameValue}
-          onClearValue={clearValue}
-          onReplaceAll={handleReplaceAll}
-          onBack={() => setView("log")}
-        />
+        <Settings onBack={() => setView("log")} />
       )}
 
       <footer className="app-footer">

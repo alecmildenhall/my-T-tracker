@@ -23,10 +23,30 @@ export interface UseShots {
  * Encapsulates localStorage persistence and provides a clean API
  * for adding, deleting, and retrieving shots.
  */
+/**
+ * Coerce whatever is in storage into a usable ShotEntry[]. localStorage can hold
+ * a non-array (corruption, a devtools edit, an old schema) or an array with junk
+ * entries, either of which would crash rendering. Kept deliberately lenient — an
+ * object with a string id is accepted, unknown fields and all — so evolving the
+ * model never discards the user's own data (unlike the strict import schema,
+ * which guards untrusted files). Bad top-level values fall back to empty.
+ */
+function sanitizeShots(raw: unknown): ShotEntry[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (s): s is ShotEntry =>
+      typeof s === "object" &&
+      s !== null &&
+      typeof (s as { id?: unknown }).id === "string" &&
+      typeof (s as { date?: unknown }).date === "string"
+  );
+}
+
 export function useShots(): UseShots {
   const [shots, setShots] = useLocalStorage<ShotEntry[]>(
     STORAGE_KEYS.shots,
-    []
+    [],
+    { sanitize: sanitizeShots }
   );
 
   const addShot = useCallback(

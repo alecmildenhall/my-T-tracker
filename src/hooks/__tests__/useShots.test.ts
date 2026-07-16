@@ -830,4 +830,58 @@ describe('useShots', () => {
       expect(result.current.shots).toEqual([])
     })
   })
+
+  describe('corrupt storage coercion', () => {
+    it('coerces a non-array stored value to an empty list (no crash)', () => {
+      // e.g. a devtools edit or an old schema. Reading this used to throw on
+      // shots.some(...) / [...shots]; now it degrades to empty.
+      localStorage.setItem(STORAGE_KEYS.shots, '123')
+      const { result } = renderHook(() => useShots())
+      expect(result.current.shots).toEqual([])
+      // And the store is still usable afterwards.
+      act(() => {
+        result.current.addShot({ id: 'a', date: '2024-01-01' })
+      })
+      expect(result.current.shots).toEqual([{ id: 'a', date: '2024-01-01' }])
+    })
+
+    it('drops junk entries but keeps valid ones (and preserves unknown fields)', () => {
+      localStorage.setItem(
+        STORAGE_KEYS.shots,
+        JSON.stringify([
+          null,
+          'nope',
+          { date: '2024-01-01' }, // no id
+          { id: 'no-date' }, // no date
+          { id: 'good', date: '2024-02-01', futureField: 42 },
+        ])
+      )
+      const { result } = renderHook(() => useShots())
+      expect(result.current.shots).toEqual([
+        { id: 'good', date: '2024-02-01', futureField: 42 },
+      ])
+    })
+
+    it('self-heals storage by rewriting the cleaned list', () => {
+      localStorage.setItem(
+        STORAGE_KEYS.shots,
+        JSON.stringify([
+          { id: 'no-date' }, // dropped: missing required date
+          { id: 'good', date: '2024-02-01' },
+        ])
+      )
+      renderHook(() => useShots())
+      // The write-back persists only the valid entry, so the bad one is gone
+      // from storage — not just from the in-memory list.
+      expect(JSON.parse(localStorage.getItem(STORAGE_KEYS.shots) as string)).toEqual([
+        { id: 'good', date: '2024-02-01' },
+      ])
+    })
+
+    it('falls back to empty when the stored JSON is malformed', () => {
+      localStorage.setItem(STORAGE_KEYS.shots, '{ not json')
+      const { result } = renderHook(() => useShots())
+      expect(result.current.shots).toEqual([])
+    })
+  })
 })

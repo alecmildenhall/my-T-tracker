@@ -12,7 +12,7 @@ Run `npm test -- --run` and `npm run build` before considering a change done.
 
 # Code style
 - `ShotEntry` (`src/types/shot.ts`) optional fields must never be stored as empty strings — coerce empty form values to `undefined` before storing.
-- IDs: `crypto.randomUUID()`, fallback `` `shot-${Date.now()}` ``.
+- IDs: use `newId()` (`src/utils/id.ts`) — `crypto.randomUUID()` with a timestamp-plus-random fallback for non-secure contexts.
 - `verbatimModuleSyntax` is on — use `import type` for type-only imports.
 
 # Testing

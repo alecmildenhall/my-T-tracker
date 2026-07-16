@@ -14,5 +14,9 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
     include: ['**/*.test.ts', '**/*.test.tsx'],
+    // Enforce isolation via config rather than per-file cleanup: restore any
+    // vi.stubGlobal (e.g. a stubbed `crypto`) to its original before each test,
+    // so a stub can't leak across tests or make the suite order-dependent.
+    unstubGlobals: true,
   },
 })
