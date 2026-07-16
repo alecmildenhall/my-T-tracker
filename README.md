@@ -75,9 +75,9 @@ Important product language:
 See:
 
 - `LICENSE`  
-- `CLA.md`  
-- `CONTRIBUTING.md`  
-- `CODE_OF_CONDUCT.md`  
+- `.github/CLA.md`  
+- `.github/CONTRIBUTING.md`  
+- `.github/CODE_OF_CONDUCT.md`  
 
 for legal and ethical collaboration constraints.
 
@@ -316,9 +316,9 @@ Ideas:
 
 Contributions must follow:
 
-- `CONTRIBUTING.md`
-- `CLA.md`
-- `CODE_OF_CONDUCT.md`
+- `.github/CONTRIBUTING.md`
+- `.github/CLA.md`
+- `.github/CODE_OF_CONDUCT.md`
 - `LICENSE`
 
 Unapproved contributors should not open PRs modifying app logic or data flows.

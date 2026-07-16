@@ -49,7 +49,7 @@ beforeEach(() => localStorage.clear());
 
 ## Git / PR workflow
 
-Follow CONTRIBUTING.md, CLA.md, and CODE_OF_CONDUCT.md. Only approved contributors may open PRs that touch app logic or data flow — if you're acting on behalf of an unapproved contributor, flag that instead of pushing the change through. Call out any privacy or security implications in the PR description.
+Follow .github/CONTRIBUTING.md, .github/CLA.md, and .github/CODE_OF_CONDUCT.md. Only approved contributors may open PRs that touch app logic or data flow — if you're acting on behalf of an unapproved contributor, flag that instead of pushing the change through. Call out any privacy or security implications in the PR description.
 
 ## Boundaries
 
