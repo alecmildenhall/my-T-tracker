@@ -5,15 +5,24 @@
 // confirmation before replacing.
 import React, { useEffect, useRef, useState } from "react";
 import type { ShotEntry } from "../types/shot";
+import type { Profile } from "../types/profile";
 import { toCsv, toJson } from "../utils/exportData";
 import { parseBackup } from "../utils/importData";
 import { backupFilename, downloadTextFile } from "../utils/download";
 import { pluralizeEntries } from "../utils/format";
+import { hasProfileData, pickProfileFields } from "../utils/backupDto";
 import { Modal } from "./Modal";
 
 interface DataManagementProps {
   shots: ShotEntry[];
   onReplaceAll: (next: ShotEntry[]) => void;
+  // Profile export/import is all-or-nothing: both props are required so a caller
+  // can't wire the shot restore without the matching profile restore (which would
+  // leave a stale name attached to freshly imported shots).
+  /** Current profile, included in exports so a backup is a complete snapshot. */
+  profile: Profile;
+  /** Replace the profile on import (part of the same destructive restore). */
+  onReplaceProfile: (next: Profile) => void;
 }
 
 type Status =
@@ -24,6 +33,7 @@ type Status =
 /** Pending import awaiting the user's confirmation to replace existing data. */
 interface PendingImport {
   incoming: ShotEntry[];
+  incomingProfile: Profile;
   currentCount: number;
 }
 
@@ -50,6 +60,8 @@ function tryDownload(text: string, name: string, mime: string): boolean {
 export const DataManagement: React.FC<DataManagementProps> = ({
   shots,
   onReplaceAll,
+  profile,
+  onReplaceProfile,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const importButtonRef = useRef<HTMLButtonElement>(null);
@@ -75,7 +87,7 @@ export const DataManagement: React.FC<DataManagementProps> = ({
   const handleExportJson = () => {
     if (
       !tryDownload(
-        toJson(shots),
+        toJson(shots, profile),
         backupFilename("t-shot-backup", "json"),
         "application/json"
       )
@@ -128,18 +140,24 @@ export const DataManagement: React.FC<DataManagementProps> = ({
     }
 
     setStatus({ kind: "idle" });
-    setPending({ incoming: result.shots, currentCount: shots.length });
+    setPending({
+      incoming: result.shots,
+      incomingProfile: result.profile,
+      currentCount: shots.length,
+    });
   };
 
   const confirmReplace = () => {
     if (!pending) return;
     // Fail-safe: download a recovery copy of the CURRENT data first. If that
     // fails, abort — never overwrite the user's data without the backup the
-    // dialog promised.
+    // dialog promised. The recovery copy includes the profile, since the import
+    // replaces that too.
+    const hasCurrentData = shots.length > 0 || hasProfileData(profile);
     if (
-      shots.length > 0 &&
+      hasCurrentData &&
       !tryDownload(
-        toJson(shots),
+        toJson(shots, profile),
         backupFilename("t-shot-backup-before-import", "json"),
         "application/json"
       )
@@ -149,10 +167,27 @@ export const DataManagement: React.FC<DataManagementProps> = ({
       return;
     }
     onReplaceAll(pending.incoming);
-    setStatus({
-      kind: "success",
-      message: `Restored ${pluralizeEntries(pending.incoming.length)} from backup.`,
-    });
+    onReplaceProfile(pending.incomingProfile);
+
+    // Tell the user what actually changed. The profile is part of this restore,
+    // so a name that was overwritten or cleared shouldn't happen silently — but
+    // don't claim a change when the imported profile matches the current one
+    // (e.g. re-importing your own backup). Compare on known fields only.
+    const knownCurrent = pickProfileFields(profile);
+    // incomingProfile is already DTO-picked (from parseBackup), so its own keys
+    // are exactly the known non-blank fields — no need to re-pick it.
+    const incomingHasData = Object.keys(pending.incomingProfile).length > 0;
+    const profileChanged =
+      knownCurrent.startDate !== pending.incomingProfile.startDate ||
+      knownCurrent.preferredName !== pending.incomingProfile.preferredName;
+
+    let message = `Restored ${pluralizeEntries(pending.incoming.length)} from backup.`;
+    if (profileChanged) {
+      message += incomingHasData
+        ? " Your profile was updated."
+        : " Your saved profile was cleared.";
+    }
+    setStatus({ kind: "success", message });
     setPending(null);
   };
 
@@ -194,8 +229,8 @@ export const DataManagement: React.FC<DataManagementProps> = ({
 
       <p className="data-warning">
         Backups are <b>not encrypted</b> — anyone who opens the file can read your
-        entries. Save them somewhere private, and only import files you exported
-        yourself.
+        entries and your profile (including your name, if you set one). Save them
+        somewhere private, and only import files you exported yourself.
       </p>
 
       {status.kind !== "idle" && (

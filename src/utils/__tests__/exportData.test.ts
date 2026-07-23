@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { buildBackup, toJson, toCsv, escapeCsvCell } from "../exportData";
 import { APP_NAME, APP_VERSION, FORMAT_VERSION } from "../../appMeta";
 import type { ShotEntry } from "../../types/shot";
+import type { Profile } from "../../types/profile";
 
 let counter = 0;
 const shot = (over: Partial<ShotEntry>): ShotEntry => ({
@@ -39,6 +40,72 @@ describe("buildBackup", () => {
     buildBackup(input);
     expect(input.map((s) => s.id)).toEqual(snapshot);
   });
+
+  it("drops unknown fields on a shot (DTO allowlist parity with import)", () => {
+    // A field a future build (or a hand-edit) left on the object must not ride
+    // into the file, or a stricter importer would reject the whole backup.
+    const dirty = {
+      id: "x",
+      date: "2026-07-12",
+      evil: "surprise",
+    } as unknown as ShotEntry;
+    const backup = buildBackup([dirty]);
+    expect(backup.shots[0]).toEqual({ id: "x", date: "2026-07-12" });
+  });
+
+  it("drops a blank shot field so the file stays importable", () => {
+    // A "" would be rejected by the strict import schema (min(1)); the exporter
+    // must never emit one, or the user's own backup can't be re-imported.
+    const dirty = {
+      id: "x",
+      date: "2026-07-12",
+      injectionSite: "",
+    } as unknown as ShotEntry;
+    const backup = buildBackup([dirty]);
+    expect(backup.shots[0]).toEqual({ id: "x", date: "2026-07-12" });
+  });
+});
+
+describe("buildBackup — profile", () => {
+  it("includes the profile when it has any field set", () => {
+    const backup = buildBackup([shot({})], {
+      startDate: "2025-01-15",
+      preferredName: "Lou",
+    });
+    expect(backup.profile).toEqual({
+      startDate: "2025-01-15",
+      preferredName: "Lou",
+    });
+  });
+
+  it("omits the profile key entirely when nothing is set", () => {
+    const backup = buildBackup([shot({})], {});
+    expect("profile" in backup).toBe(false);
+  });
+
+  it("omits the profile key when no profile argument is passed", () => {
+    const backup = buildBackup([shot({})]);
+    expect("profile" in backup).toBe(false);
+  });
+
+  it("copies the profile rather than referencing it", () => {
+    const profile = { preferredName: "Sam" };
+    const backup = buildBackup([shot({})], profile);
+    profile.preferredName = "changed";
+    expect(backup.profile).toEqual({ preferredName: "Sam" });
+  });
+
+  it("drops unknown fields on the profile (DTO allowlist)", () => {
+    const dirty = { preferredName: "Lou", theme: "dark" } as unknown as Profile;
+    const backup = buildBackup([shot({})], dirty);
+    expect(backup.profile).toEqual({ preferredName: "Lou" });
+  });
+
+  it("omits the profile key when its only field is blank", () => {
+    const blank = { preferredName: "   " } as unknown as Profile;
+    const backup = buildBackup([shot({})], blank);
+    expect("profile" in backup).toBe(false);
+  });
 });
 
 describe("toJson", () => {
@@ -46,6 +113,11 @@ describe("toJson", () => {
     const parsed = JSON.parse(toJson([shot({ mood: "good" })]));
     expect(parsed.app).toBe(APP_NAME);
     expect(parsed.shots[0].mood).toBe("good");
+  });
+
+  it("serializes the profile when present", () => {
+    const parsed = JSON.parse(toJson([shot({})], { preferredName: "Lou" }));
+    expect(parsed.profile).toEqual({ preferredName: "Lou" });
   });
 });
 

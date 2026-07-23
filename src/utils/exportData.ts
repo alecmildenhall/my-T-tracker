@@ -5,29 +5,41 @@
 // CSV is export-only — we never parse it back — so it optimises for safety in
 // spreadsheet apps (formula-injection guard) and correctness (RFC 4180 quoting).
 import type { ShotEntry } from "../types/shot";
+import type { Profile } from "../types/profile";
 import { APP_NAME, APP_VERSION, FORMAT_VERSION } from "../appMeta";
 import type { Backup } from "./shotSchema";
 import { compareShotsChrono } from "./sortShots";
+import { pickProfileFields, pickShotFields } from "./backupDto";
 
 /** Oldest-first, matching how shots are stored and how a reader expects a log. */
 function chronological(shots: ShotEntry[]): ShotEntry[] {
   return [...shots].sort(compareShotsChrono);
 }
 
-/** Assemble the versioned backup envelope. Shots are copied, not referenced. */
-export function buildBackup(shots: ShotEntry[]): Backup {
-  return {
+/**
+ * Assemble the versioned backup envelope. Shots and profile are both rebuilt
+ * through the DTO allowlist (see backupDto), so the file carries only known
+ * fields and can never contain a key the strict import schema would reject. The
+ * profile is included only when it holds something — a user who set neither field
+ * still gets a clean `{ ...shots }` envelope with no empty `profile` key. Defaults
+ * to an empty profile so a caller with nothing to save (e.g. a test) can omit it.
+ */
+export function buildBackup(shots: ShotEntry[], profile: Profile = {}): Backup {
+  const backup: Backup = {
     app: APP_NAME,
     formatVersion: FORMAT_VERSION,
     appVersion: APP_VERSION,
     exportedAt: new Date().toISOString(),
-    shots: chronological(shots),
+    shots: chronological(shots).map(pickShotFields),
   };
+  const known = pickProfileFields(profile);
+  if (Object.keys(known).length > 0) backup.profile = known;
+  return backup;
 }
 
 /** Pretty-printed JSON backup text. */
-export function toJson(shots: ShotEntry[]): string {
-  return JSON.stringify(buildBackup(shots), null, 2);
+export function toJson(shots: ShotEntry[], profile: Profile = {}): string {
+  return JSON.stringify(buildBackup(shots, profile), null, 2);
 }
 
 const CSV_COLUMNS: Array<{ header: string; key: keyof ShotEntry }> = [

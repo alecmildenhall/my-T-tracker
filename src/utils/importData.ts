@@ -7,7 +7,9 @@
 // The caller gets a plain discriminated result; error text is deliberately
 // generic so we never leak parser internals to the user.
 import type { ShotEntry } from "../types/shot";
-import { backupSchema, type Backup } from "./shotSchema";
+import type { Profile } from "../types/profile";
+import { backupSchema } from "./shotSchema";
+import { pickProfileFields, pickShotFields } from "./backupDto";
 
 /** Hard ceiling on input size. Realistic backups are kilobytes; this only stops
  *  a hostile or corrupt multi-hundred-MB file from exhausting memory. */
@@ -17,7 +19,7 @@ const MAX_INPUT_CHARS = 10 * 1024 * 1024; // ~10 MB
 const FORBIDDEN_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
 export type ImportResult =
-  | { ok: true; shots: ShotEntry[] }
+  | { ok: true; shots: ShotEntry[]; profile: Profile }
   | { ok: false; error: string };
 
 const GENERIC_ERROR =
@@ -29,24 +31,6 @@ function safeReviver(key: string, value: unknown): unknown {
     throw new Error("forbidden key in import");
   }
   return value;
-}
-
-/** Rebuild a validated shot from known fields only — no spread, no carried-over
- *  prototype or stray keys. */
-function toShotEntry(s: Backup["shots"][number]): ShotEntry {
-  const shot: ShotEntry = { id: s.id, date: s.date };
-  if (s.time !== undefined) shot.time = s.time;
-  if (s.doseMg !== undefined) shot.doseMg = s.doseMg;
-  if (s.injectionSite !== undefined) shot.injectionSite = s.injectionSite;
-  if (s.injectionSitePosition !== undefined)
-    shot.injectionSitePosition = s.injectionSitePosition;
-  if (s.testosteroneEster !== undefined)
-    shot.testosteroneEster = s.testosteroneEster;
-  if (s.carrierOil !== undefined) shot.carrierOil = s.carrierOil;
-  if (s.painScore !== undefined) shot.painScore = s.painScore;
-  if (s.mood !== undefined) shot.mood = s.mood;
-  if (s.notes !== undefined) shot.notes = s.notes;
-  return shot;
 }
 
 /**
@@ -73,5 +57,9 @@ export function parseBackup(text: string): ImportResult {
     return { ok: false, error: GENERIC_ERROR };
   }
 
-  return { ok: true, shots: result.data.shots.map(toShotEntry) };
+  return {
+    ok: true,
+    shots: result.data.shots.map(pickShotFields),
+    profile: pickProfileFields(result.data.profile ?? {}),
+  };
 }

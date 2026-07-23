@@ -1,8 +1,10 @@
 // src/components/Settings.tsx
 import React from "react";
 import { useShotsContext } from "../context/ShotsContext";
+import { useProfileContext } from "../context/ProfileContext";
 import { ManageValues } from "./ManageValues";
 import { DataManagement } from "./DataManagement";
+import { JourneySettings } from "./JourneySettings";
 
 interface SettingsProps {
   onBack: () => void;
@@ -12,6 +14,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   // Sourced from context rather than drilled through App, which passed these
   // four props purely to reach the panels below.
   const { shots, renameValue, clearValue, replaceAll } = useShotsContext();
+  const { profile, replaceProfile } = useProfileContext();
 
   return (
     <section className="settings">
@@ -20,6 +23,16 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
           ← Back
         </button>
         <h2>Settings</h2>
+      </div>
+
+      <div className="settings-section">
+        <h3 className="settings-section__title">Your journey</h3>
+        <p className="settings-section__desc">
+          Optionally add when you started T and how you&apos;d like to be
+          addressed, so the app can celebrate your milestones. Both are optional
+          and stay on this device.
+        </p>
+        <JourneySettings />
       </div>
 
       <div className="settings-section">
@@ -41,7 +54,12 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
           Export a backup to move or restore your entries, or a CSV to share with a
           provider. Importing a backup replaces what&apos;s on this device.
         </p>
-        <DataManagement shots={shots} onReplaceAll={replaceAll} />
+        <DataManagement
+          shots={shots}
+          onReplaceAll={replaceAll}
+          profile={profile}
+          onReplaceProfile={replaceProfile}
+        />
       </div>
     </section>
   );

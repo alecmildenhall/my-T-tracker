@@ -862,6 +862,20 @@ describe('useShots', () => {
       ])
     })
 
+    it('drops entries whose id or date is a blank string (not just missing)', () => {
+      localStorage.setItem(
+        STORAGE_KEYS.shots,
+        JSON.stringify([
+          { id: '', date: '2024-01-01' }, // blank id
+          { id: 'x', date: '' }, // blank date
+          { id: 'y', date: '   ' }, // whitespace-only date
+          { id: 'good', date: '2024-02-01' },
+        ])
+      )
+      const { result } = renderHook(() => useShots())
+      expect(result.current.shots).toEqual([{ id: 'good', date: '2024-02-01' }])
+    })
+
     it('self-heals storage by rewriting the cleaned list', () => {
       localStorage.setItem(
         STORAGE_KEYS.shots,
@@ -873,6 +887,23 @@ describe('useShots', () => {
       renderHook(() => useShots())
       // The write-back persists only the valid entry, so the bad one is gone
       // from storage — not just from the in-memory list.
+      expect(JSON.parse(localStorage.getItem(STORAGE_KEYS.shots) as string)).toEqual([
+        { id: 'good', date: '2024-02-01' },
+      ])
+    })
+
+    it('self-heals storage for blank-string id/date (not just missing fields)', () => {
+      localStorage.setItem(
+        STORAGE_KEYS.shots,
+        JSON.stringify([
+          { id: '', date: '2024-01-01' }, // blank id
+          { id: 'x', date: '   ' }, // whitespace-only date
+          { id: 'good', date: '2024-02-01' },
+        ])
+      )
+      renderHook(() => useShots())
+      // The blank entries are scrubbed from storage by the write-back, exercising
+      // the isBlank boundary end-to-end (in-memory drop + persisted rewrite).
       expect(JSON.parse(localStorage.getItem(STORAGE_KEYS.shots) as string)).toEqual([
         { id: 'good', date: '2024-02-01' },
       ])
