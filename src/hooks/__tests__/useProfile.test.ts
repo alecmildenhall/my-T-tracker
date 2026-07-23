@@ -82,4 +82,42 @@ describe("useProfile", () => {
     const { result } = renderHook(() => useProfile());
     expect(result.current.profile).toEqual({});
   });
+
+  it("replaceProfile overwrites the whole profile (backup restore)", () => {
+    const { result } = renderHook(() => useProfile());
+    act(() => result.current.setPreferredName("Old Name"));
+    act(() =>
+      result.current.replaceProfile({
+        startDate: "2024-03-01",
+        preferredName: "New Name",
+      })
+    );
+    expect(result.current.profile).toEqual({
+      startDate: "2024-03-01",
+      preferredName: "New Name",
+    });
+    expect(stored()).toEqual({
+      startDate: "2024-03-01",
+      preferredName: "New Name",
+    });
+  });
+
+  it("replaceProfile with {} clears an existing profile", () => {
+    localStorage.setItem(
+      STORAGE_KEYS.profile,
+      JSON.stringify({ startDate: "2025-01-15", preferredName: "Lou" })
+    );
+    const { result } = renderHook(() => useProfile());
+    act(() => result.current.replaceProfile({}));
+    expect(result.current.profile).toEqual({});
+    expect(stored()).toEqual({});
+  });
+
+  it("replaceProfile drops a blank field rather than storing it", () => {
+    const { result } = renderHook(() => useProfile());
+    act(() =>
+      result.current.replaceProfile({ startDate: "2025-01-15", preferredName: "  " })
+    );
+    expect(result.current.profile).toEqual({ startDate: "2025-01-15" });
+  });
 });

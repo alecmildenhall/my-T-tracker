@@ -62,6 +62,78 @@ describe("parseBackup — happy path", () => {
   });
 });
 
+describe("parseBackup — profile", () => {
+  it("round-trips a profile carried in the backup", () => {
+    const json = toJson([shot({})], {
+      startDate: "2025-01-15",
+      preferredName: "Lou",
+    });
+    const result = parseBackup(json);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.profile).toEqual({
+        startDate: "2025-01-15",
+        preferredName: "Lou",
+      });
+    }
+  });
+
+  it("returns an empty profile when the backup has none (older file)", () => {
+    const result = parseBackup(toJson([shot({})]));
+    expect(result.ok && result.profile).toEqual({});
+  });
+
+  it("allowlists profile fields — an unknown key is rejected", () => {
+    const result = parseBackup(
+      JSON.stringify({
+        ...JSON.parse(wrap([])),
+        profile: { preferredName: "Lou", secret: "smuggled" },
+      })
+    );
+    expect(result.ok).toBe(false);
+  });
+
+  it("rejects a malformed start date in the profile", () => {
+    const result = parseBackup(
+      JSON.stringify({
+        ...JSON.parse(wrap([])),
+        profile: { startDate: "01/15/2025" },
+      })
+    );
+    expect(result.ok).toBe(false);
+  });
+
+  it("rejects an empty-string preferred name in the profile", () => {
+    const result = parseBackup(
+      JSON.stringify({
+        ...JSON.parse(wrap([])),
+        profile: { preferredName: "" },
+      })
+    );
+    expect(result.ok).toBe(false);
+  });
+
+  it("rejects a start date in the future (mirrors the UI's today cap)", () => {
+    const result = parseBackup(
+      JSON.stringify({
+        ...JSON.parse(wrap([])),
+        profile: { startDate: "2999-01-01" },
+      })
+    );
+    expect(result.ok).toBe(false);
+  });
+
+  it("accepts a past start date", () => {
+    const result = parseBackup(
+      JSON.stringify({
+        ...JSON.parse(wrap([])),
+        profile: { startDate: "2000-01-01" },
+      })
+    );
+    expect(result.ok).toBe(true);
+  });
+});
+
 describe("parseBackup — malformed input", () => {
   const expectRejected = (text: string) => {
     const result = parseBackup(text);

@@ -4,6 +4,7 @@ import { useLocalStorage } from "./useLocalStorage";
 import type { ShotEntry } from "../types/shot";
 import { STORAGE_KEYS } from "../storageKeys";
 import { normalizeValue, type TextField } from "../utils/suggestions";
+import { isBlank } from "../utils/strings";
 
 export interface UseShots {
   shots: ShotEntry[];
@@ -34,11 +35,18 @@ export interface UseShots {
 function sanitizeShots(raw: unknown): ShotEntry[] {
   if (!Array.isArray(raw)) return [];
   return raw.filter(
+    // Require id and date to be present and non-blank: a shot with a missing or
+    // empty date is meaningless in a date-based tracker and can't be produced by
+    // the form (which marks date `required`). This enforces *presence* only, not
+    // date *validity* — a hand-edited but non-blank date like "2026-13-40" still
+    // passes here (kept lenient on purpose, so a schema tweak never silently drops
+    // a user's own data). Downstream can therefore trust id/date to be non-blank
+    // strings, not to be well-formed dates. A blank one is dropped as corruption.
     (s): s is ShotEntry =>
       typeof s === "object" &&
       s !== null &&
-      typeof (s as { id?: unknown }).id === "string" &&
-      typeof (s as { date?: unknown }).date === "string"
+      !isBlank((s as { id?: unknown }).id) &&
+      !isBlank((s as { date?: unknown }).date)
   );
 }
 

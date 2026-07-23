@@ -1,6 +1,7 @@
 // src/components/Settings.tsx
 import React from "react";
 import { useShotsContext } from "../context/ShotsContext";
+import { useProfileContext } from "../context/ProfileContext";
 import { ManageValues } from "./ManageValues";
 import { DataManagement } from "./DataManagement";
 import { JourneySettings } from "./JourneySettings";
@@ -13,6 +14,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   // Sourced from context rather than drilled through App, which passed these
   // four props purely to reach the panels below.
   const { shots, renameValue, clearValue, replaceAll } = useShotsContext();
+  const { profile, replaceProfile } = useProfileContext();
 
   return (
     <section className="settings">
@@ -52,7 +54,12 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
           Export a backup to move or restore your entries, or a CSV to share with a
           provider. Importing a backup replaces what&apos;s on this device.
         </p>
-        <DataManagement shots={shots} onReplaceAll={replaceAll} />
+        <DataManagement
+          shots={shots}
+          onReplaceAll={replaceAll}
+          profile={profile}
+          onReplaceProfile={replaceProfile}
+        />
       </div>
     </section>
   );

@@ -4,6 +4,7 @@
 // all enforced here so importData.ts can trust anything that parses.
 import { z } from "zod";
 import { APP_NAME, FORMAT_VERSION } from "../appMeta";
+import { todayLocalISO } from "./datetime";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/; // YYYY-MM-DD
 const TIME_RE = /^\d{2}:\d{2}$/; // HH:MM
@@ -52,8 +53,31 @@ export const shotEntrySchema = z.strictObject({
 });
 
 /**
+ * Optional profile carried in a backup so a restore is a complete snapshot, not
+ * just the shot list. Strict + allowlisted like a shot: unknown keys are rejected
+ * so a hostile file can't smuggle data past validation, and both fields are
+ * optional (an older backup with no profile, or a user who set neither, is fine).
+ * `preferredName` is PII, so a backup file is inherently sensitive — the UI warns
+ * that backups are unencrypted.
+ */
+export const profileSchema = z.strictObject({
+  startDate: z
+    .string()
+    .refine(isRealDate, "invalid date")
+    // Mirror the UI's `max={todayLocalISO()}` cap so a hand-edited or hostile
+    // file can't set a future start date, which milestone math would read as a
+    // negative time-on-T. Lexicographic compare is chronological for real ISO
+    // dates. Evaluated per-parse, so "today" is always current.
+    .refine((d) => d <= todayLocalISO(), "start date cannot be in the future")
+    .optional(),
+  preferredName: z.string().min(1).optional(),
+});
+
+/**
  * The backup envelope. `app` and `formatVersion` are fixed literals: a file from
- * another app or a newer/older format is rejected rather than guessed at.
+ * another app or a newer/older format is rejected rather than guessed at. `profile`
+ * is optional and additive — files without it (older exports) still validate, so
+ * adding it needs no formatVersion bump.
  */
 export const backupSchema = z.strictObject({
   app: z.literal(APP_NAME),
@@ -61,6 +85,7 @@ export const backupSchema = z.strictObject({
   appVersion: z.string(),
   exportedAt: z.string(),
   shots: z.array(shotEntrySchema),
+  profile: profileSchema.optional(),
 });
 
 export type Backup = z.infer<typeof backupSchema>;

@@ -3,6 +3,7 @@ import { useCallback } from "react";
 import { useLocalStorage } from "./useLocalStorage";
 import type { Profile } from "../types/profile";
 import { STORAGE_KEYS } from "../storageKeys";
+import { isBlank } from "../utils/strings";
 
 export interface UseProfile {
   profile: Profile;
@@ -12,6 +13,8 @@ export interface UseProfile {
   setPreferredName: (name: string | undefined) => void;
   /** Merge a partial patch into the profile. */
   updateProfile: (patch: Partial<Profile>) => void;
+  /** Replace the whole profile (used when restoring a backup). Passing {} clears it. */
+  replaceProfile: (next: Profile) => void;
 }
 
 const EMPTY: Profile = {};
@@ -22,12 +25,8 @@ const EMPTY: Profile = {};
  * fields are left untouched — see coerce/updateProfile for why.
  */
 function normalizeKnownFields(o: Record<string, unknown>): void {
-  if (typeof o.startDate !== "string" || !o.startDate.trim()) {
-    delete o.startDate;
-  }
-  if (typeof o.preferredName !== "string" || !o.preferredName.trim()) {
-    delete o.preferredName;
-  }
+  if (isBlank(o.startDate)) delete o.startDate;
+  if (isBlank(o.preferredName)) delete o.preferredName;
 }
 
 /**
@@ -66,6 +65,20 @@ export function useProfile(): UseProfile {
     [setProfile]
   );
 
+  const replaceProfile = useCallback(
+    (next: Profile) => {
+      // Full replace, not a merge: drop any now-blank known field so a restored
+      // profile is normalized the same way a typed one is. Discards the previous
+      // profile entirely (including unknown fields) — the backup is the snapshot.
+      setProfile(() => {
+        const clean: Record<string, unknown> = { ...next };
+        normalizeKnownFields(clean);
+        return clean as Profile;
+      });
+    },
+    [setProfile]
+  );
+
   const setStartDate = useCallback(
     (date: string | undefined) => updateProfile({ startDate: date }),
     [updateProfile]
@@ -76,5 +89,11 @@ export function useProfile(): UseProfile {
     [updateProfile]
   );
 
-  return { profile, setStartDate, setPreferredName, updateProfile };
+  return {
+    profile,
+    setStartDate,
+    setPreferredName,
+    updateProfile,
+    replaceProfile,
+  };
 }

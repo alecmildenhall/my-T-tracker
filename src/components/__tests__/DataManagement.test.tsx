@@ -35,7 +35,14 @@ describe("DataManagement", () => {
 
   describe("export", () => {
     it("downloads a JSON backup and confirms with status + a flashed button", () => {
-      render(<DataManagement shots={shots} onReplaceAll={vi.fn()} />);
+      render(
+        <DataManagement
+          shots={shots}
+          onReplaceAll={vi.fn()}
+          profile={{}}
+          onReplaceProfile={vi.fn()}
+        />
+      );
       fireEvent.click(
         screen.getByRole("button", { name: "Export backup (JSON)" })
       );
@@ -53,8 +60,35 @@ describe("DataManagement", () => {
       ).toBeInTheDocument();
     });
 
+    it("includes the current profile in the JSON backup", () => {
+      render(
+        <DataManagement
+          shots={shots}
+          onReplaceAll={vi.fn()}
+          profile={{ startDate: "2025-01-15", preferredName: "Lou" }}
+          onReplaceProfile={vi.fn()}
+        />
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: "Export backup (JSON)" })
+      );
+
+      const [text] = downloadMock.mock.calls[0];
+      expect(JSON.parse(text).profile).toEqual({
+        startDate: "2025-01-15",
+        preferredName: "Lou",
+      });
+    });
+
     it("downloads a CSV with a BOM", () => {
-      render(<DataManagement shots={shots} onReplaceAll={vi.fn()} />);
+      render(
+        <DataManagement
+          shots={shots}
+          onReplaceAll={vi.fn()}
+          profile={{}}
+          onReplaceProfile={vi.fn()}
+        />
+      );
       fireEvent.click(screen.getByRole("button", { name: "Export CSV" }));
 
       expect(downloadMock).toHaveBeenCalledTimes(1);
@@ -68,7 +102,14 @@ describe("DataManagement", () => {
       downloadMock.mockImplementationOnce(() => {
         throw new Error("blocked by browser");
       });
-      render(<DataManagement shots={shots} onReplaceAll={vi.fn()} />);
+      render(
+        <DataManagement
+          shots={shots}
+          onReplaceAll={vi.fn()}
+          profile={{}}
+          onReplaceProfile={vi.fn()}
+        />
+      );
 
       fireEvent.click(screen.getByRole("button", { name: "Export CSV" }));
 
@@ -83,7 +124,14 @@ describe("DataManagement", () => {
   describe("import", () => {
     it("shows a generic error for a malformed file and never replaces", async () => {
       const onReplaceAll = vi.fn();
-      render(<DataManagement shots={shots} onReplaceAll={onReplaceAll} />);
+      render(
+        <DataManagement
+          shots={shots}
+          onReplaceAll={onReplaceAll}
+          profile={{}}
+          onReplaceProfile={vi.fn()}
+        />
+      );
 
       uploadText("this is not a backup {");
 
@@ -97,7 +145,14 @@ describe("DataManagement", () => {
 
     it("confirms, backs up current data, then replaces on a valid import", async () => {
       const onReplaceAll = vi.fn();
-      render(<DataManagement shots={shots} onReplaceAll={onReplaceAll} />);
+      render(
+        <DataManagement
+          shots={shots}
+          onReplaceAll={onReplaceAll}
+          profile={{}}
+          onReplaceProfile={vi.fn()}
+        />
+      );
 
       const incoming: ShotEntry[] = [{ id: "imp", date: "2026-05-01", doseMg: 40 }];
       uploadText(toJson(incoming));
@@ -118,9 +173,112 @@ describe("DataManagement", () => {
       );
     });
 
+    it("replaces the profile too, using the profile from the imported file", async () => {
+      const onReplaceAll = vi.fn();
+      const onReplaceProfile = vi.fn();
+      render(
+        <DataManagement
+          shots={shots}
+          onReplaceAll={onReplaceAll}
+          profile={{ preferredName: "Old" }}
+          onReplaceProfile={onReplaceProfile}
+        />
+      );
+
+      const incoming: ShotEntry[] = [{ id: "imp", date: "2026-05-01" }];
+      uploadText(toJson(incoming, { preferredName: "New", startDate: "2024-02-02" }));
+
+      const dialog = await screen.findByRole("dialog");
+      fireEvent.click(within(dialog).getByRole("button", { name: "Replace" }));
+
+      expect(onReplaceAll).toHaveBeenCalledWith(incoming);
+      expect(onReplaceProfile).toHaveBeenCalledWith({
+        preferredName: "New",
+        startDate: "2024-02-02",
+      });
+      // The user is told the profile changed, not just the shot count.
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "Your profile was updated."
+      );
+    });
+
+    it("does not claim a profile change when the import matches the current profile", async () => {
+      const sameProfile = { preferredName: "Lou", startDate: "2025-01-15" };
+      render(
+        <DataManagement
+          shots={shots}
+          onReplaceAll={vi.fn()}
+          profile={sameProfile}
+          onReplaceProfile={vi.fn()}
+        />
+      );
+
+      // Re-import a backup whose profile equals what's already set.
+      uploadText(toJson([{ id: "imp", date: "2026-05-01" }], sameProfile));
+      const dialog = await screen.findByRole("dialog");
+      fireEvent.click(within(dialog).getByRole("button", { name: "Replace" }));
+
+      const status = screen.getByRole("status");
+      expect(status).toHaveTextContent("Restored 1 entry from backup.");
+      expect(status).not.toHaveTextContent(/profile/i);
+    });
+
+    it("includes the current profile in the pre-import safety backup", async () => {
+      render(
+        <DataManagement
+          shots={shots}
+          onReplaceAll={vi.fn()}
+          profile={{ preferredName: "Lou", startDate: "2025-01-15" }}
+          onReplaceProfile={vi.fn()}
+        />
+      );
+
+      uploadText(toJson([{ id: "imp", date: "2026-05-01" }]));
+      const dialog = await screen.findByRole("dialog");
+      fireEvent.click(within(dialog).getByRole("button", { name: "Replace" }));
+
+      // The recovery copy of the CURRENT data carries the profile, so a mistaken
+      // import can be fully undone — not just the shots.
+      const [safetyText, safetyName] = downloadMock.mock.calls[0];
+      expect(safetyName).toBe("t-shot-backup-before-import.json");
+      expect(JSON.parse(safetyText).profile).toEqual({
+        preferredName: "Lou",
+        startDate: "2025-01-15",
+      });
+    });
+
+    it("clears the profile when the imported file has none", async () => {
+      const onReplaceProfile = vi.fn();
+      render(
+        <DataManagement
+          shots={shots}
+          onReplaceAll={vi.fn()}
+          profile={{ preferredName: "Old" }}
+          onReplaceProfile={onReplaceProfile}
+        />
+      );
+
+      uploadText(toJson([{ id: "imp", date: "2026-05-01" }]));
+      const dialog = await screen.findByRole("dialog");
+      fireEvent.click(within(dialog).getByRole("button", { name: "Replace" }));
+
+      expect(onReplaceProfile).toHaveBeenCalledWith({});
+      // A cleared name shouldn't happen silently.
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "Your saved profile was cleared."
+      );
+    });
+
     it("aborts the replace (no data loss) if the safety backup can't download", async () => {
       const onReplaceAll = vi.fn();
-      render(<DataManagement shots={shots} onReplaceAll={onReplaceAll} />);
+      render(
+        <DataManagement
+          shots={shots}
+          onReplaceAll={onReplaceAll}
+          profile={{}}
+          onReplaceProfile={vi.fn()}
+        />
+      );
 
       uploadText(toJson([{ id: "imp", date: "2026-05-01" }]));
       const dialog = await screen.findByRole("dialog");
@@ -140,7 +298,14 @@ describe("DataManagement", () => {
     });
 
     it("traps Tab inside the dialog and restores focus to Import on close", async () => {
-      render(<DataManagement shots={shots} onReplaceAll={vi.fn()} />);
+      render(
+        <DataManagement
+          shots={shots}
+          onReplaceAll={vi.fn()}
+          profile={{}}
+          onReplaceProfile={vi.fn()}
+        />
+      );
 
       uploadText(toJson([{ id: "imp", date: "2026-05-01" }]));
       const dialog = await screen.findByRole("dialog");
@@ -166,7 +331,14 @@ describe("DataManagement", () => {
 
     it("cancel on the confirm dialog leaves data untouched", async () => {
       const onReplaceAll = vi.fn();
-      render(<DataManagement shots={shots} onReplaceAll={onReplaceAll} />);
+      render(
+        <DataManagement
+          shots={shots}
+          onReplaceAll={onReplaceAll}
+          profile={{}}
+          onReplaceProfile={vi.fn()}
+        />
+      );
 
       uploadText(toJson([{ id: "imp", date: "2026-05-01" }]));
 
