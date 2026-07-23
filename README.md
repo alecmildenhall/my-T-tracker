@@ -263,10 +263,13 @@ Milestones should be configurable eventually, but the first version should avoid
 - [ ] Add optional display name / preferred name for affirming milestone messages
 - [ ] Add milestone logic for three-month intervals during year one, then six-month intervals after that
 - [ ] Add a gentle post-log celebration, such as confetti or another feel-good animation
+- [ ] Add an **everyday greeting** at the top of the log screen using the preferred name ("Hi, Lou"). Name-optional: with no name it falls back warmly ("Welcome back") and never renders a dangling "Hi, ". Local-weekday/civil-date based, log-view only (not Settings or the milestone banner).
+- [ ] Add an optional **"shot day"** setting + a celebratory **"Happy shot day, Lou!"** greeting on that day. Weekday-based to start (a one-line local-weekday compare), **pre-filled from the user's most common logged weekday** so most users never touch it. Genuinely optional: a "No shot day" choice means **no shot-day greeting at all** — no fallback guessing. Seeds the later "shot due soon" reminder; interval/every-N-day scheduling is deferred to that feature. Lives in Settings → "Your journey" for now.
+- [ ] Ensure greetings and milestones are **name-optional** end to end: with only a shot day set, still show "Happy shot day!"; with only a start date set, still show "Congrats on 1 year on T!" — the preferred name only personalizes the message, it's never required to receive one.
 - [x] Add saved custom injection site/position options for faster repeated logging — _reuse chips on the log form plus a Settings → Manage saved values panel to rename/remove them_
 - [ ] Redesign the UI around a phone-first, warm, readable, non-corporate visual direction
-- [ ] Add **CSV export** for clinical conversations
-- [ ] Add **JSON backup export/import** so users can move or restore local data
+- [x] Add **CSV export** for clinical conversations — _Settings → Your data, formula-injection-safe, RFC 4180 quoted_
+- [x] Add **JSON backup export/import** so users can move or restore local data — _versioned envelope (shots + optional profile); import validates against a strict schema and downloads a safety backup before replacing_
 - [ ] Add **filters** (e.g., last 30 days, only high-pain days, only thigh injections)
 - [ ] Add **simple charts** (pain over time, mood trends)
 - [ ] Improve UI layout and styling
@@ -277,7 +280,9 @@ Milestones should be configurable eventually, but the first version should avoid
 
 - Add **PWA support** (installable, offline-first)
 - Add **encrypted backup files** with clear restore instructions
-- Add **app disguise mode**: change app icon and name for discretion (presets: clock, calculator, football, weather)
+- Add **app disguise mode**: change app icon and name for discretion (presets: clock, calculator, football, weather). This is a _cover_ (hides that the app is a T tracker), not encryption — it does not make the stored data unreadable.
+- Add an **optional app lock**, off by default: gate opening the app behind the device biometric / passcode rather than a custom in-app password (nothing new for the user to forget, no recovery flow to build). Best implemented on the Capacitor build, where native biometric APIs exist; complements disguise mode (cover) and encrypted backups (secrecy).
+- Add a short, skippable **first-run overview** pointing to what lives in Settings (journey/milestones, saved values, export/backup, and — once built — app lock), so privacy options are discoverable without a setup wall.
 - Add optional **symptom tagging** (fatigue, anxiety, headache)
 - Add a local-only **“shot due soon”** reminder
 - Add improved **mood encoding** (emoji scale or fixed categories)
