@@ -3,6 +3,7 @@ import React, { useMemo, useState } from "react";
 import { ShotForm } from "./components/ShotForm";
 import { ShotList } from "./components/ShotList";
 import { Settings } from "./components/Settings";
+import { Greeting } from "./components/Greeting";
 import { useShotsContext } from "./context/ShotsContext";
 import type { ShotEntry } from "./types/shot";
 
@@ -64,6 +65,7 @@ const App: React.FC = () => {
 
       {view === "log" ? (
         <main className="app-main">
+          <Greeting />
           <ShotForm
             onAddShot={addShot}
             onUpdateShot={handleUpdateShot}

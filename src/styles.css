@@ -119,6 +119,17 @@ body {
   }
 }
 
+/* Warm greeting at the top of the log view. Spans the full width above the
+   form/list grid, gentle emphasis, one source of high-contrast text. */
+.greeting {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--text);
+  text-wrap: balance;
+}
+
 .app-footer {
   margin-top: 2.5rem;
   text-align: center;
