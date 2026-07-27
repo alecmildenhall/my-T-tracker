@@ -1,11 +1,19 @@
 import { describe, it, expect } from "vitest";
 import { resolveGreeting } from "../greeting";
+import { weekdayOf } from "../weekday";
 import type { Profile } from "../../types/profile";
 
 // A start date whose 1-year milestone window is active on the chosen "today".
 const START = "2025-01-15";
 const ONE_YEAR_DAY = "2026-01-15"; // exactly 12 months → "1 year"
 const ORDINARY_DAY = "2025-08-01"; // ~6.5 months in, between milestone windows
+
+// Weekday of each fixed date, so shot-day tests match "today" without hardcoding.
+const ORDINARY_WEEKDAY = weekdayOf(ORDINARY_DAY)!;
+const ONE_YEAR_WEEKDAY = weekdayOf(ONE_YEAR_DAY)!;
+// Some weekday that is NOT the ordinary day's weekday.
+const OTHER_WEEKDAY =
+  ORDINARY_WEEKDAY === "monday" ? "tuesday" : "monday";
 
 const profile = (over: Partial<Profile> = {}): Profile => ({ ...over });
 
@@ -27,6 +35,50 @@ describe("resolveGreeting — milestone (top priority)", () => {
     expect(
       resolveGreeting(profile({ startDate: START, preferredName: "Lou" }), false, ONE_YEAR_DAY)
     ).toBe("Congrats on 1 year on T, Lou!");
+  });
+});
+
+describe("resolveGreeting — shot day", () => {
+  it("celebrates the shot day with the name", () => {
+    expect(
+      resolveGreeting(
+        profile({ shotDay: ORDINARY_WEEKDAY, preferredName: "Lou" }),
+        true,
+        ORDINARY_DAY
+      )
+    ).toBe("Happy shot day, Lou!");
+  });
+
+  it("celebrates the shot day without a name", () => {
+    expect(
+      resolveGreeting(profile({ shotDay: ORDINARY_WEEKDAY }), true, ORDINARY_DAY)
+    ).toBe("Happy shot day!");
+  });
+
+  it("says nothing shot-day-ish when today isn't the shot day", () => {
+    expect(
+      resolveGreeting(profile({ shotDay: OTHER_WEEKDAY }), true, ORDINARY_DAY)
+    ).toBe("Hi there~");
+  });
+
+  it("shows no shot-day greeting when shotDay is unset (never guessed)", () => {
+    expect(resolveGreeting(profile(), true, ORDINARY_DAY)).toBe("Hi there~");
+  });
+
+  it("is outranked by an active milestone (milestone wins the day)", () => {
+    expect(
+      resolveGreeting(
+        profile({ startDate: START, shotDay: ONE_YEAR_WEEKDAY, preferredName: "Lou" }),
+        true,
+        ONE_YEAR_DAY
+      )
+    ).toBe("Congrats on 1 year on T, Lou!");
+  });
+
+  it("outranks the first-time welcome (a set shot day beats a brand-new greeting)", () => {
+    expect(
+      resolveGreeting(profile({ shotDay: ORDINARY_WEEKDAY }), false, ORDINARY_DAY)
+    ).toBe("Happy shot day!");
   });
 });
 
@@ -82,6 +134,8 @@ describe("resolveGreeting — name handling", () => {
       resolveGreeting(profile(), false, ORDINARY_DAY),
       resolveGreeting(profile({ preferredName: "Lou" }), true, ORDINARY_DAY),
       resolveGreeting(profile(), true, ORDINARY_DAY),
+      resolveGreeting(profile({ shotDay: ORDINARY_WEEKDAY, preferredName: "Lou" }), true, ORDINARY_DAY),
+      resolveGreeting(profile({ shotDay: ORDINARY_WEEKDAY }), true, ORDINARY_DAY),
     ];
     for (const msg of messages) {
       // eslint-disable-next-line no-control-regex

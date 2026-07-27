@@ -6,9 +6,15 @@
 // data that ShotEntry must never contain) and the T start date. It lives under
 // its own storage key and, like everything else, never leaves the device.
 // Every field is optional — the app is fully usable without setting any of it.
+import type { Weekday } from "../utils/weekday";
+
 export interface Profile {
-  /** Local calendar date HRT started (YYYY-MM-DD). May predate app install. */
+  /** Local calendar date HRT started (YYYY-MM-DD). May predate app install, and
+   *  may be in the future (someone planning to start T later). */
   startDate?: string;
   /** How the user likes to be addressed in milestone messages. Free text. */
   preferredName?: string;
+  /** Optional weekday for a celebratory "Happy shot day!" greeting. Absent means
+   *  no shot-day greeting at all — there is no guessing from logged shots. */
+  shotDay?: Weekday;
 }

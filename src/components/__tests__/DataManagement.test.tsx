@@ -223,6 +223,29 @@ describe("DataManagement", () => {
       expect(status).not.toHaveTextContent(/profile/i);
     });
 
+    it("reports a shot-day-only change under the generic profile-updated message", async () => {
+      const onReplaceProfile = vi.fn();
+      render(
+        <DataManagement
+          shots={shots}
+          onReplaceAll={vi.fn()}
+          profile={{ shotDay: "monday" }}
+          onReplaceProfile={onReplaceProfile}
+        />
+      );
+
+      // Only the shot day differs — name and start date are both absent on each
+      // side. The change must still surface (not silently overwrite the shot day).
+      uploadText(toJson([{ id: "imp", date: "2026-05-01" }], { shotDay: "friday" }));
+      const dialog = await screen.findByRole("dialog");
+      fireEvent.click(within(dialog).getByRole("button", { name: "Replace" }));
+
+      expect(onReplaceProfile).toHaveBeenCalledWith({ shotDay: "friday" });
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "Your profile was updated."
+      );
+    });
+
     it("includes the current profile in the pre-import safety backup", async () => {
       render(
         <DataManagement

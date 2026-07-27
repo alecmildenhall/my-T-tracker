@@ -177,9 +177,14 @@ export const DataManagement: React.FC<DataManagementProps> = ({
     // incomingProfile is already DTO-picked (from parseBackup), so its own keys
     // are exactly the known non-blank fields — no need to re-pick it.
     const incomingHasData = Object.keys(pending.incomingProfile).length > 0;
+    // Compare the whole picked profile, not field-by-field: pickProfileFields
+    // writes keys in a fixed order, so a serialized compare is stable AND can't
+    // silently miss a newly added field (e.g. shotDay) the way an explicit
+    // per-field check does. Any change — including a shot-day-only one — surfaces
+    // under the single generic "profile was updated" message; there is no
+    // per-field messaging.
     const profileChanged =
-      knownCurrent.startDate !== pending.incomingProfile.startDate ||
-      knownCurrent.preferredName !== pending.incomingProfile.preferredName;
+      JSON.stringify(knownCurrent) !== JSON.stringify(pending.incomingProfile);
 
     let message = `Restored ${pluralizeEntries(pending.incoming.length)} from backup.`;
     if (profileChanged) {
