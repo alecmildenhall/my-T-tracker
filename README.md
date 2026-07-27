@@ -272,6 +272,7 @@ Milestones should be configurable eventually, but the first version should avoid
 - [x] Add **JSON backup export/import** so users can move or restore local data — _versioned envelope (shots + optional profile); import validates against a strict schema and downloads a safety backup before replacing_
 - [ ] Add **filters** (e.g., last 30 days, only high-pain days, only thigh injections)
 - [ ] Add **simple charts** (pain over time, mood trends)
+- [ ] _Engineering:_ introduce a **branded `CivilDate` type** for `YYYY-MM-DD` values, produced only by the shared civil-date parser at each trust boundary (import, form input, storage read) and consumed by all date logic (milestones, greeting, shot-day, filters, charts). Best done alongside the date-range/chart work above, since that's when the model (`ShotEntry.date`, `Profile.startDate`) and its tests are already being touched — it makes invalid dates unrepresentable downstream (no re-validation) and retires the last of the string-typed date handling.
 - [ ] Improve UI layout and styling
 - [ ] Add a **developer data viewer** (raw JSON, export panel)
 - [ ] Strengthen accessibility (labels, keyboard navigation)
