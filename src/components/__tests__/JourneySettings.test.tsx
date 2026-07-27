@@ -17,6 +17,8 @@ const dateInput = () =>
   screen.getByLabelText("Testosterone start date") as HTMLInputElement;
 const nameInput = () =>
   screen.getByLabelText("Preferred name") as HTMLInputElement;
+const shotDaySelect = () =>
+  screen.getByLabelText("Shot day") as HTMLSelectElement;
 const stored = () =>
   JSON.parse(localStorage.getItem(STORAGE_KEYS.profile) as string);
 
@@ -55,8 +57,29 @@ describe("JourneySettings", () => {
     expect(nameInput().value).toBe("");
   });
 
-  it("caps the start date at today (no future start dates)", () => {
+  it("allows a future start date (planning to start T later)", () => {
     renderPanel();
-    expect(dateInput().getAttribute("max")).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // No `max` cap — a future date is a legitimate, planned start.
+    expect(dateInput().getAttribute("max")).toBeNull();
+    fireEvent.change(dateInput(), { target: { value: "2099-01-01" } });
+    expect(stored()).toEqual({ startDate: "2099-01-01" });
+  });
+
+  it("defaults shot day to 'No shot day' and persists a chosen weekday", () => {
+    renderPanel();
+    expect(shotDaySelect().value).toBe("");
+    fireEvent.change(shotDaySelect(), { target: { value: "wednesday" } });
+    expect(stored()).toEqual({ shotDay: "wednesday" });
+  });
+
+  it("clearing shot day back to 'No shot day' removes it from storage", () => {
+    localStorage.setItem(
+      STORAGE_KEYS.profile,
+      JSON.stringify({ shotDay: "friday" })
+    );
+    renderPanel();
+    expect(shotDaySelect().value).toBe("friday");
+    fireEvent.change(shotDaySelect(), { target: { value: "" } });
+    expect(localStorage.getItem(STORAGE_KEYS.profile)).toBe("{}");
   });
 });

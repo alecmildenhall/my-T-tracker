@@ -3,8 +3,14 @@
 // based (today passed in) so it's fully unit-testable. Priority, highest first:
 //
 //   1. milestone   — a celebration is active (see currentMilestone)
-//   2. first-time  — no shots logged yet (brand-new user)
-//   3. returning   — everyday greeting
+//   2. shot day    — today is the user's chosen shot-day weekday
+//   3. first-time  — no shots logged yet (brand-new user)
+//   4. returning   — everyday greeting
+//
+// A milestone deliberately outranks shot day: it's the rarer, bigger landmark, so
+// on the rare day both land the milestone eclipses the weekly shot-day nudge. Shot
+// day is fully optional — with no shotDay set there is no shot-day greeting at all
+// (we never guess a day from logged shots).
 //
 // Every state is name-optional: the preferred name only personalises the copy, it
 // is never required. Punctuation carries the tone (celebratory "!", warm "~" / ":)")
@@ -13,6 +19,7 @@
 import type { Profile } from "../types/profile";
 import { currentMilestone } from "./milestones";
 import { todayLocalISO } from "./datetime";
+import { weekdayOf } from "./weekday";
 
 /**
  * The greeting to show right now. `hasLoggedShots` distinguishes a brand-new user
@@ -38,6 +45,10 @@ export function resolveGreeting(
     return name
       ? `Congrats on ${milestone.label} on T, ${name}!`
       : `Congrats on ${milestone.label} on T!`;
+  }
+
+  if (profile.shotDay && weekdayOf(today) === profile.shotDay) {
+    return name ? `Happy shot day, ${name}!` : "Happy shot day!";
   }
 
   if (!hasLoggedShots) {

@@ -4,8 +4,8 @@
 // all enforced here so importData.ts can trust anything that parses.
 import { z } from "zod";
 import { APP_NAME, FORMAT_VERSION } from "../appMeta";
-import { todayLocalISO } from "./datetime";
 import { isRealDate } from "./civilDate";
+import { WEEKDAYS } from "./weekday";
 
 const TIME_RE = /^\d{2}:\d{2}$/; // HH:MM
 
@@ -45,16 +45,16 @@ export const shotEntrySchema = z.strictObject({
  * that backups are unencrypted.
  */
 export const profileSchema = z.strictObject({
-  startDate: z
-    .string()
-    .refine(isRealDate, "invalid date")
-    // Mirror the UI's `max={todayLocalISO()}` cap so a hand-edited or hostile
-    // file can't set a future start date, which milestone math would read as a
-    // negative time-on-T. Lexicographic compare is chronological for real ISO
-    // dates. Evaluated per-parse, so "today" is always current.
-    .refine((d) => d <= todayLocalISO(), "start date cannot be in the future")
-    .optional(),
+  // A future start date is allowed on purpose: someone planning to start T later
+  // is a legitimate case. The milestone engine reads a future start as "not
+  // started yet" (currentMilestone returns null until the date passes), so there
+  // is no negative-time bug to guard against — and rejecting it here would make a
+  // profile fail to re-import the very date the app let the user set.
+  startDate: z.string().refine(isRealDate, "invalid date").optional(),
   preferredName: z.string().min(1).optional(),
+  // Shot day is an enum: only the seven weekday keys are accepted, so a hand-edit
+  // or hostile file can't smuggle an arbitrary string past the boundary.
+  shotDay: z.enum(WEEKDAYS).optional(),
 });
 
 /**

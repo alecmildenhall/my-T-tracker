@@ -105,14 +105,17 @@ export function mostRecentThreshold(months: number): number | null {
   return 24 + Math.floor((m - 24) / 6) * 6; // after two years: every 6 months
 }
 
-/** Friendly label for a milestone in months: whole years read as "N year(s)",
- *  otherwise "N month(s)" (singular at 1). */
+/** Friendly label for a milestone in months, expressed as years + months so it
+ *  reads warmly rather than clinically: "1 month", "1 year", "1 year 3 months",
+ *  "2 years 6 months", "3 years". Never months-only past a year (no "15 months").
+ *  Singular/plural is kept correct on each part. */
 export function milestoneLabel(months: number): string {
-  if (isWholeYear(months)) {
-    const years = months / 12;
-    return `${years} year${years === 1 ? "" : "s"}`;
-  }
-  return `${months} month${months === 1 ? "" : "s"}`;
+  const years = Math.floor(months / 12);
+  const rem = months % 12;
+  const yearPart = years ? `${years} year${years === 1 ? "" : "s"}` : "";
+  const monthPart = rem ? `${rem} month${rem === 1 ? "" : "s"}` : "";
+  if (yearPart && monthPart) return `${yearPart} ${monthPart}`;
+  return yearPart || monthPart;
 }
 
 /**

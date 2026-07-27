@@ -11,6 +11,7 @@
 import type { ShotEntry } from "../types/shot";
 import type { Profile } from "../types/profile";
 import { nonBlankString } from "./strings";
+import { isWeekday } from "./weekday";
 
 /** Rebuild a shot from known fields only — fresh object, no spread, no carried
  *  prototype or stray keys, no blank strings. Accepts a domain shot (export) or a
@@ -49,6 +50,7 @@ export function pickProfileFields(p: Partial<Profile>): Profile {
   if (startDate !== undefined) out.startDate = startDate;
   const preferredName = nonBlankString(p.preferredName);
   if (preferredName !== undefined) out.preferredName = preferredName;
+  if (isWeekday(p.shotDay)) out.shotDay = p.shotDay;
   return out;
 }
 

@@ -2,8 +2,10 @@
 import { useCallback } from "react";
 import { useLocalStorage } from "./useLocalStorage";
 import type { Profile } from "../types/profile";
+import type { Weekday } from "../utils/weekday";
 import { STORAGE_KEYS } from "../storageKeys";
 import { isBlank } from "../utils/strings";
+import { isWeekday } from "../utils/weekday";
 
 export interface UseProfile {
   profile: Profile;
@@ -11,6 +13,8 @@ export interface UseProfile {
   setStartDate: (date: string | undefined) => void;
   /** Set (or clear, with undefined) the preferred name. */
   setPreferredName: (name: string | undefined) => void;
+  /** Set (or clear, with undefined) the shot-day weekday. */
+  setShotDay: (day: Weekday | undefined) => void;
   /** Merge a partial patch into the profile. */
   updateProfile: (patch: Partial<Profile>) => void;
   /** Replace the whole profile (used when restoring a backup). Passing {} clears it. */
@@ -27,6 +31,9 @@ const EMPTY: Profile = {};
 function normalizeKnownFields(o: Record<string, unknown>): void {
   if (isBlank(o.startDate)) delete o.startDate;
   if (isBlank(o.preferredName)) delete o.preferredName;
+  // shotDay is an enum, not free text: drop anything that isn't one of the seven
+  // weekday keys (a hand-edit, an old value, or "" from a cleared <select>).
+  if (!isWeekday(o.shotDay)) delete o.shotDay;
 }
 
 /**
@@ -89,10 +96,16 @@ export function useProfile(): UseProfile {
     [updateProfile]
   );
 
+  const setShotDay = useCallback(
+    (day: Weekday | undefined) => updateProfile({ shotDay: day }),
+    [updateProfile]
+  );
+
   return {
     profile,
     setStartDate,
     setPreferredName,
+    setShotDay,
     updateProfile,
     replaceProfile,
   };

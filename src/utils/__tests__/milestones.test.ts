@@ -107,14 +107,15 @@ describe("mostRecentThreshold", () => {
 });
 
 describe("milestoneLabel", () => {
-  it("reads whole years as years, else months, singular at 1", () => {
+  it("expresses years + months, never months-only past a year, singular at 1", () => {
     expect(milestoneLabel(1)).toBe("1 month");
     expect(milestoneLabel(2)).toBe("2 months");
     expect(milestoneLabel(11)).toBe("11 months");
     expect(milestoneLabel(12)).toBe("1 year");
-    expect(milestoneLabel(15)).toBe("15 months");
-    expect(milestoneLabel(18)).toBe("18 months");
+    expect(milestoneLabel(15)).toBe("1 year 3 months");
+    expect(milestoneLabel(18)).toBe("1 year 6 months");
     expect(milestoneLabel(24)).toBe("2 years");
+    expect(milestoneLabel(30)).toBe("2 years 6 months");
     expect(milestoneLabel(36)).toBe("3 years");
   });
 });
@@ -219,7 +220,7 @@ describe("currentMilestone", () => {
     // 15 months from 2025-01-15 is 2026-04-15; within window.
     expect(currentMilestone("2025-01-15", "2026-04-18")).toEqual({
       months: 15,
-      label: "15 months",
+      label: "1 year 3 months",
       date: "2026-04-15",
     });
   });
@@ -228,7 +229,7 @@ describe("currentMilestone", () => {
     // 30 months from 2025-01-15 is 2027-07-15; within window.
     expect(currentMilestone("2025-01-15", "2027-07-18")).toEqual({
       months: 30,
-      label: "30 months",
+      label: "2 years 6 months",
       date: "2027-07-15",
     });
   });

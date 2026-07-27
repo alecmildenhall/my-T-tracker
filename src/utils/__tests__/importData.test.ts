@@ -113,14 +113,31 @@ describe("parseBackup — profile", () => {
     expect(result.ok).toBe(false);
   });
 
-  it("rejects a start date in the future (mirrors the UI's today cap)", () => {
+  it("accepts a future start date (planning to start T later)", () => {
     const result = parseBackup(
       JSON.stringify({
         ...JSON.parse(wrap([])),
         profile: { startDate: "2999-01-01" },
       })
     );
-    expect(result.ok).toBe(false);
+    expect(result.ok).toBe(true);
+  });
+
+  it("accepts a valid shot day and rejects a bogus one", () => {
+    const ok = parseBackup(
+      JSON.stringify({
+        ...JSON.parse(wrap([])),
+        profile: { shotDay: "wednesday" },
+      })
+    );
+    expect(ok.ok).toBe(true);
+    const bad = parseBackup(
+      JSON.stringify({
+        ...JSON.parse(wrap([])),
+        profile: { shotDay: "someday" },
+      })
+    );
+    expect(bad.ok).toBe(false);
   });
 
   it("accepts a past start date", () => {

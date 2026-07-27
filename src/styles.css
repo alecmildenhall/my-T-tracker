@@ -196,7 +196,8 @@ label {
 }
 
 input,
-textarea {
+textarea,
+select {
   border-radius: var(--radius-md);
   border: 1px solid var(--border-subtle);
   padding: 0.55rem 0.6rem;
@@ -214,7 +215,8 @@ textarea::placeholder {
 }
 
 input:focus,
-textarea:focus {
+textarea:focus,
+select:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.6);
 }

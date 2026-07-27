@@ -89,6 +89,15 @@ describe("pickProfileFields", () => {
       preferredName: "Lou Smith",
     });
   });
+
+  it("keeps a valid shot day and drops a bogus one", () => {
+    expect(pickProfileFields({ shotDay: "wednesday" })).toEqual({
+      shotDay: "wednesday",
+    });
+    expect(
+      pickProfileFields({ shotDay: "someday" } as unknown as Profile)
+    ).toEqual({});
+  });
 });
 
 describe("hasProfileData", () => {

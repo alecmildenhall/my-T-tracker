@@ -50,6 +50,24 @@ describe("useProfile", () => {
     expect(result.current.profile.preferredName).toBeUndefined();
   });
 
+  it("sets, persists, and clears the shot day", () => {
+    const { result } = renderHook(() => useProfile());
+    act(() => result.current.setShotDay("wednesday"));
+    expect(result.current.profile.shotDay).toBe("wednesday");
+    expect(stored()).toEqual({ shotDay: "wednesday" });
+    act(() => result.current.setShotDay(undefined));
+    expect(result.current.profile.shotDay).toBeUndefined();
+  });
+
+  it("drops an invalid shot day from storage (enum, not free text)", () => {
+    localStorage.setItem(
+      STORAGE_KEYS.profile,
+      JSON.stringify({ shotDay: "someday", preferredName: "Lou" })
+    );
+    const { result } = renderHook(() => useProfile());
+    expect(result.current.profile).toEqual({ preferredName: "Lou" });
+  });
+
   it("coerces a corrupt (non-object) stored value to empty", () => {
     localStorage.setItem(STORAGE_KEYS.profile, JSON.stringify("nope"));
     const { result } = renderHook(() => useProfile());
