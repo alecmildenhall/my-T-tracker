@@ -5,25 +5,9 @@
 import { z } from "zod";
 import { APP_NAME, FORMAT_VERSION } from "../appMeta";
 import { todayLocalISO } from "./datetime";
+import { isRealDate } from "./civilDate";
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/; // YYYY-MM-DD
 const TIME_RE = /^\d{2}:\d{2}$/; // HH:MM
-
-/**
- * True for a real calendar date in YYYY-MM-DD form. The regex only checks shape,
- * so we round-trip through Date to reject impossible values like 2026-13-40 or
- * 2026-02-30 that a hand-edited or hostile file could otherwise smuggle in.
- */
-function isRealDate(value: string): boolean {
-  if (!DATE_RE.test(value)) return false;
-  const [y, m, d] = value.split("-").map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  return (
-    dt.getUTCFullYear() === y &&
-    dt.getUTCMonth() === m - 1 &&
-    dt.getUTCDate() === d
-  );
-}
 
 /** True for a valid 24-hour HH:MM time (rejects 24:00, 08:99, etc.). */
 function isRealTime(value: string): boolean {
