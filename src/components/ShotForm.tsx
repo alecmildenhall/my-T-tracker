@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import type { ShotEntry } from "../types/shot";
 import { suggestionsFor } from "../utils/suggestions";
 import { todayLocalISO, nowHHMM } from "../utils/datetime";
+import { toCivilDate } from "../utils/civilDate";
 import { newId } from "../utils/id";
 import { SuggestionChips } from "./SuggestionChips";
 
@@ -23,6 +24,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   shots = [],
 }) => {
   const [date, setDate] = useState<string>(todayLocalISO());
+  const [dateError, setDateError] = useState<string | null>(null);
   const [time, setTime] = useState<string>("");
   const [doseMg, setDoseMg] = useState<string>("");
   const [injectionSite, setInjectionSite] = useState<string>("");
@@ -51,6 +53,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   // Stable (setters are stable), so it's safe in the effect's dependency list.
   const resetForm = useCallback(() => {
     setDate(todayLocalISO());
+    setDateError(null);
     setTime("");
     setDoseMg("");
     setInjectionSite("");
@@ -89,6 +92,17 @@ export const ShotForm: React.FC<ShotFormProps> = ({
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
+
+    // Parse the date at the entry boundary. A native date picker only ever emits
+    // a valid YYYY-MM-DD (or empty, caught by `required`), so this rarely fires —
+    // but a text-field fallback (older browsers) or a paste could produce an
+    // impossible date. Surface it inline rather than silently accepting or
+    // dropping it, and block the save.
+    if (!toCivilDate(date)) {
+      setDateError("Please enter a real calendar date (YYYY-MM-DD).");
+      return;
+    }
+    setDateError(null);
 
     const newShot: ShotEntry = {
       id: editingShot ? editingShot.id : newId(),
@@ -144,9 +158,19 @@ export const ShotForm: React.FC<ShotFormProps> = ({
           <input
             type="date"
             value={date}
-            onChange={(e) => setDate(e.target.value)}
+            onChange={(e) => {
+              setDate(e.target.value);
+              if (dateError) setDateError(null);
+            }}
             required
+            aria-invalid={dateError ? true : undefined}
+            aria-describedby={dateError ? "date-error" : undefined}
           />
+          {dateError && (
+            <span id="date-error" className="field-error" role="alert">
+              {dateError}
+            </span>
+          )}
         </label>
 
         <div className="field-cell">

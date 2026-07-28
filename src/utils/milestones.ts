@@ -9,7 +9,7 @@
 // ...). A milestone is "celebratable" only on or after its date and for a short
 // window (~2 weeks) — never before it. Only the most recent milestone is surfaced.
 import { todayLocalISO } from "./datetime";
-import { civilDateParts } from "./civilDate";
+import { civilDateParts, type CivilDate } from "./civilDate";
 
 // How long after a milestone's date we keep celebrating it. Year-one *monthly*
 // milestones get a short window so the greeting doesn't linger most of the time;
@@ -124,10 +124,17 @@ export function milestoneLabel(months: number): string {
  * (see celebrationWindowDays) — never before the date (a milestone is never
  * previewed). A start date in the future or unset, or a window that has passed,
  * yields nothing. `todayISO` defaults to today's local date.
+ *
+ * Both dates are `CivilDate`, so the caller has already validated any untrusted
+ * string (e.g. `Profile.startDate` from storage) through `toCivilDate` — an
+ * impossible date can't reach this entry point. The low-level arithmetic helpers
+ * still take plain strings and re-derive [y, m, d] themselves (a `CivilDate` is a
+ * string), so they stay independently usable and defensively tested; that extra
+ * parse is intentional, not a missing optimization.
  */
 export function currentMilestone(
-  startISO: string | undefined,
-  todayISO: string = todayLocalISO()
+  startISO: CivilDate | undefined,
+  todayISO: CivilDate = todayLocalISO()
 ): Milestone | null {
   if (!startISO) return null;
   const months = monthsOnT(startISO, todayISO);

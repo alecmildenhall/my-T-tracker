@@ -10,6 +10,16 @@ import {
   YEAR_ONE_WINDOW_DAYS,
   LATER_WINDOW_DAYS,
 } from "../milestones";
+import { toCivilDate, type CivilDate } from "../civilDate";
+
+/** Mint a CivilDate in tests. The `!` is safe here — every literal below is a
+ *  real date; an invalid one would throw at construction, failing the test
+ *  loudly rather than silently passing a bad value. */
+const cd = (s: string): CivilDate => {
+  const v = toCivilDate(s);
+  if (!v) throw new Error(`test used a non-civil date: ${s}`);
+  return v;
+};
 
 describe("monthsOnT", () => {
   it("counts whole civil months, not completing until the day-of-month is reached", () => {
@@ -132,24 +142,28 @@ describe("celebrationWindowDays", () => {
 });
 
 describe("currentMilestone", () => {
+  // The dominant start date across these cases; a Wednesday in mid-January.
+  const S = cd("2025-01-15");
+
   it("returns null when no start date is set", () => {
-    expect(currentMilestone(undefined, "2025-06-01")).toBeNull();
+    expect(currentMilestone(undefined, cd("2025-06-01"))).toBeNull();
   });
 
   it("returns null for a future start date", () => {
-    expect(currentMilestone("2026-01-01", "2025-06-01")).toBeNull();
+    expect(currentMilestone(cd("2026-01-01"), cd("2025-06-01"))).toBeNull();
   });
 
-  it("returns null for an impossible start date (shared strict parse)", () => {
-    expect(currentMilestone("2026-13-40", "2027-01-01")).toBeNull();
-  });
+  // An impossible date (e.g. "2026-13-40") can no longer *reach* currentMilestone:
+  // the boundary (toCivilDate) rejects it, so it's unrepresentable as a CivilDate.
+  // That behavior is covered where the parse happens — civilDate.test.ts
+  // (toCivilDate) and greeting.test.ts (a bad Profile.startDate yields no milestone).
 
   it("returns null before the first (1-month) milestone", () => {
-    expect(currentMilestone("2025-01-15", "2025-02-10")).toBeNull();
+    expect(currentMilestone(S, cd("2025-02-10"))).toBeNull();
   });
 
   it("celebrates on the exact milestone date", () => {
-    expect(currentMilestone("2025-01-15", "2025-02-15")).toEqual({
+    expect(currentMilestone(S, cd("2025-02-15"))).toEqual({
       months: 1,
       label: "1 month",
       date: "2025-02-15",
@@ -159,16 +173,16 @@ describe("currentMilestone", () => {
   it("never shows a milestone before its date (not even the day before)", () => {
     // The 2-month milestone date is 2025-03-15. The day before shows nothing (the
     // 1-month window ended long ago and the 2-month one hasn't arrived).
-    expect(currentMilestone("2025-01-15", "2025-03-14")).toBeNull();
+    expect(currentMilestone(S, cd("2025-03-14"))).toBeNull();
     // ...and it appears exactly on the date.
-    expect(currentMilestone("2025-01-15", "2025-03-15")?.months).toBe(2);
+    expect(currentMilestone(S, cd("2025-03-15"))?.months).toBe(2);
   });
 
   it("keeps a year-one milestone within its 7-day window (inclusive of the last day)", () => {
-    const within = currentMilestone("2025-01-15", "2025-02-20"); // +5 days
+    const within = currentMilestone(S, cd("2025-02-20")); // +5 days
     expect(within?.months).toBe(1);
     const edge = currentMilestone(
-      "2025-01-15",
+      S,
       addDays("2025-02-15", YEAR_ONE_WINDOW_DAYS) // +7
     );
     expect(edge?.months).toBe(1);
@@ -176,7 +190,7 @@ describe("currentMilestone", () => {
 
   it("stops celebrating a year-one milestone once its 7-day window has passed", () => {
     const past = currentMilestone(
-      "2025-01-15",
+      S,
       addDays("2025-02-15", YEAR_ONE_WINDOW_DAYS + 1) // +8
     );
     expect(past).toBeNull();
@@ -185,18 +199,17 @@ describe("currentMilestone", () => {
   it("gives later milestones the full 14-day window", () => {
     // 15-month milestone date is 2026-04-15. At +10 days it still shows (a year-one
     // milestone would already be gone by +8), and it ends at +14.
-    expect(currentMilestone("2025-01-15", "2026-04-25")?.months).toBe(15); // +10
+    expect(currentMilestone(S, cd("2026-04-25"))?.months).toBe(15); // +10
     expect(
-      currentMilestone("2025-01-15", addDays("2026-04-15", LATER_WINDOW_DAYS))
-        ?.months
+      currentMilestone(S, addDays("2026-04-15", LATER_WINDOW_DAYS))?.months
     ).toBe(15); // +14
     expect(
-      currentMilestone("2025-01-15", addDays("2026-04-15", LATER_WINDOW_DAYS + 1))
+      currentMilestone(S, addDays("2026-04-15", LATER_WINDOW_DAYS + 1))
     ).toBeNull(); // +15
   });
 
   it("celebrates the one-year milestone", () => {
-    expect(currentMilestone("2025-01-15", "2026-01-20")).toEqual({
+    expect(currentMilestone(S, cd("2026-01-20"))).toEqual({
       months: 12,
       label: "1 year",
       date: "2026-01-15",
@@ -206,19 +219,18 @@ describe("currentMilestone", () => {
   it("gives whole-year anniversaries the full 14-day window", () => {
     // 1-year date is 2026-01-15. It still shows at +10 days (a year-one monthly
     // milestone would already be gone by +8), and ends at +14.
-    expect(currentMilestone("2025-01-15", "2026-01-25")?.months).toBe(12); // +10
+    expect(currentMilestone(S, cd("2026-01-25"))?.months).toBe(12); // +10
     expect(
-      currentMilestone("2025-01-15", addDays("2026-01-15", LATER_WINDOW_DAYS))
-        ?.months
+      currentMilestone(S, addDays("2026-01-15", LATER_WINDOW_DAYS))?.months
     ).toBe(12); // +14
     expect(
-      currentMilestone("2025-01-15", addDays("2026-01-15", LATER_WINDOW_DAYS + 1))
+      currentMilestone(S, addDays("2026-01-15", LATER_WINDOW_DAYS + 1))
     ).toBeNull(); // +15
   });
 
   it("uses three-month cadence in the second year", () => {
     // 15 months from 2025-01-15 is 2026-04-15; within window.
-    expect(currentMilestone("2025-01-15", "2026-04-18")).toEqual({
+    expect(currentMilestone(S, cd("2026-04-18"))).toEqual({
       months: 15,
       label: "1 year 3 months",
       date: "2026-04-15",
@@ -227,7 +239,7 @@ describe("currentMilestone", () => {
 
   it("uses six-month cadence after two years", () => {
     // 30 months from 2025-01-15 is 2027-07-15; within window.
-    expect(currentMilestone("2025-01-15", "2027-07-18")).toEqual({
+    expect(currentMilestone(S, cd("2027-07-18"))).toEqual({
       months: 30,
       label: "2 years 6 months",
       date: "2027-07-15",
@@ -236,26 +248,30 @@ describe("currentMilestone", () => {
 
   it("celebrates a month-end start on the short month's last day (no off-by-one)", () => {
     // Jan 31 start -> 1-month milestone lands on Feb 29 (leap) and shows there.
-    expect(currentMilestone("2024-01-31", "2024-02-29")).toEqual({
+    expect(currentMilestone(cd("2024-01-31"), cd("2024-02-29"))).toEqual({
       months: 1,
       label: "1 month",
       date: "2024-02-29",
     });
     // ...and not the day before.
-    expect(currentMilestone("2024-01-31", "2024-02-28")).toBeNull();
+    expect(currentMilestone(cd("2024-01-31"), cd("2024-02-28"))).toBeNull();
   });
 
   it("surfaces only the latest milestone, and only in its window (not a stale one)", () => {
     // ~18 days past the 1-month date and before the 2-month date: nothing shows.
-    expect(currentMilestone("2025-01-15", "2025-03-05")).toBeNull();
+    expect(currentMilestone(S, cd("2025-03-05"))).toBeNull();
   });
 });
 
-/** Test helper: add whole days to a civil date via UTC anchoring. */
-function addDays(iso: string, days: number): string {
+/** Test helper: add whole days to a civil date via UTC anchoring. Returns a
+ *  CivilDate (the computed date is always valid), so it slots straight into
+ *  currentMilestone's CivilDate parameter. */
+function addDays(iso: string, days: number): CivilDate {
   const [y, m, d] = iso.split("-").map(Number);
   const t = new Date(Date.UTC(y, m - 1, d + days));
-  return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, "0")}-${String(
-    t.getUTCDate()
-  ).padStart(2, "0")}`;
+  return cd(
+    `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, "0")}-${String(
+      t.getUTCDate()
+    ).padStart(2, "0")}`
+  );
 }

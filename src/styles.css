@@ -513,6 +513,13 @@ textarea {
   margin-bottom: 0;
 }
 
+.field-error {
+  margin-top: 0.3rem;
+  font-size: 0.75rem;
+  color: var(--danger);
+  line-height: 1.4;
+}
+
 .manage-group {
   margin-bottom: 1.4rem;
 }

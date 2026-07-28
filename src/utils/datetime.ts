@@ -8,17 +8,20 @@
 // west of UTC logging in the evening (e.g. 8pm Pacific → tomorrow's date).
 // Storing the plain local "YYYY-MM-DD" also travels correctly through any future
 // cross-device sync without timezone conversion.
+import { unsafeCivilDate, type CivilDate } from "./civilDate";
 
-/** Local calendar date of `d` as YYYY-MM-DD (not UTC). */
-export function localISODate(d: Date = new Date()): string {
+/** Local calendar date of `d` as YYYY-MM-DD (not UTC). Provably a real date —
+ *  built from padded local components — so it's branded as a `CivilDate` without
+ *  re-validating. */
+export function localISODate(d: Date = new Date()): CivilDate {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  return unsafeCivilDate(`${y}-${m}-${day}`);
 }
 
-/** Today's local date as YYYY-MM-DD. */
-export function todayLocalISO(): string {
+/** Today's local date as YYYY-MM-DD (a `CivilDate`). */
+export function todayLocalISO(): CivilDate {
   return localISODate();
 }
 

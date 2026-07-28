@@ -1,12 +1,17 @@
 import { describe, it, expect } from "vitest";
 import { resolveGreeting } from "../greeting";
 import { weekdayOf } from "../weekday";
+import { toCivilDate, type CivilDate } from "../civilDate";
 import type { Profile } from "../../types/profile";
 
+const cd = (s: string): CivilDate => toCivilDate(s)!;
+
 // A start date whose 1-year milestone window is active on the chosen "today".
+// START is a plain string: it stands in for Profile.startDate, which the model
+// stores as a string and resolveGreeting parses at its boundary.
 const START = "2025-01-15";
-const ONE_YEAR_DAY = "2026-01-15"; // exactly 12 months → "1 year"
-const ORDINARY_DAY = "2025-08-01"; // ~6.5 months in, between milestone windows
+const ONE_YEAR_DAY = cd("2026-01-15"); // exactly 12 months → "1 year"
+const ORDINARY_DAY = cd("2025-08-01"); // ~6.5 months in, between milestone windows
 
 // Weekday of each fixed date, so shot-day tests match "today" without hardcoding.
 const ORDINARY_WEEKDAY = weekdayOf(ORDINARY_DAY)!;
@@ -35,6 +40,15 @@ describe("resolveGreeting — milestone (top priority)", () => {
     expect(
       resolveGreeting(profile({ startDate: START, preferredName: "Lou" }), false, ONE_YEAR_DAY)
     ).toBe("Congrats on 1 year on T, Lou!");
+  });
+
+  it("ignores an impossible stored start date (parsed at the boundary)", () => {
+    // A hand-edited/corrupt Profile.startDate can't crash or fake a milestone:
+    // resolveGreeting runs it through toCivilDate, which rejects it, so this
+    // returning user just gets the everyday greeting.
+    expect(
+      resolveGreeting(profile({ startDate: "2026-13-40" }), true, ONE_YEAR_DAY)
+    ).toBe("Hi there~");
   });
 });
 

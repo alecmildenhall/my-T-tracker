@@ -19,6 +19,7 @@
 import type { Profile } from "../types/profile";
 import { currentMilestone } from "./milestones";
 import { todayLocalISO } from "./datetime";
+import { toCivilDate, type CivilDate } from "./civilDate";
 import { weekdayOf } from "./weekday";
 
 /**
@@ -36,11 +37,17 @@ import { weekdayOf } from "./weekday";
 export function resolveGreeting(
   profile: Profile,
   hasLoggedShots: boolean,
-  today: string = todayLocalISO()
+  today: CivilDate = todayLocalISO()
 ): string {
   const name = profile.preferredName;
 
-  const milestone = currentMilestone(profile.startDate, today);
+  // Parse the untrusted stored start date once, here at the boundary. A missing
+  // or (from a hand-edit) impossible value becomes undefined, so the milestone
+  // engine only ever sees a real CivilDate — no re-validation downstream.
+  const startDate = profile.startDate
+    ? toCivilDate(profile.startDate) ?? undefined
+    : undefined;
+  const milestone = currentMilestone(startDate, today);
   if (milestone) {
     return name
       ? `Congrats on ${milestone.label} on T, ${name}!`
