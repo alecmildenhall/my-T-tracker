@@ -32,6 +32,12 @@ describe("datetime helpers", () => {
     expect(localISODate(new Date("2026-01-05T12:00:00"))).toBe("2026-01-05");
   });
 
+  it("localISODate throws on an Invalid Date rather than branding NaN-NaN-NaN", () => {
+    // Branding an Invalid Date would mint a CivilDate the type system trusts as
+    // a real date — the guarantee the brand exists to uphold. Fail loud instead.
+    expect(() => localISODate(new Date("garbage"))).toThrow(RangeError);
+  });
+
   it("nowHHMM formats local wall-clock time, zero-padded", () => {
     expect(nowHHMM(new Date("2026-07-14T09:05:00"))).toBe("09:05");
     expect(nowHHMM(new Date("2026-07-14T14:40:00"))).toBe("14:40");
