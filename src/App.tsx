@@ -8,6 +8,7 @@ import { RecentShots } from "./components/RecentShots";
 import { HistoryView } from "./components/HistoryView";
 import { emptyHistoryQuery, type HistoryQuery } from "./utils/historyQuery";
 import { Modal } from "./components/Modal";
+import { useBackToClose } from "./hooks/useBackToClose";
 import { useShotsContext } from "./context/ShotsContext";
 import type { ShotEntry } from "./types/shot";
 import type { View } from "./types/view";
@@ -52,6 +53,11 @@ const App: React.FC = () => {
     setLoggingNew(false);
     setEditingShot(null);
   };
+
+  // On Android, Back with the sheet open would otherwise leave the app and take
+  // the half-filled form with it. Sheet only — Back from a tab still exits, since
+  // tabs (not history) are how you move between destinations here.
+  useBackToClose(sheetOpen, closeSheet);
 
   const handleAddShot = (shot: ShotEntry) => {
     addShot(shot);
