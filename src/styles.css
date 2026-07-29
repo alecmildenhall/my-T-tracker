@@ -41,13 +41,25 @@ body {
 .app-root {
   max-width: 960px;
   margin: 0 auto;
-  padding: 2.5rem 1.25rem 3rem;
+  /* Bottom padding clears the fixed tab bar (plus the iOS home indicator) so the
+     last row of content is never trapped underneath it. */
+  padding: 1.5rem 1.25rem calc(5.5rem + env(safe-area-inset-bottom, 0px));
 }
 
 .app-header {
   position: relative;
-  margin-bottom: 2rem;
+  margin-bottom: 1.25rem;
   text-align: left;
+}
+
+/* Slim, per-view title. The tagline and privacy note used to sit here on every
+   screen, costing ~100px of phone viewport; the privacy promise now lives once
+   in the footer, where it stays visible without repeating a marketing block
+   above every view. */
+.app-title {
+  font-size: 1.5rem;
+  letter-spacing: 0.01em;
+  margin: 0;
 }
 
 .settings-button {
@@ -107,22 +119,18 @@ body {
   color: var(--text-muted);
 }
 
+/* One column by default: the log form now lives in a sheet, so the main area is
+   a single readable stack (greeting → primary action → teaser, or the History
+   list) rather than the old side-by-side form/list grid. */
 .app-main {
-  display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
-  gap: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
 }
 
-@media (max-width: 800px) {
-  .app-main {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-/* Warm greeting at the top of the log view. Spans the full width above the
-   form/list grid, gentle emphasis, one source of high-contrast text. */
+/* Warm greeting at the top of the log view. Gentle emphasis, one source of
+   high-contrast text. */
 .greeting {
-  grid-column: 1 / -1;
   margin: 0;
   font-size: 1.15rem;
   font-weight: 600;
@@ -819,6 +827,225 @@ textarea {
 
 .data-status--error {
   color: var(--danger);
+}
+
+/* Bottom tab bar */
+
+.tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.25rem;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0.4rem 0.5rem calc(0.4rem + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--border-subtle);
+  /* Opaque, not translucent: content scrolls underneath and must not show
+     through and reduce the labels' contrast. */
+  background: #020617;
+}
+
+.tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-height: 52px; /* comfortable thumb target */
+  padding: 0.3rem 0.2rem;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 0.68rem;
+  font-weight: 550;
+  cursor: pointer;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.tab svg {
+  width: 22px;
+  height: 22px;
+}
+
+/* The active tab is marked by aria-current for assistive tech; colour + a soft
+   fill are the visual half of the same signal. */
+.tab[aria-current="page"] {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+@media (hover: hover) {
+  .tab:hover {
+    color: var(--text);
+  }
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Home: primary action + recent teaser */
+
+.log-cta {
+  width: 100%;
+  min-height: 52px;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.recent-shots {
+  background: radial-gradient(circle at top left, #111827, #020617 60%);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  padding: 1.1rem 1.1rem 1.25rem;
+  box-shadow: var(--shadow-soft);
+}
+
+.recent-shots__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.9rem;
+}
+
+.recent-shots__header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.recent-shots ul,
+.shot-list__items {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+/* A text-styled button for in-flow navigation ("See all", "Clear") — visually a
+   link, but a button because it changes app state rather than navigating. */
+.link-button {
+  background: transparent;
+  border: none;
+  padding: 0.35rem 0.15rem;
+  min-height: 36px;
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 550;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+}
+
+@media (hover: hover) {
+  .link-button:hover {
+    text-decoration: underline;
+  }
+}
+
+.link-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* History view */
+
+.history__controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  margin-bottom: 0.25rem;
+}
+
+.history__search input {
+  width: 100%;
+  border-radius: 999px;
+  padding-inline: 0.95rem;
+}
+
+.history__filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* The active-facet count. Filters collapse out of sight, so this badge is what
+   keeps a narrowed list from looking like an empty one. */
+.filter-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  font-weight: 650;
+}
+
+.history__filters {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.9rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-card-soft);
+}
+
+.history__count {
+  margin: 0.25rem 0 0.85rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.history__load-more {
+  width: 100%;
+  margin-top: 0.9rem;
+}
+
+/* Sheet variant of the modal (long content — the shot form) */
+
+.dialog--sheet {
+  max-width: 560px;
+  max-height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* The form brings its own card chrome; inside a sheet that would double the
+   border and shadow. */
+.dialog--sheet .shot-form {
+  background: none;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
+
+.sheet-close {
+  width: 100%;
+}
+
+/* On a phone the sheet fills the screen: a long form inside a small centred box
+   would scroll within a scroll, which is the thing sheets exist to avoid. */
+@media (max-width: 560px) {
+  .dialog-overlay--sheet {
+    padding: 0;
+    align-items: stretch;
+  }
+
+  .dialog--sheet {
+    max-width: none;
+    height: 100%;
+    border-radius: 0;
+    padding-bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
+  }
 }
 
 .visually-hidden {

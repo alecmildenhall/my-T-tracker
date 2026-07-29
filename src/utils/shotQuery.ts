@@ -149,8 +149,8 @@ export function searchShotText(shots: ShotEntry[], text: string): ShotEntry[] {
 }
 
 /** A sorted copy of `shots` (never mutates the input). "newest" negates the
- *  ascending chronological comparator (the codebase's standard spelling for
- *  newest-first — see ShotList); "oldest" uses it directly. */
+ *  ascending chronological comparator; "oldest" uses it directly (the order the
+ *  export uses for a clinical log). */
 export function sortShots(
   shots: ShotEntry[],
   order: SortOrder = "newest"

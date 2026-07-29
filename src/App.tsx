@@ -1,16 +1,38 @@
 // src/App.tsx
 import React, { useMemo, useState } from "react";
 import { ShotForm } from "./components/ShotForm";
-import { ShotList } from "./components/ShotList";
 import { Settings } from "./components/Settings";
 import { Greeting } from "./components/Greeting";
+import { TabBar } from "./components/TabBar";
+import { RecentShots } from "./components/RecentShots";
+import { HistoryView } from "./components/HistoryView";
+import { emptyHistoryQuery, type HistoryQuery } from "./utils/historyQuery";
+import { Modal } from "./components/Modal";
 import { useShotsContext } from "./context/ShotsContext";
 import type { ShotEntry } from "./types/shot";
+import type { View } from "./types/view";
+
+const SHEET_HEADING_ID = "shot-sheet-title";
+
+const VIEW_TITLES: Record<View, string> = {
+  home: "T-Shot Tracker",
+  history: "History",
+  settings: "Settings",
+};
 
 const App: React.FC = () => {
   const { shots, addShot, updateShot, deleteShot } = useShotsContext();
   const [editingShot, setEditingShot] = useState<ShotEntry | null>(null);
-  const [view, setView] = useState<"log" | "settings">("log");
+  // The log form is a sheet rather than an always-open panel on Home, so the
+  // greeting, the primary action, and the recent teaser all fit above the fold.
+  const [loggingNew, setLoggingNew] = useState(false);
+  // Always starts on Home — never "last tab used". Logging is the primary
+  // action, and reopening the app never lands on a data view in public.
+  const [view, setView] = useState<View>("home");
+  // Lifted so a trip to Home and back keeps the filter you were using. Session
+  // only: deliberately not persisted, so a fresh launch is never pre-filtered.
+  const [historyQuery, setHistoryQuery] =
+    useState<HistoryQuery>(emptyHistoryQuery);
 
   // Only edit a shot that still exists. If the one being edited disappears —
   // deleted from the list, or wiped by a backup import — editing ends on its own
@@ -24,71 +46,93 @@ const App: React.FC = () => {
     [editingShot, shots]
   );
 
-  const handleEditShot = (shot: ShotEntry) => {
-    setEditingShot(shot);
-    // Scroll to top so the form is visible
-    window.scrollTo({ top: 0, behavior: "smooth" });
+  const sheetOpen = loggingNew || activeEditingShot !== null;
+
+  const closeSheet = () => {
+    setLoggingNew(false);
+    setEditingShot(null);
+  };
+
+  const handleAddShot = (shot: ShotEntry) => {
+    addShot(shot);
+    closeSheet();
   };
 
   const handleUpdateShot = (shot: ShotEntry) => {
     updateShot(shot.id, shot);
-    setEditingShot(null);
-  };
-
-  const handleCancelEdit = () => {
-    setEditingShot(null);
+    closeSheet();
   };
 
   return (
     <div className="app-root">
       <header className="app-header">
-        {view === "log" && (
-          <button
-            type="button"
-            className="settings-button"
-            aria-label="Settings"
-            onClick={() => setView("settings")}
-          >
-            ⚙
-          </button>
-        )}
-        <h1>T-Shot Tracker</h1>
-        <p className="app-tagline">
-          Log testosterone (HRT) shots and how they feel — privately, on your
-          device.
-        </p>
-        <p className="app-privacy-note">
-          This MVP stores data only in your browser&apos;s local storage. No
-          accounts, no analytics, no servers.
-        </p>
+        <h1 className="app-title">{VIEW_TITLES[view]}</h1>
       </header>
 
-      {view === "log" ? (
+      {view === "home" && (
         <main className="app-main">
           <Greeting />
-          <ShotForm
-            onAddShot={addShot}
-            onUpdateShot={handleUpdateShot}
-            editingShot={activeEditingShot}
-            onCancelEdit={handleCancelEdit}
+          <button
+            type="button"
+            className="primary-button log-cta"
+            onClick={() => setLoggingNew(true)}
+          >
+            + Log a shot
+          </button>
+          <RecentShots shots={shots} onSeeAll={() => setView("history")} />
+        </main>
+      )}
+
+      {view === "history" && (
+        <main className="app-main">
+          <HistoryView
             shots={shots}
-          />
-          <ShotList
-            shots={shots}
+            query={historyQuery}
+            onQueryChange={setHistoryQuery}
+            onEditShot={setEditingShot}
             onDeleteShot={deleteShot}
-            onEditShot={handleEditShot}
           />
         </main>
-      ) : (
-        <Settings onBack={() => setView("log")} />
+      )}
+
+      {view === "settings" && <Settings />}
+
+      {sheetOpen && (
+        <Modal
+          labelledBy={SHEET_HEADING_ID}
+          onClose={closeSheet}
+          variant="sheet"
+        >
+          <ShotForm
+            headingId={SHEET_HEADING_ID}
+            onAddShot={handleAddShot}
+            onUpdateShot={handleUpdateShot}
+            editingShot={activeEditingShot}
+            onCancelEdit={closeSheet}
+            shots={shots}
+          />
+          {/* A new-shot sheet has no Cancel of its own (ShotForm only renders one
+              while editing), so it needs an explicit way out besides Escape. */}
+          {!activeEditingShot && (
+            <button
+              type="button"
+              className="secondary-button sheet-close"
+              onClick={closeSheet}
+            >
+              Cancel
+            </button>
+          )}
+        </Modal>
       )}
 
       <footer className="app-footer">
         <small>
-          Built with trans safety and privacy in mind. See LICENSE and
-          CODE_OF_CONDUCT for details.
+          Stored only in this browser — no accounts, no analytics, no servers.
+          Built with trans safety and privacy in mind.
         </small>
       </footer>
+
+      <TabBar view={view} onNavigate={setView} />
     </div>
   );
 };

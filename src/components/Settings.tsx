@@ -7,7 +7,10 @@ import { DataManagement } from "./DataManagement";
 import { JourneySettings } from "./JourneySettings";
 
 interface SettingsProps {
-  onBack: () => void;
+  /** Optional escape hatch. Unused once Settings is a bottom-nav destination —
+   *  the tab bar is always on screen, so a back button would be redundant
+   *  chrome — but kept for any caller that opens Settings as a sub-screen. */
+  onBack?: () => void;
 }
 
 export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
@@ -18,12 +21,15 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
 
   return (
     <section className="settings">
-      <div className="settings-header">
-        <button type="button" className="secondary-button" onClick={onBack}>
-          ← Back
-        </button>
-        <h2>Settings</h2>
-      </div>
+      {/* No "Settings" heading of its own: the app header already titles the
+          view, and repeating it would put two identical headings on the page. */}
+      {onBack && (
+        <div className="settings-header">
+          <button type="button" className="secondary-button" onClick={onBack}>
+            ← Back
+          </button>
+        </div>
+      )}
 
       <div className="settings-section">
         <h3 className="settings-section__title">Your journey</h3>

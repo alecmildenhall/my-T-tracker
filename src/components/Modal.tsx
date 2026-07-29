@@ -27,6 +27,11 @@ interface ModalProps {
    *  action removed the row that opened the dialog. Per the WAI-ARIA APG, focus
    *  should land on a logical location rather than falling to <body>. */
   fallbackFocusRef?: React.RefObject<HTMLElement | null>;
+  /** Presentation only — the behaviour (focus trap, Escape, restore) is identical.
+   *  "dialog" is the compact centred confirm box; "sheet" fills the phone screen
+   *  for long content like the shot form, where a small centred box would scroll
+   *  awkwardly inside a scrolling page. */
+  variant?: "dialog" | "sheet";
   children: React.ReactNode;
 }
 
@@ -36,6 +41,7 @@ export const Modal: React.FC<ModalProps> = ({
   initialFocusRef,
   restoreFocusRef,
   fallbackFocusRef,
+  variant = "dialog",
   children,
 }) => {
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -104,7 +110,7 @@ export const Modal: React.FC<ModalProps> = ({
     // equivalent is Escape (handled above), so no key handler is needed here.
     // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/click-events-have-key-events
     <div
-      className="dialog-overlay"
+      className={`dialog-overlay dialog-overlay--${variant}`}
       role="dialog"
       aria-modal="true"
       aria-labelledby={labelledBy}
@@ -114,7 +120,11 @@ export const Modal: React.FC<ModalProps> = ({
     >
       {/* onKeyDown here is the focus trap, not a widget interaction. */}
       {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
-      <div className="dialog" ref={dialogRef} onKeyDown={trapTab}>
+      <div
+        className={`dialog dialog--${variant}`}
+        ref={dialogRef}
+        onKeyDown={trapTab}
+      >
         {children}
       </div>
     </div>

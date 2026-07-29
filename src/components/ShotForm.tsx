@@ -14,6 +14,9 @@ interface ShotFormProps {
   onCancelEdit?: () => void;
   /** Past shots, used to suggest previously-entered values for reuse. */
   shots?: ShotEntry[];
+  /** id for the form's heading, so a containing dialog can point
+   *  `aria-labelledby` at it instead of repeating the title. */
+  headingId?: string;
 }
 
 export const ShotForm: React.FC<ShotFormProps> = ({
@@ -22,6 +25,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   editingShot,
   onCancelEdit,
   shots = [],
+  headingId,
 }) => {
   const [date, setDate] = useState<string>(todayLocalISO());
   const [dateError, setDateError] = useState<string | null>(null);
@@ -154,7 +158,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
 
   return (
     <form className="shot-form" onSubmit={handleSubmit}>
-      <h2>{editingShot ? "Edit Shot" : "Log a Shot"}</h2>
+      <h2 id={headingId}>{editingShot ? "Edit shot" : "Log a shot"}</h2>
 
       <div className="form-row">
         <label>

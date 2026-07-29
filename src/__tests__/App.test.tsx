@@ -1,11 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, within } from "@testing-library/react";
+import { describe, it, expect, beforeEach } from "vitest";
+import { render, screen, fireEvent, within, act } from "@testing-library/react";
 import App from "../App";
 import { ShotsProvider } from "../context/ShotsContext";
 import { ProfileProvider } from "../context/ProfileContext";
 import type { ShotEntry } from "../types/shot";
 import { STORAGE_KEYS } from "../storageKeys";
-import { toJson } from "../utils/exportData";
 
 // App reads both stores via context (Settings uses the profile store), so mount
 // it under the same providers main.tsx does.
@@ -18,94 +17,150 @@ const renderApp = () =>
     </ShotsProvider>
   );
 
-// Real downloads need object URLs jsdom doesn't provide; the replace path only
-// cares that the safety backup *succeeds*, so stub the download layer.
-vi.mock("../utils/download", () => ({
-  downloadTextFile: vi.fn(),
-  backupFilename: (stem: string, ext: string) => `${stem}.${ext}`,
-}));
-
 const seedShots = (shots: ShotEntry[]) =>
   localStorage.setItem(STORAGE_KEYS.shots, JSON.stringify(shots));
 
-const uploadBackup = (shots: ShotEntry[]) => {
-  const input = screen.getByLabelText("Import backup file");
-  const file = {
-    name: "backup.json",
-    type: "application/json",
-    text: () => Promise.resolve(toJson(shots)),
-  } as unknown as File;
-  fireEvent.change(input, { target: { files: [file] } });
-};
+const goTo = (tab: "Home" | "History" | "Settings") =>
+  fireEvent.click(within(screen.getByRole("navigation")).getByRole("button", { name: tab }));
 
 beforeEach(() => localStorage.clear());
 
-describe("App — import while editing", () => {
-  it("drops the in-progress edit when a backup replaces the list", async () => {
-    seedShots([{ id: "orig", date: "2026-06-01", notes: "original" }]);
+describe("App — navigation", () => {
+  it("opens on Home, never on another tab", () => {
+    seedShots([{ id: "a", date: "2026-06-01" }]);
     renderApp();
 
-    // Start editing the existing shot.
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
-    expect(
-      screen.getByRole("heading", { name: "Edit Shot" })
-    ).toBeInTheDocument();
-
-    // Go to Settings and import a backup that replaces the whole list, so the
-    // shot being edited no longer exists.
-    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
-    uploadBackup([{ id: "fresh", date: "2026-05-01" }]);
-
-    const dialog = await screen.findByRole("dialog");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Replace" }));
-
-    // Back to the log: the form must have left edit mode, so a Save can't
-    // silently no-op against the now-missing "orig" id.
-    fireEvent.click(screen.getByRole("button", { name: "← Back" }));
-
-    expect(
-      screen.getByRole("heading", { name: "Log a Shot" })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Save shot" })
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("heading", { name: "Edit Shot" })
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "T-Shot Tracker" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Log a shot/ })).toBeInTheDocument();
+    // Home is a teaser, not the full list: no filter controls here.
+    expect(screen.queryByPlaceholderText(/Search notes/)).not.toBeInTheDocument();
   });
 
-  it("drops the in-progress edit when the edited shot is deleted from the list", () => {
-    seedShots([
-      { id: "keep", date: "2026-06-01", notes: "keep me" },
-      { id: "gone", date: "2026-06-02", notes: "delete me" },
-    ]);
+  it("moves between the three tabs", () => {
     renderApp();
 
-    // Edit the shot we're about to delete.
-    const goneRow = screen.getByText("delete me").closest("li")!;
-    fireEvent.click(within(goneRow).getByRole("button", { name: "Edit" }));
-    expect(
-      screen.getByRole("heading", { name: "Edit Shot" })
-    ).toBeInTheDocument();
+    goTo("History");
+    expect(screen.getByRole("heading", { name: "History" })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/Search notes/)).toBeInTheDocument();
 
-    // Delete it from the list while its edit is open.
-    fireEvent.click(within(goneRow).getByRole("button", { name: "Delete" }));
+    goTo("Settings");
+    expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
 
-    // Editing ends on its own — no stale edit against a missing id.
-    expect(
-      screen.getByRole("heading", { name: "Log a Shot" })
-    ).toBeInTheDocument();
+    goTo("Home");
+    expect(screen.getByRole("button", { name: /Log a shot/ })).toBeInTheDocument();
+  });
 
-    // ...and the form clears, so the deleted shot's values don't linger in what
-    // is now the new-shot form (saving them would silently recreate the entry).
-    const notes = screen.getByPlaceholderText(
+  it("marks the active tab for assistive tech, not by colour alone", () => {
+    renderApp();
+    const nav = screen.getByRole("navigation");
+    expect(within(nav).getByRole("button", { name: "Home" })).toHaveAttribute(
+      "aria-current",
+      "page"
+    );
+    goTo("History");
+    expect(within(nav).getByRole("button", { name: "History" })).toHaveAttribute(
+      "aria-current",
+      "page"
+    );
+  });
+
+  it("'See all' on the Home teaser opens History", () => {
+    seedShots([{ id: "a", date: "2026-06-01" }]);
+    renderApp();
+
+    fireEvent.click(screen.getByRole("button", { name: /See all/ }));
+    expect(screen.getByPlaceholderText(/Search notes/)).toBeInTheDocument();
+  });
+});
+
+describe("App — logging via the sheet", () => {
+  it("opens the form in a dialog and closes it after saving", () => {
+    renderApp();
+
+    // The form is not inline on Home — it lives behind the primary action.
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    const sheet = screen.getByRole("dialog");
+    expect(within(sheet).getByRole("heading", { name: "Log a shot" })).toBeInTheDocument();
+
+    fireEvent.click(within(sheet).getByRole("button", { name: "Save shot" }));
+
+    // Saving dismisses the sheet and the shot lands in the teaser.
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /See all/ })).toBeInTheDocument();
+  });
+
+  it("Cancel closes the new-shot sheet without saving", () => {
+    renderApp();
+
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" })
+    );
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    // Nothing was logged, so the teaser still shows its empty state.
+    expect(screen.getByText(/No shots logged yet/)).toBeInTheDocument();
+  });
+});
+
+describe("App — editing from History", () => {
+  it("edits in a sheet over the list, leaving the list's filters underneath", () => {
+    seedShots([{ id: "a", date: "2026-06-01", notes: "original" }]);
+    renderApp();
+    goTo("History");
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const sheet = screen.getByRole("dialog");
+    expect(within(sheet).getByRole("heading", { name: "Edit shot" })).toBeInTheDocument();
+
+    const notes = within(sheet).getByPlaceholderText(
       /remember for later/i
     ) as HTMLTextAreaElement;
-    expect(notes.value).toBe("");
+    expect(notes.value).toBe("original");
 
-    // The remaining shot is untouched, and a Save now would add a fresh entry,
-    // not resurrect "delete me".
-    expect(screen.getByText("keep me")).toBeInTheDocument();
+    fireEvent.change(notes, { target: { value: "updated" } });
+    fireEvent.click(within(sheet).getByRole("button", { name: "Update shot" }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByText("updated")).toBeInTheDocument();
+  });
+
+  it("the Home teaser is read-only — no edit or delete there", () => {
+    seedShots([{ id: "a", date: "2026-06-01", notes: "only shot" }]);
+    renderApp();
+
+    expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+    // ...but the same shot is editable one tap away, in History.
+    goTo("History");
+    expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
+  });
+
+  it("drops the in-progress edit when the edited shot disappears", () => {
+    seedShots([{ id: "gone", date: "2026-06-01", notes: "delete me" }]);
+    renderApp();
+    goTo("History");
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(
+      within(screen.getByRole("dialog")).getByRole("heading", { name: "Edit shot" })
+    ).toBeInTheDocument();
+
+    // Another tab removes the shot while this one is editing it. The edit must
+    // end on its own, so a later Save can't silently no-op against a missing id.
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: STORAGE_KEYS.shots,
+          newValue: JSON.stringify([]),
+          storageArea: window.localStorage,
+        })
+      );
+    });
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByText("delete me")).not.toBeInTheDocument();
   });
 });
