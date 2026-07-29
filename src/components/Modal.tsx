@@ -5,6 +5,7 @@
 // a focus trap (Tab/Shift+Tab wrap inside), initial focus, and focus restored
 // to the opener on close.
 import React, { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useBackToClose } from "../hooks/useBackToClose";
 
 // Elements that can receive keyboard focus. Excludes tabindex="-1" (e.g. the
@@ -81,6 +82,27 @@ export const Modal: React.FC<ModalProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Lock the page behind the dialog and take it out of the accessibility tree.
+  //
+  // `aria-modal` is advisory and the Tab trap only intercepts Tab, so without
+  // `inert` a screen-reader or voice-control user can still reach and activate
+  // the tab bar rendered after this dialog — switching views underneath an open
+  // sheet. `inert` blocks focus, clicks, and AT access in one attribute.
+  //
+  // The scroll lock stops the list behind a long sheet scrolling away when the
+  // form's own scroll reaches its end, which would leave the user somewhere else
+  // entirely after cancelling.
+  useEffect(() => {
+    const root = document.getElementById("root");
+    const { overflow } = document.body.style;
+    document.body.style.overflow = "hidden";
+    root?.setAttribute("inert", "");
+    return () => {
+      document.body.style.overflow = overflow;
+      root?.removeAttribute("inert");
+    };
+  }, []);
+
   // Escape closes. Hold the latest onClose in a ref so the window listener is
   // subscribed once, not re-added on every render when callers pass a fresh
   // inline onClose. (This is React's recommended stable pattern; useEffectEvent
@@ -113,7 +135,9 @@ export const Modal: React.FC<ModalProps> = ({
     }
   };
 
-  return (
+  // Portaled to <body> so it sits OUTSIDE the app root — which is what lets the
+  // root be marked inert without disabling the dialog itself.
+  return createPortal(
     // The backdrop closes on click as a mouse convenience for the compact
     // confirm dialog; the keyboard equivalent is Escape (handled above), so no
     // key handler is needed here. Sheets opt OUT: they hold a long form, and on
@@ -141,6 +165,7 @@ export const Modal: React.FC<ModalProps> = ({
       >
         {children}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

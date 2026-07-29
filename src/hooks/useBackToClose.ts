@@ -5,13 +5,19 @@ import { useEffect, useRef } from "react";
 const OVERLAY_STATE = { overlay: true };
 
 /**
- * Drop an overlay marker left over from a previous life of the page.
+ * Drop an overlay *marker* left over from a previous life of the page.
  *
  * `history.state` survives a reload, and mobile browsers routinely discard and
  * restore a backgrounded tab. If an overlay was open at that moment the app
- * comes back with it CLOSED but the marker still on the current entry — where it
- * would silently absorb a whole Back press later. Call once at startup, before
- * any overlay can mount.
+ * comes back with it CLOSED but the marker still on the current entry, where it
+ * would make the hook's guard mistake a later real Back press for a stale
+ * traversal and decline to close.
+ *
+ * Note what this can and cannot do: the entry itself is not removable (there is
+ * no history API for that), so a Back press from that restored entry is still
+ * absorbed navigating within the app. Clearing the marker prevents the *wrong
+ * behaviour* — an overlay refusing to close — not the extra entry. Call once at
+ * startup, before any overlay can mount.
  */
 export function clearStaleOverlayEntry(): void {
   if (window.history.state?.overlay) window.history.replaceState(null, "");

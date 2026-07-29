@@ -159,7 +159,17 @@ const App: React.FC = () => {
         </small>
       </footer>
 
-      <TabBar view={view} onNavigate={setView} />
+      <TabBar
+        view={view}
+        onNavigate={(next) => {
+          setView(next);
+          // Each tab is a separate destination, so it starts at its own top.
+          // Without this you land mid-page in the new view — scrolled deep into
+          // History, tapping Settings drops you into the middle of a panel with
+          // no heading in sight.
+          window.scrollTo({ top: 0 });
+        }}
+      />
     </div>
   );
 };

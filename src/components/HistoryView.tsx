@@ -25,7 +25,7 @@ import {
   type HistoryQuery,
 } from "../utils/historyQuery";
 import { toCivilDate } from "../utils/civilDate";
-import { suggestionsFor } from "../utils/suggestions";
+import { suggestionsFor, normalizeValue } from "../utils/suggestions";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { ShotListItem } from "./ShotListItem";
 
@@ -54,6 +54,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   const [limit, setLimit] = useState(PAGE_SIZE);
   const debouncedText = useDebouncedValue(query.text, SEARCH_DEBOUNCE_MS);
   const listRef = useRef<HTMLUListElement>(null);
+  const countRef = useRef<HTMLParagraphElement>(null);
   /** Index of the first row revealed by the last "Load more"; null when the
    *  render wasn't caused by one. */
   const revealFrom = useRef<number | null>(null);
@@ -74,8 +75,14 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   // last "glute" shot (one tap away, here in History) would otherwise leave the
   // select rendering blank while still filtering, with the badge as the only
   // clue.
+  // Compared with normalizeValue, matching how filterShots itself matches: an
+  // exact comparison would list "Thigh" and "thigh" as two options that filter
+  // identically, once a later shot changes the casing suggestionsFor reports.
   const withSelected = (options: string[], selected?: string) =>
-    selected && !options.includes(selected) ? [selected, ...options] : options;
+    selected &&
+    !options.some((o) => normalizeValue(o) === normalizeValue(selected))
+      ? [selected, ...options]
+      : options;
 
   const siteOptions = useMemo(
     () => withSelected(suggestionsFor(shots, "injectionSite"), query.filter.site),
@@ -138,6 +145,18 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   const clearAll = () => {
     setLimit(PAGE_SIZE);
     onQueryChange(emptyHistoryQuery);
+  };
+
+  // Deleting unmounts the row holding the focused button, which would drop focus
+  // to <body> and strand a keyboard or screen-reader user at the top of a long
+  // list. Hand focus to the neighbouring row (or the count line, when the list
+  // empties) — the same care the sheet and "Load more" already take.
+  const handleDelete = (id: string) => {
+    const index = page.items.findIndex((s) => s.id === id);
+    const rows = listRef.current?.querySelectorAll<HTMLElement>("li");
+    const neighbour = rows?.[index + 1] ?? rows?.[index - 1] ?? null;
+    onDeleteShot(id);
+    (neighbour ?? countRef.current)?.focus();
   };
 
   return (
@@ -269,7 +288,13 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
 
       {/* Announced politely so a screen reader hears the list shrink as filters
           and search change, without interrupting typing. */}
-      <p className="history__count" role="status" aria-live="polite">
+      <p
+        className="history__count"
+        role="status"
+        aria-live="polite"
+        ref={countRef}
+        tabIndex={-1}
+      >
         {/* An empty log is not the same as a filtered-to-nothing list —
             announcing "no matching shots" on first run implies a filter is on
             when none is. Matches the empty state below. */}
@@ -293,7 +318,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
               key={shot.id}
               shot={shot}
               onEdit={onEditShot}
-              onDelete={onDeleteShot}
+              onDelete={handleDelete}
             />
           ))}
         </ul>

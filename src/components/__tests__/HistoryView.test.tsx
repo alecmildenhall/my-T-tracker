@@ -143,17 +143,88 @@ describe("HistoryView", () => {
   });
 
   it("keeps a selected facet visible after its last shot is gone", () => {
-    const one: ShotEntry[] = [{ id: "x", date: "2026-06-01", injectionSite: "glute" }];
-    const { rerender } = render(<Harness data={one} />);
+    // The harness must actually LOSE the shot for this to test anything: the
+    // filter value then no longer appears in suggestionsFor's options, which is
+    // the case withSelected exists to cover.
+    const thighShot: ShotEntry = {
+      id: "t",
+      date: "2026-06-02",
+      injectionSite: "thigh",
+    };
+    const Removable = () => {
+      const [data, setData] = useState<ShotEntry[]>([
+        { id: "x", date: "2026-06-01", injectionSite: "glute" },
+        thighShot,
+      ]);
+      const [query, setQuery] = useState<HistoryQuery>(emptyHistoryQuery);
+      return (
+        <>
+          {/* Deletes the only "glute" shot, leaving the log non-empty — so the
+              list shows "no matches", not "nothing logged". */}
+          <button type="button" onClick={() => setData([thighShot])}>
+            drop
+          </button>
+          <HistoryView
+            shots={data}
+            query={query}
+            onQueryChange={setQuery}
+            onEditShot={vi.fn()}
+            onDeleteShot={vi.fn()}
+          />
+        </>
+      );
+    };
+    render(<Removable />);
     openFilters();
     fireEvent.change(screen.getByLabelText("Site"), { target: { value: "glute" } });
+    expect(screen.getByText("Showing 1 of 1 shot")).toBeInTheDocument();
 
     // Delete lives in History, so losing the last shot using a filtered value is
-    // one tap away; the select must still show it rather than rendering blank.
-    rerender(<Harness data={one} />);
+    // one tap away; the select must still show it rather than rendering blank
+    // while the list silently shows nothing.
+    fireEvent.click(screen.getByRole("button", { name: "drop" }));
     const site = screen.getByLabelText("Site") as HTMLSelectElement;
     expect(site.value).toBe("glute");
     expect(site.selectedIndex).not.toBe(-1);
+    expect(screen.getByText(/No shots match these filters/)).toBeInTheDocument();
+  });
+
+  it("does not offer the same value twice when only its casing differs", () => {
+    // suggestionsFor keeps the most recent display form, so a casing change can
+    // make the preserved selection and the fresh option look like two choices
+    // that filter identically.
+    const Recased = () => {
+      const [data, setData] = useState<ShotEntry[]>([
+        { id: "x", date: "2026-06-01", injectionSite: "Thigh" },
+      ]);
+      const [query, setQuery] = useState<HistoryQuery>(emptyHistoryQuery);
+      return (
+        <>
+          <button
+            type="button"
+            onClick={() => setData([{ id: "y", date: "2026-06-02", injectionSite: "thigh" }])}
+          >
+            recase
+          </button>
+          <HistoryView
+            shots={data}
+            query={query}
+            onQueryChange={setQuery}
+            onEditShot={vi.fn()}
+            onDeleteShot={vi.fn()}
+          />
+        </>
+      );
+    };
+    render(<Recased />);
+    openFilters();
+    fireEvent.change(screen.getByLabelText("Site"), { target: { value: "Thigh" } });
+    fireEvent.click(screen.getByRole("button", { name: "recase" }));
+
+    const options = [...(screen.getByLabelText("Site") as HTMLSelectElement).options]
+      .map((o) => o.value)
+      .filter((v) => v !== "");
+    expect(options).toHaveLength(1);
   });
 
   it("distinguishes 'no matches' from 'nothing logged'", () => {
