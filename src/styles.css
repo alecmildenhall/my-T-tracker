@@ -923,6 +923,14 @@ textarea {
   background: var(--bg-card-soft);
 }
 
+/* The panel stays mounted (so aria-controls always resolves) and is collapsed
+   with the `hidden` attribute. The UA's `[hidden] { display: none }` is
+   origin-weaker than ANY author `display`, so without this the flex rule above
+   silently keeps it open forever. */
+.history__filters[hidden] {
+  display: none;
+}
+
 .history__count {
   margin: 0.25rem 0 0.85rem;
   font-size: 0.78rem;

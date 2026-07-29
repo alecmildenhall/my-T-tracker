@@ -2,7 +2,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import type { ShotEntry } from "../types/shot";
 import { suggestionsFor } from "../utils/suggestions";
-import { takeRecent } from "../utils/shotQuery";
 import { todayLocalISO, nowHHMM } from "../utils/datetime";
 import { toCivilDate } from "../utils/civilDate";
 import { newId } from "../utils/id";
@@ -22,7 +21,18 @@ function carryForward(shots: ShotEntry[]): {
   testosteroneEster: string;
   carrierOil: string;
 } {
-  const latest = takeRecent(shots, 1)[0];
+  // Compared on date+time ONLY, deliberately not via compareShotsChrono: that
+  // comparator breaks ties on `id`, a random UUID. Time is optional, so two
+  // shots logged the same day with no time are indistinguishable to it and the
+  // "latest" would be a coin flip — and whatever it picked would be pre-filled
+  // and then saved into the new entry. `>=` keeps the last tying element: the
+  // most recently added, which is the one the user just logged.
+  const stamp = (s: ShotEntry) => `${s.date}T${s.time ?? "00:00"}`;
+  const latest = shots.reduce<ShotEntry | undefined>(
+    (best, shot) =>
+      best === undefined || stamp(shot) >= stamp(best) ? shot : best,
+    undefined
+  );
   return {
     doseMg: latest?.doseMg !== undefined ? String(latest.doseMg) : "",
     testosteroneEster: latest?.testosteroneEster ?? "",

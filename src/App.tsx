@@ -113,7 +113,13 @@ const App: React.FC = () => {
         </main>
       )}
 
-      {view === "settings" && <Settings />}
+      {/* Same <main> wrapper as the other destinations, so every tab exposes a
+          main landmark for landmark navigation. */}
+      {view === "settings" && (
+        <main className="app-main">
+          <Settings />
+        </main>
+      )}
 
       {sheetOpen && (
         <Modal

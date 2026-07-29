@@ -124,7 +124,36 @@ describe("HistoryView", () => {
 
   it("shows the empty-log message when nothing has been logged", () => {
     render(<Harness data={[]} />);
-    expect(screen.getByText(/No shots logged yet/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/No shots logged yet\. Your data stays on this device\./)
+    ).toBeInTheDocument();
+    // The status line must not claim "no matching shots" on first run — that
+    // implies a filter is on when none is.
+    expect(screen.getByRole("status")).toHaveTextContent("No shots logged yet");
+  });
+
+  it("keeps the filter panel mounted while collapsed, for aria-controls", () => {
+    render(<Harness />);
+    const panel = document.getElementById("history-filters");
+    expect(panel).toBeInTheDocument();
+    expect(panel).toHaveAttribute("hidden");
+
+    openFilters();
+    expect(document.getElementById("history-filters")).not.toHaveAttribute("hidden");
+  });
+
+  it("keeps a selected facet visible after its last shot is gone", () => {
+    const one: ShotEntry[] = [{ id: "x", date: "2026-06-01", injectionSite: "glute" }];
+    const { rerender } = render(<Harness data={one} />);
+    openFilters();
+    fireEvent.change(screen.getByLabelText("Site"), { target: { value: "glute" } });
+
+    // Delete lives in History, so losing the last shot using a filtered value is
+    // one tap away; the select must still show it rather than rendering blank.
+    rerender(<Harness data={one} />);
+    const site = screen.getByLabelText("Site") as HTMLSelectElement;
+    expect(site.value).toBe("glute");
+    expect(site.selectedIndex).not.toBe(-1);
   });
 
   it("distinguishes 'no matches' from 'nothing logged'", () => {

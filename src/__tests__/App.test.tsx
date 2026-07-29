@@ -234,4 +234,21 @@ describe("App — the sheet protects in-progress input", () => {
     // ...while site is per-shot (rotating it is the point) and starts empty.
     expect(within(sheet).getByLabelText("Injection site")).toHaveValue("");
   });
+
+  it("carries forward deterministically when two shots share a date", () => {
+    // Time is optional, so same-day shots routinely tie. Ordering by id would
+    // decide this on a random UUID — and whatever it picked would be pre-filled
+    // and then saved into the new entry. The most recently added must win.
+    seedShots([
+      { id: "zzz-added-first", date: "2026-07-20", doseMg: 10 },
+      { id: "aaa-added-later", date: "2026-07-20", doseMg: 99 },
+    ]);
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+
+    // "aaa…" sorts before "zzz…", so an id tiebreak would have chosen 10.
+    expect(
+      within(screen.getByRole("dialog")).getByLabelText("Dose (mg)")
+    ).toHaveValue(99);
+  });
 });

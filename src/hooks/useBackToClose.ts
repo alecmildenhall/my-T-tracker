@@ -27,6 +27,19 @@ export function useBackToClose(isOpen: boolean, onClose: () => void): void {
     onCloseRef.current = onClose;
   });
 
+  // `history.state` survives a reload — and mobile browsers routinely discard
+  // and restore a backgrounded tab. If the overlay was open at that moment, the
+  // app comes back with the overlay CLOSED but our marker still on the entry.
+  // Left alone it would absorb a whole Back press later (the guard below would
+  // see an overlay entry and decline to close), so clear it once on mount.
+  useEffect(() => {
+    if (!isOpen && window.history.state?.overlay) {
+      window.history.replaceState(null, "");
+    }
+    // Mount only: a marker present at any later point is one this hook pushed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (!isOpen) return;
 

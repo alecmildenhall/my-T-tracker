@@ -228,9 +228,14 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
       {/* Announced politely so a screen reader hears the list shrink as filters
           and search change, without interrupting typing. */}
       <p className="history__count" role="status" aria-live="polite">
-        {page.total === 0
-          ? "No matching shots"
-          : `Showing ${page.items.length} of ${page.total} shot${page.total === 1 ? "" : "s"}`}
+        {/* An empty log is not the same as a filtered-to-nothing list —
+            announcing "no matching shots" on first run implies a filter is on
+            when none is. Matches the empty state below. */}
+        {shots.length === 0
+          ? "No shots logged yet"
+          : page.total === 0
+            ? "No matching shots"
+            : `Showing ${page.items.length} of ${page.total} shot${page.total === 1 ? "" : "s"}`}
       </p>
 
       {page.total === 0 ? (

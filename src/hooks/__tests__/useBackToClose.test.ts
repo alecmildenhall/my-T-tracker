@@ -72,6 +72,43 @@ describe("useBackToClose", () => {
     back.mockRestore();
   });
 
+  it("clears a marker left over from a reload so it can't eat a Back press", () => {
+    // A reload (or a mobile browser discarding and restoring a backgrounded tab)
+    // while the sheet was open brings the app back closed, but with our marker
+    // still on the current entry.
+    window.history.replaceState({ overlay: true }, "");
+
+    const { rerender } = renderHook(
+      ({ open }) => useBackToClose(open, vi.fn()),
+      { initialProps: { open: false } }
+    );
+    expect(window.history.state?.overlay).toBeUndefined();
+
+    // With the stale marker gone, reopening and pressing Back closes on the
+    // first press rather than being absorbed by the leftover entry.
+    const onClose = vi.fn();
+    rerender({ open: true } as never);
+    renderHook(() => useBackToClose(true, onClose));
+    pressBack();
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("ignores a popstate that lands on another overlay entry", () => {
+    const onClose = vi.fn();
+    renderHook(() => useBackToClose(true, onClose));
+
+    // A queued cleanup traversal catching up after the sheet was reopened pops
+    // the NEW entry and lands on one that is still ours — closing here would
+    // slam the just-opened sheet shut.
+    act(() => {
+      window.history.replaceState({ overlay: true }, "");
+      window.dispatchEvent(
+        new PopStateEvent("popstate", { state: { overlay: true } })
+      );
+    });
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it("uses the latest onClose without re-pushing an entry", () => {
     const first = vi.fn();
     const second = vi.fn();
