@@ -37,20 +37,22 @@ export const PAIN_BANDS: {
  * `painBand` is kept alongside the derived `filter.painMin`/`painMax` because the
  * select needs to remember which band is chosen — the numeric bounds alone can't
  * distinguish "no band" from a band that happens to span the same range.
+ *
+ * The page window is deliberately NOT here: it's local to the History screen.
+ * Only *what you asked for* is worth carrying across a trip to Home, and keeping
+ * it local lets the screen reset its own window during render when the settled
+ * search changes — React only permits that for a component's own state.
  */
 export interface HistoryQuery {
   text: string;
   filter: ShotFilter;
   painBand: string;
-  /** How many shots are currently revealed (grows by PAGE_SIZE). */
-  limit: number;
 }
 
 export const emptyHistoryQuery: HistoryQuery = {
   text: "",
   filter: {},
   painBand: "",
-  limit: PAGE_SIZE,
 };
 
 /**

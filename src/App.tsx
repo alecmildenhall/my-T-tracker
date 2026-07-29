@@ -8,7 +8,6 @@ import { RecentShots } from "./components/RecentShots";
 import { HistoryView } from "./components/HistoryView";
 import { emptyHistoryQuery, type HistoryQuery } from "./utils/historyQuery";
 import { Modal } from "./components/Modal";
-import { useBackToClose } from "./hooks/useBackToClose";
 import { useShotsContext } from "./context/ShotsContext";
 import type { ShotEntry } from "./types/shot";
 import type { View } from "./types/view";
@@ -61,11 +60,6 @@ const App: React.FC = () => {
     setEditingShot(null);
   };
 
-  // On Android, Back with the sheet open would otherwise leave the app and take
-  // the half-filled form with it. Sheet only — Back from a tab still exits, since
-  // tabs (not history) are how you move between destinations here.
-  useBackToClose(sheetOpen, closeSheet);
-
   const handleAddShot = (shot: ShotEntry) => {
     addShot(shot);
     closeSheet();
@@ -78,6 +72,14 @@ const App: React.FC = () => {
 
   return (
     <div className="app-root">
+      {/* The tab bar is visually at the bottom, so it is last in DOM order too
+          (as it should be) — but that leaves a keyboard user tabbing through a
+          whole page of History rows to reach Settings. A skip link jumps
+          straight there without disturbing the visual order. */}
+      <a className="skip-link" href="#main-nav">
+        Skip to navigation
+      </a>
+
       <header className="app-header">
         {/* Focusable only as a programmatic target: where focus lands if the
             sheet closes because its shot vanished, so the opener no longer

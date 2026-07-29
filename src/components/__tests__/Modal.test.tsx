@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import { useRef, useState } from "react";
 import { Modal } from "../Modal";
 
@@ -94,6 +94,28 @@ describe("Modal", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(opener).toHaveFocus();
+  });
+
+  it("gives every dialog a history entry, so Back dismisses it", () => {
+    // Wired in Modal rather than per-caller: the rename/remove confirms and the
+    // "Replace your data?" import confirm would otherwise let a reflexive Back
+    // exit the app outright — from one tap away from a destructive restore.
+    window.history.replaceState(null, "");
+    const onClose = vi.fn();
+    const { unmount } = render(
+      <Modal labelledBy="h" onClose={onClose}>
+        <h2 id="h">Replace your data?</h2>
+        <button type="button">Cancel</button>
+      </Modal>
+    );
+    expect(window.history.state?.overlay).toBe(true);
+
+    act(() => {
+      window.history.replaceState(null, "");
+      window.dispatchEvent(new PopStateEvent("popstate", { state: null }));
+    });
+    expect(onClose).toHaveBeenCalledOnce();
+    unmount();
   });
 
   it("sheet variant ignores backdrop clicks but still closes on Escape", () => {

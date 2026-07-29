@@ -235,6 +235,24 @@ describe("App — the sheet protects in-progress input", () => {
     expect(within(sheet).getByLabelText("Injection site")).toHaveValue("");
   });
 
+  it("opens the edit sheet already showing the shot's values", () => {
+    seedShots([
+      { id: "old", date: "2026-06-01", doseMg: 12, notes: "old note" },
+      { id: "new", date: "2026-07-20", doseMg: 99 },
+    ]);
+    renderApp();
+    goTo("History");
+    // The row for the older shot.
+    const row = screen.getByText("old note").closest("li")!;
+    fireEvent.click(within(row).getByRole("button", { name: "Edit" }));
+
+    // First painted render, no effect needed: showing today's date and the
+    // carried-forward dose here would flash the wrong shot before correcting.
+    const sheet = screen.getByRole("dialog");
+    expect(within(sheet).getByLabelText("Date")).toHaveValue("2026-06-01");
+    expect(within(sheet).getByLabelText("Dose (mg)")).toHaveValue(12);
+  });
+
   it("carries forward deterministically when two shots share a date", () => {
     // Time is optional, so same-day shots routinely tie. Ordering by id would
     // decide this on a random UUID — and whatever it picked would be pre-filled

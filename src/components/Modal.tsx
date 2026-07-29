@@ -5,6 +5,7 @@
 // a focus trap (Tab/Shift+Tab wrap inside), initial focus, and focus restored
 // to the opener on close.
 import React, { useEffect, useRef } from "react";
+import { useBackToClose } from "../hooks/useBackToClose";
 
 // Elements that can receive keyboard focus. Excludes tabindex="-1" (e.g. the
 // visually-hidden file input) so the trap only cycles real, reachable controls.
@@ -45,6 +46,13 @@ export const Modal: React.FC<ModalProps> = ({
   children,
 }) => {
   const dialogRef = useRef<HTMLDivElement>(null);
+
+  // Every dialog, not just the shot sheet: the rename/remove confirms and the
+  // "Replace your data?" import confirm would otherwise let a reflexive Back
+  // exit the app outright — from one tap away from a destructive restore. A
+  // mounted Modal *is* an open overlay, so wiring it here means no caller can
+  // forget. Escape (below) and Back now agree on what dismissal means.
+  useBackToClose(onClose);
 
   // Move focus into the dialog on open; restore it to the opener on close.
   useEffect(() => {

@@ -48,7 +48,7 @@ const TABS: { view: View; label: string; Icon: React.FC }[] = [
 ];
 
 export const TabBar: React.FC<TabBarProps> = ({ view, onNavigate }) => (
-  <nav className="tabbar" aria-label="Main">
+  <nav className="tabbar" id="main-nav" aria-label="Main" tabIndex={-1}>
     {TABS.map(({ view: target, label, Icon }) => {
       const current = view === target;
       return (

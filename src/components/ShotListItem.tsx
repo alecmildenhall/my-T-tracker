@@ -17,7 +17,10 @@ export const ShotListItem: React.FC<ShotListItemProps> = ({
   const timeLabel = shot.time || "—";
 
   return (
-    <li className="shot-list-item">
+    // tabIndex -1 makes the row a programmatic focus target only (never in the
+    // tab order): "Load more" sends focus to the first newly revealed row, since
+    // the button it was on may have just unmounted itself.
+    <li className="shot-list-item" tabIndex={-1}>
       <header className="shot-list-item__header">
         <div>
           <div className="shot-list-item__date">{dateLabel}</div>

@@ -983,6 +983,28 @@ textarea {
   }
 }
 
+/* Off-screen until focused, then a normal visible control — the standard skip
+   link. First in tab order, so reaching the bottom tab bar never means tabbing
+   through a full page of list rows. */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 30;
+  padding: 0.6rem 1rem;
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  border: 1px solid var(--accent);
+  color: var(--text);
+  font-size: 0.85rem;
+  text-decoration: none;
+}
+
+.skip-link:focus {
+  left: 1rem;
+  top: 1rem;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;

@@ -12,7 +12,7 @@
 // screen-reader-friendly, and right-sized for the hundreds-to-low-thousands of
 // entries a shot log realistically reaches. Virtualization can drop in later if
 // measurement ever demands it.
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { ShotEntry } from "../types/shot";
 import type { ShotFilter } from "../utils/shotQuery";
 import { queryShots } from "../utils/shotQuery";
@@ -48,7 +48,25 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   onDeleteShot,
 }) => {
   const [filtersOpen, setFiltersOpen] = useState(false);
+  // Local, not lifted: see HistoryQuery. Owning it here is also what makes the
+  // render-time reset below legal — React allows a component to adjust its OWN
+  // state during render, but updating a parent's from render is an error.
+  const [limit, setLimit] = useState(PAGE_SIZE);
   const debouncedText = useDebouncedValue(query.text, SEARCH_DEBOUNCE_MS);
+  const listRef = useRef<HTMLUListElement>(null);
+  /** Index of the first row revealed by the last "Load more"; null when the
+   *  render wasn't caused by one. */
+  const revealFrom = useRef<number | null>(null);
+
+  // Move focus to the first newly revealed row after "Load more" — the button
+  // itself may have just unmounted, and focus must not fall to <body>.
+  useEffect(() => {
+    const from = revealFrom.current;
+    revealFrom.current = null;
+    if (from === null) return;
+    const rows = listRef.current?.querySelectorAll<HTMLElement>("li");
+    rows?.[from]?.focus();
+  });
 
   // Facet options come from the user's own logged values, so the dropdowns only
   // ever offer choices that can actually match something. The currently-selected
@@ -83,24 +101,44 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
         filter: query.filter,
         text: debouncedText,
         sort: "newest",
-        page: { offset: 0, limit: query.limit },
+        page: { offset: 0, limit },
       }),
-    [shots, query.filter, query.limit, debouncedText]
+    [shots, query.filter, limit, debouncedText]
   );
 
+  // Typing must not reset the page window on every keystroke: the list is still
+  // showing results for the *old* search until the debounce settles, so an
+  // immediate reset collapses 60 visible rows to 20 of the previous results,
+  // jumping the page under the user's finger and announcing a stale count. Reset
+  // when the settled text actually changes instead. (Adjusted during render —
+  // React's pattern for state that follows changing data.)
+  const [lastSearched, setLastSearched] = useState(debouncedText);
+  if (lastSearched !== debouncedText) {
+    setLastSearched(debouncedText);
+    setLimit(PAGE_SIZE);
+  }
+
   const activeFacets = countActiveFacets(query);
-  const patch = (next: Partial<HistoryQuery>) =>
-    // Any change to the query resets the page window: keeping a grown limit
-    // across a new filter would silently reveal more than one page of results.
-    onQueryChange({ ...query, limit: PAGE_SIZE, ...next });
+  const patch = (next: Partial<HistoryQuery>) => {
+    // A facet change applies immediately, so its page window resets immediately
+    // too — keeping a grown window would reveal several pages of the new result
+    // set at once. Text is excluded: see the debounce note above.
+    if (next.text === undefined) setLimit(PAGE_SIZE);
+    onQueryChange({ ...query, ...next });
+  };
 
   const setFilter = (next: Partial<ShotFilter>) =>
     patch({ filter: { ...query.filter, ...next } });
 
-  const setPainBand = (id: string) =>
-    onQueryChange({ ...withPainBand(query, id), limit: PAGE_SIZE });
+  const setPainBand = (id: string) => {
+    setLimit(PAGE_SIZE);
+    onQueryChange(withPainBand(query, id));
+  };
 
-  const clearAll = () => onQueryChange(emptyHistoryQuery);
+  const clearAll = () => {
+    setLimit(PAGE_SIZE);
+    onQueryChange(emptyHistoryQuery);
+  };
 
   return (
     <section className="history">
@@ -121,17 +159,21 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
             className="secondary-button"
             aria-expanded={filtersOpen}
             aria-controls="history-filters"
-            // Spelled out rather than left to the visible "Filters · 2", which
-            // a screen reader would read as "Filters, 2" with no idea what the
-            // number counts.
-            aria-label={
-              activeFacets > 0 ? `Filters, ${activeFacets} active` : "Filters"
-            }
             onClick={() => setFiltersOpen((open) => !open)}
           >
+            {/* The accessible name keeps the visible word "Filters" first and
+                appends the meaning of the badge, rather than replacing the label
+                with an aria-label — a voice-control user saying what they see
+                must still match (WCAG 2.5.3 Label in Name). */}
             Filters
             {activeFacets > 0 && (
-              <span className="filter-count"> · {activeFacets}</span>
+              <>
+                <span className="filter-count" aria-hidden="true">
+                  {" "}
+                  · {activeFacets}
+                </span>
+                <span className="visually-hidden">, {activeFacets} active</span>
+              </>
             )}
           </button>
           {(activeFacets > 0 || query.text !== "") && (
@@ -245,7 +287,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
             : "No shots match these filters. Try clearing one."}
         </p>
       ) : (
-        <ul className="shot-list__items">
+        <ul className="shot-list__items" ref={listRef}>
           {page.items.map((shot) => (
             <ShotListItem
               key={shot.id}
@@ -261,7 +303,14 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
         <button
           type="button"
           className="secondary-button history__load-more"
-          onClick={() => onQueryChange({ ...query, limit: query.limit + PAGE_SIZE })}
+          onClick={() => {
+            // On the final press this button unmounts itself, which would drop
+            // focus to <body> and dump a keyboard or screen-reader user at the
+            // top of the document mid-task. Send focus to the first newly
+            // revealed row instead — the content they asked for.
+            revealFrom.current = page.items.length;
+            setLimit((current) => current + PAGE_SIZE);
+          }}
         >
           Load more
         </button>

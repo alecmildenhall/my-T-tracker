@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import { useBackToClose } from "../useBackToClose";
+import { useBackToClose, clearStaleOverlayEntry } from "../useBackToClose";
 
 beforeEach(() => {
   localStorage.clear();
@@ -16,44 +16,30 @@ const pressBack = () =>
   });
 
 describe("useBackToClose", () => {
-  it("pushes a history entry only while the overlay is open", () => {
-    const { rerender } = renderHook(
-      ({ open }) => useBackToClose(open, vi.fn()),
-      { initialProps: { open: false } }
-    );
+  it("pushes a history entry for as long as the overlay is mounted", () => {
     expect(window.history.state?.overlay).toBeUndefined();
 
-    rerender({ open: true });
+    const { unmount } = renderHook(() => useBackToClose(vi.fn()));
     expect(window.history.state?.overlay).toBe(true);
+    unmount();
   });
 
   it("closes the overlay when Back pops the entry", () => {
     const onClose = vi.fn();
-    renderHook(() => useBackToClose(true, onClose));
+    renderHook(() => useBackToClose(onClose));
 
     pressBack();
     expect(onClose).toHaveBeenCalledOnce();
   });
 
-  it("does not close while the overlay is shut — Back stays the browser's", () => {
-    const onClose = vi.fn();
-    renderHook(() => useBackToClose(false, onClose));
-
-    pressBack();
-    expect(onClose).not.toHaveBeenCalled();
-  });
-
   it("cleans its entry off the stack when closed another way", () => {
     const back = vi.spyOn(window.history, "back").mockImplementation(() => {});
-    const { rerender } = renderHook(
-      ({ open }) => useBackToClose(open, vi.fn()),
-      { initialProps: { open: true } }
-    );
+    const { unmount } = renderHook(() => useBackToClose(vi.fn()));
 
     // Escape / Cancel / backdrop / save all close without a Back press, so the
     // pushed entry must be dropped — otherwise the next Back press is swallowed
     // dismissing an overlay that is already gone.
-    rerender({ open: false });
+    unmount();
     expect(back).toHaveBeenCalledOnce();
     back.mockRestore();
   });
@@ -61,45 +47,21 @@ describe("useBackToClose", () => {
   it("does not double-pop when Back itself did the closing", () => {
     const back = vi.spyOn(window.history, "back").mockImplementation(() => {});
     const onClose = vi.fn();
-    const { rerender } = renderHook(
-      ({ open }) => useBackToClose(open, onClose),
-      { initialProps: { open: true } }
-    );
+    const { unmount } = renderHook(() => useBackToClose(onClose));
 
     pressBack(); // pops our entry and fires onClose
-    rerender({ open: false }); // the app closes the sheet in response
+    unmount(); // the app unmounts the overlay in response
     expect(back).not.toHaveBeenCalled();
     back.mockRestore();
   });
 
-  it("clears a marker left over from a reload so it can't eat a Back press", () => {
-    // A reload (or a mobile browser discarding and restoring a backgrounded tab)
-    // while the sheet was open brings the app back closed, but with our marker
-    // still on the current entry.
-    window.history.replaceState({ overlay: true }, "");
-
-    const { rerender } = renderHook(
-      ({ open }) => useBackToClose(open, vi.fn()),
-      { initialProps: { open: false } }
-    );
-    expect(window.history.state?.overlay).toBeUndefined();
-
-    // With the stale marker gone, reopening and pressing Back closes on the
-    // first press rather than being absorbed by the leftover entry.
-    const onClose = vi.fn();
-    rerender({ open: true } as never);
-    renderHook(() => useBackToClose(true, onClose));
-    pressBack();
-    expect(onClose).toHaveBeenCalled();
-  });
-
   it("ignores a popstate that lands on another overlay entry", () => {
     const onClose = vi.fn();
-    renderHook(() => useBackToClose(true, onClose));
+    renderHook(() => useBackToClose(onClose));
 
-    // A queued cleanup traversal catching up after the sheet was reopened pops
-    // the NEW entry and lands on one that is still ours — closing here would
-    // slam the just-opened sheet shut.
+    // A previous overlay's queued cleanup traversal catching up after this one
+    // opened pops the NEW entry and lands on one that is still an overlay's —
+    // closing here would slam the just-opened overlay shut.
     act(() => {
       window.history.replaceState({ overlay: true }, "");
       window.dispatchEvent(
@@ -112,14 +74,30 @@ describe("useBackToClose", () => {
   it("uses the latest onClose without re-pushing an entry", () => {
     const first = vi.fn();
     const second = vi.fn();
-    const { rerender } = renderHook(
-      ({ cb }) => useBackToClose(true, cb),
-      { initialProps: { cb: first } }
-    );
+    const { rerender } = renderHook(({ cb }) => useBackToClose(cb), {
+      initialProps: { cb: first },
+    });
     rerender({ cb: second });
 
     pressBack();
     expect(first).not.toHaveBeenCalled();
     expect(second).toHaveBeenCalledOnce();
+  });
+});
+
+describe("clearStaleOverlayEntry", () => {
+  it("drops a marker left behind by a reload or restored tab", () => {
+    // history.state survives a reload, and mobile browsers routinely discard and
+    // restore a backgrounded tab. Left in place, the marker would make the
+    // hook's guard decline to close and quietly eat a whole Back press.
+    window.history.replaceState({ overlay: true }, "");
+    clearStaleOverlayEntry();
+    expect(window.history.state?.overlay).toBeUndefined();
+  });
+
+  it("leaves a clean history alone", () => {
+    window.history.replaceState({ something: "else" }, "");
+    clearStaleOverlayEntry();
+    expect(window.history.state).toEqual({ something: "else" });
   });
 });

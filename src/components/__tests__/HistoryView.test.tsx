@@ -194,6 +194,60 @@ describe("HistoryView", () => {
     expect(screen.getByText("Showing 20 of 25 shots")).toBeInTheDocument();
   });
 
+  it("keeps the visible label inside the accessible name (WCAG 2.5.3)", () => {
+    render(<Harness />);
+    openFilters();
+    fireEvent.change(screen.getByLabelText("Site"), { target: { value: "thigh" } });
+
+    // A voice-control user says what they see ("Filters"), so the visible word
+    // must be part of the accessible name, not replaced by an aria-label.
+    const toggle = screen.getByRole("button", { name: /^Filters/ });
+    expect(toggle).toHaveTextContent("Filters · 1");
+    expect(toggle).toHaveAccessibleName("Filters, 1 active");
+  });
+
+  it("moves focus to the first newly revealed row after Load more", () => {
+    const many: ShotEntry[] = Array.from({ length: 25 }, (_, i) => ({
+      id: `s${i}`,
+      date: `2026-06-${String(i + 1).padStart(2, "0")}`,
+    }));
+    render(<Harness data={many} />);
+
+    // The final press unmounts the button itself, so focus must land on the
+    // content the user asked for rather than falling to <body>.
+    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+    const rows = screen.getAllByRole("listitem");
+    expect(rows[20]).toHaveFocus();
+    expect(document.body).not.toHaveFocus();
+  });
+
+  it("does not collapse the page window until the search settles", async () => {
+    vi.useFakeTimers();
+    try {
+      const many: ShotEntry[] = Array.from({ length: 45 }, (_, i) => ({
+        id: `s${i}`,
+        date: `2026-06-${String((i % 28) + 1).padStart(2, "0")}`,
+        notes: "keep",
+      }));
+      render(<Harness data={many} />);
+      fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+      expect(screen.getByText("Showing 40 of 45 shots")).toBeInTheDocument();
+
+      // Mid-typing the list still shows the OLD results, so collapsing to one
+      // page now would jump the page height under the user's finger and
+      // announce a stale count.
+      fireEvent.change(screen.getByPlaceholderText(/Search notes/), {
+        target: { value: "kee" },
+      });
+      expect(screen.getByText("Showing 40 of 45 shots")).toBeInTheDocument();
+
+      await settleSearch();
+      expect(screen.getByText("Showing 20 of 45 shots")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("announces the result count politely", () => {
     render(<Harness />);
     const status = screen.getByRole("status");

@@ -75,19 +75,34 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     carriedRef.current = carried;
   });
 
-  const [date, setDate] = useState<string>(todayLocalISO());
+  // Seeded from `editingShot` when there is one. The form mounts fresh each time
+  // the sheet opens, so initialising to today + carried values and letting the
+  // sync effect below correct them would paint one frame of the wrong shot —
+  // today's date and the last shot's dose, flashing before the real values.
+  const initial = editingShot;
+  const [date, setDate] = useState<string>(() => initial?.date ?? todayLocalISO());
   const [dateError, setDateError] = useState<string | null>(null);
-  const [time, setTime] = useState<string>("");
-  const [doseMg, setDoseMg] = useState<string>(() => carried.doseMg);
-  const [injectionSite, setInjectionSite] = useState<string>("");
-  const [injectionSitePosition, setInjectionSitePosition] = useState<string>("");
-  const [testosteroneEster, setTestosteroneEster] = useState<string>(
-    () => carried.testosteroneEster
+  const [time, setTime] = useState<string>(() => initial?.time ?? "");
+  const [doseMg, setDoseMg] = useState<string>(() =>
+    initial ? initial.doseMg?.toString() ?? "" : carried.doseMg
   );
-  const [carrierOil, setCarrierOil] = useState<string>(() => carried.carrierOil);
-  const [painScore, setPainScore] = useState<string>("");
-  const [mood, setMood] = useState<string>("");
-  const [notes, setNotes] = useState<string>("");
+  const [injectionSite, setInjectionSite] = useState<string>(
+    () => initial?.injectionSite ?? ""
+  );
+  const [injectionSitePosition, setInjectionSitePosition] = useState<string>(
+    () => initial?.injectionSitePosition ?? ""
+  );
+  const [testosteroneEster, setTestosteroneEster] = useState<string>(() =>
+    initial ? initial.testosteroneEster ?? "" : carried.testosteroneEster
+  );
+  const [carrierOil, setCarrierOil] = useState<string>(() =>
+    initial ? initial.carrierOil ?? "" : carried.carrierOil
+  );
+  const [painScore, setPainScore] = useState<string>(
+    () => initial?.painScore?.toString() ?? ""
+  );
+  const [mood, setMood] = useState<string>(() => initial?.mood ?? "");
+  const [notes, setNotes] = useState<string>(() => initial?.notes ?? "");
 
   // Suggestions derived from past entries — one tap to reuse a value you've
   // logged before. Shot history is the single source; nothing extra is stored.
