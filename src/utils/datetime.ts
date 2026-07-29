@@ -12,8 +12,14 @@ import { unsafeCivilDate, type CivilDate } from "./civilDate";
 
 /** Local calendar date of `d` as YYYY-MM-DD (not UTC). Provably a real date —
  *  built from padded local components — so it's branded as a `CivilDate` without
- *  re-validating. */
+ *  re-validating. Guards against an Invalid Date (e.g. `new Date("garbage")`,
+ *  whose components are all NaN): branding "NaN-NaN-NaN" would hand the type
+ *  system a value it trusts as a real date, quietly breaking the CivilDate
+ *  invariant at this producer. */
 export function localISODate(d: Date = new Date()): CivilDate {
+  if (Number.isNaN(d.getTime())) {
+    throw new RangeError("localISODate: received an Invalid Date");
+  }
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");

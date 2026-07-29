@@ -98,7 +98,8 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // but a text-field fallback (older browsers) or a paste could produce an
     // impossible date. Surface it inline rather than silently accepting or
     // dropping it, and block the save.
-    if (!toCivilDate(date)) {
+    const parsedDate = toCivilDate(date);
+    if (!parsedDate) {
       setDateError("Please enter a real calendar date (YYYY-MM-DD).");
       return;
     }
@@ -106,7 +107,10 @@ export const ShotForm: React.FC<ShotFormProps> = ({
 
     const newShot: ShotEntry = {
       id: editingShot ? editingShot.id : newId(),
-      date,
+      // Store the parsed CivilDate, not the raw input, so the value written to
+      // storage is the one the boundary validated — the parser's result is the
+      // trust boundary, not just a yes/no gate.
+      date: parsedDate,
       time: time || undefined,
       doseMg: doseMg ? Number(doseMg) : undefined,
       injectionSite: injectionSite || undefined,
