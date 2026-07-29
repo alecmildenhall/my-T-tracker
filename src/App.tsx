@@ -1,5 +1,5 @@
 // src/App.tsx
-import React, { useMemo, useState } from "react";
+import React, { useRef, useState } from "react";
 import { ShotForm } from "./components/ShotForm";
 import { Settings } from "./components/Settings";
 import { Greeting } from "./components/Greeting";
@@ -34,18 +34,25 @@ const App: React.FC = () => {
   // only: deliberately not persisted, so a fresh launch is never pre-filtered.
   const [historyQuery, setHistoryQuery] =
     useState<HistoryQuery>(emptyHistoryQuery);
+  const titleRef = useRef<HTMLHeadingElement>(null);
 
   // Only edit a shot that still exists. If the one being edited disappears —
   // deleted from the list, or wiped by a backup import — editing ends on its own
-  // instead of a later Save silently no-op'ing against a missing id. Declarative,
-  // so it covers every way the list can change.
-  const activeEditingShot = useMemo(
-    () =>
-      editingShot && shots.some((s) => s.id === editingShot.id)
-        ? editingShot
-        : null,
-    [editingShot, shots]
-  );
+  // instead of a later Save silently no-op'ing against a missing id.
+  //
+  // The dropped edit is *released*, not merely masked: leaving it in state would
+  // mean that if the id ever came back (importing a backup containing it again)
+  // the sheet would spring open unprompted over whatever tab is showing,
+  // pre-filled with pre-import values, and saving would overwrite the restored
+  // entry. Adjusted during render — React's documented pattern for state that
+  // needs to follow changing data — so the stale value is never committed and
+  // there's no flash of a sheet that is about to close.
+  const editedShotExists =
+    editingShot !== null && shots.some((s) => s.id === editingShot.id);
+  if (editingShot !== null && !editedShotExists) {
+    setEditingShot(null);
+  }
+  const activeEditingShot = editedShotExists ? editingShot : null;
 
   const sheetOpen = loggingNew || activeEditingShot !== null;
 
@@ -72,7 +79,12 @@ const App: React.FC = () => {
   return (
     <div className="app-root">
       <header className="app-header">
-        <h1 className="app-title">{VIEW_TITLES[view]}</h1>
+        {/* Focusable only as a programmatic target: where focus lands if the
+            sheet closes because its shot vanished, so the opener no longer
+            exists to restore to (WAI-ARIA APG — never drop focus to <body>). */}
+        <h1 className="app-title" ref={titleRef} tabIndex={-1}>
+          {VIEW_TITLES[view]}
+        </h1>
       </header>
 
       {view === "home" && (
@@ -108,6 +120,7 @@ const App: React.FC = () => {
           labelledBy={SHEET_HEADING_ID}
           onClose={closeSheet}
           variant="sheet"
+          fallbackFocusRef={titleRef}
         >
           <ShotForm
             headingId={SHEET_HEADING_ID}

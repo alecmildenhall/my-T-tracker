@@ -1,11 +1,34 @@
 // src/components/ShotForm.tsx
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import type { ShotEntry } from "../types/shot";
 import { suggestionsFor } from "../utils/suggestions";
+import { takeRecent } from "../utils/shotQuery";
 import { todayLocalISO, nowHHMM } from "../utils/datetime";
 import { toCivilDate } from "../utils/civilDate";
 import { newId } from "../utils/id";
 import { SuggestionChips } from "./SuggestionChips";
+
+/**
+ * The fields worth pre-filling on a new shot: dose, type of T, and carrier oil
+ * rarely change between shots, so re-entering them every time is pure friction.
+ * Everything else (time, site, position, pain, mood, notes) is genuinely
+ * per-shot — site especially, since rotating it is the point.
+ *
+ * Sourced from the most recent shot rather than remembered in state, so it holds
+ * across the sheet closing, a tab switch, or an app reload.
+ */
+function carryForward(shots: ShotEntry[]): {
+  doseMg: string;
+  testosteroneEster: string;
+  carrierOil: string;
+} {
+  const latest = takeRecent(shots, 1)[0];
+  return {
+    doseMg: latest?.doseMg !== undefined ? String(latest.doseMg) : "",
+    testosteroneEster: latest?.testosteroneEster ?? "",
+    carrierOil: latest?.carrierOil ?? "",
+  };
+}
 
 interface ShotFormProps {
   onAddShot: (shot: ShotEntry) => void;
@@ -27,14 +50,31 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   shots = [],
   headingId,
 }) => {
+  // Values that genuinely stay the same shot-to-shot start pre-filled from the
+  // last shot, so their field is already filled and their chip already selected.
+  // Reading them from history (rather than holding them in component state
+  // between saves) means they also survive closing the form, switching tabs, and
+  // reloading the app — the form is now a sheet that unmounts on every save, so
+  // in-component stickiness would silently do nothing.
+  const carried = useMemo(() => carryForward(shots), [shots]);
+  // Held in a ref so resetForm can stay identity-stable: if it changed whenever
+  // `shots` changed, the editing-sync effect below would re-run and wipe fields
+  // mid-typing.
+  const carriedRef = useRef(carried);
+  useEffect(() => {
+    carriedRef.current = carried;
+  });
+
   const [date, setDate] = useState<string>(todayLocalISO());
   const [dateError, setDateError] = useState<string | null>(null);
   const [time, setTime] = useState<string>("");
-  const [doseMg, setDoseMg] = useState<string>("");
+  const [doseMg, setDoseMg] = useState<string>(() => carried.doseMg);
   const [injectionSite, setInjectionSite] = useState<string>("");
   const [injectionSitePosition, setInjectionSitePosition] = useState<string>("");
-  const [testosteroneEster, setTestosteroneEster] = useState<string>("");
-  const [carrierOil, setCarrierOil] = useState<string>("");
+  const [testosteroneEster, setTestosteroneEster] = useState<string>(
+    () => carried.testosteroneEster
+  );
+  const [carrierOil, setCarrierOil] = useState<string>(() => carried.carrierOil);
   const [painScore, setPainScore] = useState<string>("");
   const [mood, setMood] = useState<string>("");
   const [notes, setNotes] = useState<string>("");
@@ -59,14 +99,16 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     setDate(todayLocalISO());
     setDateError(null);
     setTime("");
-    setDoseMg("");
     setInjectionSite("");
     setInjectionSitePosition("");
-    setTestosteroneEster("");
-    setCarrierOil("");
     setPainScore("");
     setMood("");
     setNotes("");
+    // Carried-forward fields reset to the last shot's values, not to empty.
+    const { doseMg, testosteroneEster, carrierOil } = carriedRef.current;
+    setDoseMg(doseMg);
+    setTestosteroneEster(testosteroneEster);
+    setCarrierOil(carrierOil);
   }, []);
 
   // Keep the form in sync with the shot being edited. Populate its fields while
@@ -132,12 +174,11 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       onAddShot(newShot);
     }
 
-    // Reset for the next shot. Keep only the values that genuinely stay the same
-    // shot-to-shot — dose, type of T, carrier oil — so their field stays filled
-    // and their chip stays selected, with no re-tapping. Everything else clears,
-    // including injection site/position (commonly rotated). Within a single shot
-    // nothing clears until save, so a value you just typed never needs
-    // re-selecting on the shot you're on. Keep the date for quick same-day logs.
+    // Clear the per-shot fields. The carried-forward ones (dose, type of T,
+    // carrier oil) are deliberately left alone: they re-derive from the shot just
+    // saved via carryForward the next time the form mounts. Normally the parent
+    // closes the sheet right after a save and this reset is moot, but it keeps
+    // the form correct for any caller that keeps it mounted.
     if (!editingShot) {
       setTime("");
       setInjectionSite("");

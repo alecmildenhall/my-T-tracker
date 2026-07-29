@@ -163,4 +163,75 @@ describe("App — editing from History", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByText("delete me")).not.toBeInTheDocument();
   });
+
+  it("does not reopen the sheet if the dropped shot's id comes back", () => {
+    const shot = { id: "gone", date: "2026-06-01", notes: "delete me" };
+    seedShots([shot]);
+    renderApp();
+    goTo("History");
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    const sync = (next: ShotEntry[]) =>
+      act(() => {
+        window.dispatchEvent(
+          new StorageEvent("storage", {
+            key: STORAGE_KEYS.shots,
+            newValue: JSON.stringify(next),
+            storageArea: window.localStorage,
+          })
+        );
+      });
+
+    sync([]); // the shot vanishes — the edit is dropped
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    // Restoring a backup that contains the same id must NOT resurrect the edit:
+    // a sheet springing open unprompted, pre-filled with pre-import values,
+    // would overwrite the restored entry on save.
+    sync([shot]);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByText("delete me")).toBeInTheDocument();
+  });
+});
+
+describe("App — the sheet protects in-progress input", () => {
+  it("ignores a backdrop click so a stray click can't discard the form", () => {
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+
+    const notes = within(screen.getByRole("dialog")).getByPlaceholderText(
+      /remember for later/i
+    );
+    fireEvent.change(notes, { target: { value: "half-filled" } });
+
+    // The overlay is most of the viewport on desktop; dismissing on click would
+    // throw away everything typed, with no undo.
+    fireEvent.click(screen.getByRole("dialog"));
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(notes).toHaveValue("half-filled");
+  });
+
+  it("carries dose, type of T, and carrier oil forward to the next shot", () => {
+    seedShots([
+      {
+        id: "prev",
+        date: "2026-06-01",
+        doseMg: 60,
+        testosteroneEster: "cypionate",
+        carrierOil: "grapeseed",
+        injectionSite: "thigh",
+      },
+    ]);
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    const sheet = screen.getByRole("dialog");
+
+    // These rarely change shot-to-shot, so they arrive pre-filled...
+    expect(within(sheet).getByLabelText("Dose (mg)")).toHaveValue(60);
+    expect(within(sheet).getByLabelText("Type of T")).toHaveValue("cypionate");
+    expect(within(sheet).getByLabelText("Carrier oil")).toHaveValue("grapeseed");
+    // ...while site is per-shot (rotating it is the point) and starts empty.
+    expect(within(sheet).getByLabelText("Injection site")).toHaveValue("");
+  });
 });

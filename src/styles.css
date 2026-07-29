@@ -62,63 +62,6 @@ body {
   margin: 0;
 }
 
-.settings-button {
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 44px;
-  height: 44px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.35rem;
-  line-height: 1;
-  background: transparent;
-  border: 1px solid var(--border-subtle);
-  border-radius: 999px;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease,
-    background-color 0.15s ease, transform 0.08s ease;
-}
-
-@media (hover: hover) {
-  .settings-button:hover {
-    color: var(--text);
-    border-color: var(--accent);
-    background: var(--surface-subtle);
-  }
-}
-.settings-button:active {
-  color: var(--text);
-  border-color: var(--accent);
-  background: var(--surface-subtle);
-  transform: scale(0.97);
-}
-
-.settings-button:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.app-header h1 {
-  font-size: 2.1rem;
-  letter-spacing: 0.02em;
-  margin: 0 0 0.4rem;
-}
-
-.app-tagline {
-  margin: 0 0 0.35rem;
-  font-size: 0.95rem;
-  color: var(--text-muted);
-}
-
-.app-privacy-note {
-  margin: 0;
-  font-size: 0.8rem;
-  color: var(--text-muted);
-}
-
 /* One column by default: the log form now lives in a sheet, so the main area is
    a single readable stack (greeting → primary action → teaser, or the History
    list) rather than the old side-by-side form/list grid. */
@@ -147,28 +90,21 @@ body {
 
 /* Cards */
 
-.shot-form,
-.shot-list {
+.shot-form {
   background: radial-gradient(circle at top left, #111827, #020617 60%);
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-subtle);
   padding: 1.25rem 1.25rem 1.5rem;
   box-shadow: var(--shadow-soft);
-}
-
-.shot-form h2,
-.shot-list h2 {
-  margin-top: 0;
-  margin-bottom: 1rem;
-  font-size: 1.1rem;
-}
-
-/* Form */
-
-.shot-form {
   display: flex;
   flex-direction: column;
   gap: 0.8rem;
+}
+
+.shot-form h2 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  font-size: 1.1rem;
 }
 
 .shot-form .secondary-button {
@@ -391,15 +327,6 @@ textarea {
 }
 
 /* Shot list */
-
-.shot-list ul {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.7rem;
-}
 
 .shot-list-item {
   padding: 0.75rem 0.85rem;
@@ -1066,7 +993,6 @@ textarea {
 @media (prefers-reduced-motion: reduce) {
   .primary-button,
   .secondary-button,
-  .settings-button,
   .suggestion-chips .chip,
   .manage-row__action,
   .manage-row__remove,
@@ -1077,7 +1003,6 @@ textarea {
 
   .primary-button:active,
   .secondary-button:active,
-  .settings-button:active,
   .suggestion-chips .chip:active,
   .manage-row__action:active,
   .manage-row__remove:active,

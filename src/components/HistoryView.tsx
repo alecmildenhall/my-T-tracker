@@ -51,15 +51,30 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   const debouncedText = useDebouncedValue(query.text, SEARCH_DEBOUNCE_MS);
 
   // Facet options come from the user's own logged values, so the dropdowns only
-  // ever offer choices that can actually match something.
-  const siteOptions = useMemo(() => suggestionsFor(shots, "injectionSite"), [shots]);
+  // ever offer choices that can actually match something. The currently-selected
+  // value is kept in the list even when no shot uses it any more — deleting the
+  // last "glute" shot (one tap away, here in History) would otherwise leave the
+  // select rendering blank while still filtering, with the badge as the only
+  // clue.
+  const withSelected = (options: string[], selected?: string) =>
+    selected && !options.includes(selected) ? [selected, ...options] : options;
+
+  const siteOptions = useMemo(
+    () => withSelected(suggestionsFor(shots, "injectionSite"), query.filter.site),
+    [shots, query.filter.site]
+  );
   const positionOptions = useMemo(
-    () => suggestionsFor(shots, "injectionSitePosition"),
-    [shots]
+    () =>
+      withSelected(
+        suggestionsFor(shots, "injectionSitePosition"),
+        query.filter.position
+      ),
+    [shots, query.filter.position]
   );
   const esterOptions = useMemo(
-    () => suggestionsFor(shots, "testosteroneEster"),
-    [shots]
+    () =>
+      withSelected(suggestionsFor(shots, "testosteroneEster"), query.filter.ester),
+    [shots, query.filter.ester]
   );
 
   const page = useMemo(
@@ -126,8 +141,9 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
           )}
         </div>
 
-        {filtersOpen && (
-          <div className="history__filters" id="history-filters">
+        {/* Always rendered, toggled with `hidden`, so the aria-controls above
+            never points at a missing element while collapsed. */}
+        <div className="history__filters" id="history-filters" hidden={!filtersOpen}>
             <div className="form-row">
               <label>
                 From
@@ -206,8 +222,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                 </select>
               </label>
             </div>
-          </div>
-        )}
+        </div>
       </div>
 
       {/* Announced politely so a screen reader hears the list shrink as filters

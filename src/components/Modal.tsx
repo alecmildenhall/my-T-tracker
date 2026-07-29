@@ -106,8 +106,13 @@ export const Modal: React.FC<ModalProps> = ({
   };
 
   return (
-    // The backdrop closes on click as a mouse convenience; the keyboard
-    // equivalent is Escape (handled above), so no key handler is needed here.
+    // The backdrop closes on click as a mouse convenience for the compact
+    // confirm dialog; the keyboard equivalent is Escape (handled above), so no
+    // key handler is needed here. Sheets opt OUT: they hold a long form, and on
+    // desktop the backdrop is most of the viewport — one stray click would throw
+    // away everything typed with no warning and no undo. Escape and the system
+    // Back gesture still close a sheet, both being deliberate acts rather than a
+    // mis-aimed click.
     // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/click-events-have-key-events
     <div
       className={`dialog-overlay dialog-overlay--${variant}`}
@@ -115,6 +120,7 @@ export const Modal: React.FC<ModalProps> = ({
       aria-modal="true"
       aria-labelledby={labelledBy}
       onClick={(e) => {
+        if (variant === "sheet") return;
         if (e.target === e.currentTarget) onClose();
       }}
     >

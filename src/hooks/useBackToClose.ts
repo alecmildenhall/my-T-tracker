@@ -7,10 +7,11 @@ import { useEffect, useRef } from "react";
  *
  * On Android, Back is a hardware button / edge swipe that fires regardless of
  * what the page wants; with no history entry of our own, its default is to
- * navigate away — which, with the log sheet open, silently discards a
- * half-filled form. Closing the topmost overlay is the near-universal
- * expectation there, so we push one throwaway history entry while the overlay is
- * open and close on `popstate` when Back pops it.
+ * navigate away from the app entirely — so with the log sheet open, a reflexive
+ * Back leaves the app *and* takes the half-filled form with it. Closing the
+ * topmost overlay is the near-universal expectation there (in native Android a
+ * dialog is back-dismissible for free), so we push one throwaway history entry
+ * while the overlay is open and close on `popstate` when Back pops it.
  *
  * Deliberately scoped to overlays only. Tab switching pushes nothing, so Back
  * from History or Settings still exits the app — tabs are the way to move
@@ -33,7 +34,15 @@ export function useBackToClose(isOpen: boolean, onClose: () => void): void {
     // whether it is still on the stack.
     window.history.pushState({ overlay: true }, "");
 
-    const onPopState = () => onCloseRef.current();
+    const onPopState = () => {
+      // Landing on another overlay entry means this pop was the cleanup's
+      // queued history.back() from a previous open catching up *after* the
+      // sheet had already been reopened — it popped the new entry, not ours.
+      // Closing here would slam the just-opened sheet shut; the entry we landed
+      // on is still ours, so a real Back press will close it next.
+      if (window.history.state?.overlay) return;
+      onCloseRef.current();
+    };
     window.addEventListener("popstate", onPopState);
 
     return () => {
