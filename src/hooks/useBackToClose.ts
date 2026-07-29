@@ -34,6 +34,19 @@ export function clearStaleOverlayEntry(): void {
  * about rebuilding navigation. No URLs and no router are involved; real
  * history/deep-link routing stays a PWA-phase decision this doesn't pre-empt.
  */
+/**
+ * A pending "remove our history entry" that has been scheduled but not yet run.
+ * Module-level because it must survive the component unmounting: the whole point
+ * is that a *new* overlay mounting can cancel it.
+ *
+ * Deferring the pop by a task, and cancelling it if another overlay opens first,
+ * is what makes this safe under React StrictMode — which mounts, unmounts, and
+ * remounts every effect in development. Popping synchronously in cleanup would
+ * race StrictMode's immediate remount and land on a non-overlay entry, closing
+ * the dialog the instant it opened.
+ */
+let pendingPop: ReturnType<typeof setTimeout> | null = null;
+
 export function useBackToClose(onClose: () => void): void {
   // Hold the latest onClose so the listener subscribes once per mount, rather
   // than re-subscribing whenever the caller passes a fresh closure.
@@ -43,14 +56,18 @@ export function useBackToClose(onClose: () => void): void {
   });
 
   useEffect(() => {
-    // The entry Back will pop.
-    window.history.pushState(OVERLAY_STATE, "");
+    if (pendingPop !== null) {
+      // A previous overlay's entry is still on the stack awaiting removal —
+      // either StrictMode's remount, or the user reopening immediately. Adopt
+      // that entry instead of stacking a second one.
+      clearTimeout(pendingPop);
+      pendingPop = null;
+    } else {
+      window.history.pushState(OVERLAY_STATE, "");
+    }
 
     const onPopState = () => {
-      // Landing on another overlay entry means this pop was a previous
-      // overlay's queued cleanup traversal catching up *after* a new overlay
-      // opened — it popped the new entry, not ours. Closing here would slam the
-      // just-opened overlay shut; a real Back press will close it next.
+      // Landing on another overlay entry means this pop was not ours to act on.
       if (window.history.state?.overlay) return;
       onCloseRef.current();
     };
@@ -60,9 +77,13 @@ export function useBackToClose(onClose: () => void): void {
       window.removeEventListener("popstate", onPopState);
       // Closing by any other route (Escape, Cancel, backdrop, saving) leaves our
       // entry on the stack; drop it so the next Back press isn't swallowed
-      // dismissing an overlay that is already gone. When Back itself did the
-      // closing, the entry is already popped and this is correctly skipped.
-      if (window.history.state?.overlay) window.history.back();
+      // dismissing an overlay that is already gone. Deferred so a remount can
+      // cancel it (see pendingPop); when Back itself did the closing, the entry
+      // is already gone and the check below skips.
+      pendingPop = setTimeout(() => {
+        pendingPop = null;
+        if (window.history.state?.overlay) window.history.back();
+      }, 0);
     };
   }, []);
 }

@@ -2,8 +2,16 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useBackToClose, clearStaleOverlayEntry } from "../useBackToClose";
 
-beforeEach(() => {
+/** Let the hook's deferred "remove our entry" task run. */
+const flushPendingPop = () => act(async () => {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+});
+
+beforeEach(async () => {
   localStorage.clear();
+  // The deferred pop is module-level state, so drain any left pending by the
+  // previous test before resetting history.
+  await flushPendingPop();
   // Reset to a known, marker-free entry between tests.
   window.history.replaceState(null, "");
 });
@@ -32,7 +40,7 @@ describe("useBackToClose", () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
-  it("cleans its entry off the stack when closed another way", () => {
+  it("cleans its entry off the stack when closed another way", async () => {
     const back = vi.spyOn(window.history, "back").mockImplementation(() => {});
     const { unmount } = renderHook(() => useBackToClose(vi.fn()));
 
@@ -40,18 +48,42 @@ describe("useBackToClose", () => {
     // pushed entry must be dropped — otherwise the next Back press is swallowed
     // dismissing an overlay that is already gone.
     unmount();
+    await flushPendingPop();
     expect(back).toHaveBeenCalledOnce();
     back.mockRestore();
   });
 
-  it("does not double-pop when Back itself did the closing", () => {
+  it("does not double-pop when Back itself did the closing", async () => {
     const back = vi.spyOn(window.history, "back").mockImplementation(() => {});
     const onClose = vi.fn();
     const { unmount } = renderHook(() => useBackToClose(onClose));
 
     pressBack(); // pops our entry and fires onClose
     unmount(); // the app unmounts the overlay in response
+    await flushPendingPop();
     expect(back).not.toHaveBeenCalled();
+    back.mockRestore();
+  });
+
+  it("reuses the pending entry when an overlay remounts immediately", async () => {
+    // This is the StrictMode case (mount → unmount → remount in development),
+    // and also a user reopening at once. Popping synchronously in cleanup would
+    // race the remount and land on a non-overlay entry, closing the dialog the
+    // instant it opened.
+    const back = vi.spyOn(window.history, "back").mockImplementation(() => {});
+    const onClose = vi.fn();
+    const first = renderHook(() => useBackToClose(vi.fn()));
+    const lengthWithOneOverlay = window.history.length;
+    first.unmount();
+    const second = renderHook(() => useBackToClose(onClose));
+    await flushPendingPop();
+
+    // No second entry stacked, nothing popped, and the overlay is still open.
+    expect(window.history.length).toBe(lengthWithOneOverlay);
+    expect(back).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(window.history.state?.overlay).toBe(true);
+    second.unmount();
     back.mockRestore();
   });
 

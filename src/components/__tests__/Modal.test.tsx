@@ -96,10 +96,14 @@ describe("Modal", () => {
     expect(opener).toHaveFocus();
   });
 
-  it("gives every dialog a history entry, so Back dismisses it", () => {
+  it("gives every dialog a history entry, so Back dismisses it", async () => {
     // Wired in Modal rather than per-caller: the rename/remove confirms and the
     // "Replace your data?" import confirm would otherwise let a reflexive Back
     // exit the app outright — from one tap away from a destructive restore.
+    // Drain any deferred entry-removal left pending by an earlier test first.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
     window.history.replaceState(null, "");
     const onClose = vi.fn();
     const { unmount } = render(
