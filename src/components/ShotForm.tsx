@@ -40,6 +40,41 @@ function carryForward(shots: ShotEntry[]): {
   };
 }
 
+/**
+ * The raw field values of an in-progress new shot, kept verbatim (strings, as
+ * typed) so restoring is byte-identical to what the user left behind — including
+ * a half-typed number that isn't a valid entry yet.
+ */
+export interface ShotDraft {
+  date: string;
+  time: string;
+  doseMg: string;
+  injectionSite: string;
+  injectionSitePosition: string;
+  testosteroneEster: string;
+  carrierOil: string;
+  painScore: string;
+  mood: string;
+  notes: string;
+}
+
+/** A brand-new form: today's date, everything else empty. Carried-forward values
+ *  are layered on top by the caller. */
+function freshDraft(): ShotDraft {
+  return {
+    date: todayLocalISO(),
+    time: "",
+    doseMg: "",
+    injectionSite: "",
+    injectionSitePosition: "",
+    testosteroneEster: "",
+    carrierOil: "",
+    painScore: "",
+    mood: "",
+    notes: "",
+  };
+}
+
 interface ShotFormProps {
   onAddShot: (shot: ShotEntry) => void;
   onUpdateShot?: (shot: ShotEntry) => void;
@@ -50,6 +85,11 @@ interface ShotFormProps {
   /** id for the form's heading, so a containing dialog can point
    *  `aria-labelledby` at it instead of repeating the title. */
   headingId?: string;
+  /** A previously interrupted new-shot entry to restore. Ignored while editing. */
+  draft?: ShotDraft | null;
+  /** Reports the in-progress values when the form goes away, so dismissing the
+   *  sheet never destroys typing. `null` means "nothing worth keeping". */
+  onDraftChange?: (draft: ShotDraft | null) => void;
 }
 
 export const ShotForm: React.FC<ShotFormProps> = ({
@@ -59,6 +99,8 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   onCancelEdit,
   shots = [],
   headingId,
+  draft,
+  onDraftChange,
 }) => {
   // Values that genuinely stay the same shot-to-shot start pre-filled from the
   // last shot, so their field is already filled and their chip already selected.
@@ -79,30 +121,45 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   // the sheet opens, so initialising to today + carried values and letting the
   // sync effect below correct them would paint one frame of the wrong shot —
   // today's date and the last shot's dose, flashing before the real values.
+  // Precedence: the shot being edited, then a restored draft, then a fresh form
+  // (today + carried-forward values). A draft only ever applies to a new shot.
   const initial = editingShot;
-  const [date, setDate] = useState<string>(() => initial?.date ?? todayLocalISO());
+  const start: ShotDraft = useMemo(
+    () =>
+      initial
+        ? {
+            date: initial.date,
+            time: initial.time ?? "",
+            doseMg: initial.doseMg?.toString() ?? "",
+            injectionSite: initial.injectionSite ?? "",
+            injectionSitePosition: initial.injectionSitePosition ?? "",
+            testosteroneEster: initial.testosteroneEster ?? "",
+            carrierOil: initial.carrierOil ?? "",
+            painScore: initial.painScore?.toString() ?? "",
+            mood: initial.mood ?? "",
+            notes: initial.notes ?? "",
+          }
+        : draft ?? { ...freshDraft(), ...carried },
+    // Mount-time seed only; later changes flow through the sync effect below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
+  const [date, setDate] = useState<string>(start.date);
   const [dateError, setDateError] = useState<string | null>(null);
-  const [time, setTime] = useState<string>(() => initial?.time ?? "");
-  const [doseMg, setDoseMg] = useState<string>(() =>
-    initial ? initial.doseMg?.toString() ?? "" : carried.doseMg
-  );
-  const [injectionSite, setInjectionSite] = useState<string>(
-    () => initial?.injectionSite ?? ""
-  );
+  const [time, setTime] = useState<string>(start.time);
+  const [doseMg, setDoseMg] = useState<string>(start.doseMg);
+  const [injectionSite, setInjectionSite] = useState<string>(start.injectionSite);
   const [injectionSitePosition, setInjectionSitePosition] = useState<string>(
-    () => initial?.injectionSitePosition ?? ""
+    start.injectionSitePosition
   );
-  const [testosteroneEster, setTestosteroneEster] = useState<string>(() =>
-    initial ? initial.testosteroneEster ?? "" : carried.testosteroneEster
+  const [testosteroneEster, setTestosteroneEster] = useState<string>(
+    start.testosteroneEster
   );
-  const [carrierOil, setCarrierOil] = useState<string>(() =>
-    initial ? initial.carrierOil ?? "" : carried.carrierOil
-  );
-  const [painScore, setPainScore] = useState<string>(
-    () => initial?.painScore?.toString() ?? ""
-  );
-  const [mood, setMood] = useState<string>(() => initial?.mood ?? "");
-  const [notes, setNotes] = useState<string>(() => initial?.notes ?? "");
+  const [carrierOil, setCarrierOil] = useState<string>(start.carrierOil);
+  const [painScore, setPainScore] = useState<string>(start.painScore);
+  const [mood, setMood] = useState<string>(start.mood);
+  const [notes, setNotes] = useState<string>(start.notes);
 
   // Suggestions derived from past entries — one tap to reuse a value you've
   // logged before. Shot history is the single source; nothing extra is stored.
@@ -136,30 +193,48 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     setCarrierOil(carrierOil);
   }, []);
 
-  // Keep the form in sync with the shot being edited. Populate its fields while
-  // editing; clear back to a fresh "Log a Shot" form when editing ends — which
-  // includes the shot vanishing out from under us (deleted from the list, or
-  // wiped by a backup import, so the parent drops it to null). Without the reset
-  // the deleted shot's values would linger in what is now the new-shot form, and
-  // saving would silently recreate the entry the user just removed.
-  useEffect(() => {
-    if (editingShot) {
-      /* eslint-disable react-hooks/set-state-in-effect */
-      setDate(editingShot.date);
-      setTime(editingShot.time || "");
-      setDoseMg(editingShot.doseMg?.toString() || "");
-      setInjectionSite(editingShot.injectionSite || "");
-      setInjectionSitePosition(editingShot.injectionSitePosition || "");
-      setTestosteroneEster(editingShot.testosteroneEster || "");
-      setCarrierOil(editingShot.carrierOil || "");
-      setPainScore(editingShot.painScore?.toString() ?? "");
-      setMood(editingShot.mood || "");
-      setNotes(editingShot.notes || "");
-      /* eslint-enable react-hooks/set-state-in-effect */
-    } else {
-      resetForm();
-    }
-  }, [editingShot, resetForm]);
+  // NOTE: there is deliberately no "sync the form to editingShot" effect. The
+  // state above is seeded once at mount, and the parent gives this component a
+  // key that changes with the shot being edited, so switching shots remounts it
+  // with a fresh seed. An effect doing the same job re-ran under StrictMode's
+  // development double-invoke and wiped a restored draft; remounting is both
+  // simpler and immune to that.
+
+  // Report the in-progress values when the form goes away, so dismissing the
+  // sheet (Escape, the Android Back gesture) never destroys typing — reopening
+  // restores it. Saving and an explicit Discard are the deliberate acts that
+  // clear it, and the parent decides which happened.
+  const current: ShotDraft = {
+    date,
+    time,
+    doseMg,
+    injectionSite,
+    injectionSitePosition,
+    testosteroneEster,
+    carrierOil,
+    painScore,
+    mood,
+    notes,
+  };
+  const liveRef = useRef({ current, editingShot, onDraftChange });
+  liveRef.current = { current, editingShot, onDraftChange };
+  useEffect(
+    () => () => {
+      const { current: values, editingShot: editing, onDraftChange: report } =
+        liveRef.current;
+      if (editing || !report) return;
+      // An untouched form is nothing worth restoring — comparing against the
+      // same baseline it was seeded from means carried-forward values alone
+      // don't count as a draft. This also makes StrictMode's simulated unmount
+      // a no-op on a freshly opened form.
+      const baseline: ShotDraft = { ...freshDraft(), ...carriedRef.current };
+      const touched = (Object.keys(values) as (keyof ShotDraft)[]).some(
+        (k) => values[k] !== baseline[k]
+      );
+      report(touched ? values : null);
+    },
+    []
+  );
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();

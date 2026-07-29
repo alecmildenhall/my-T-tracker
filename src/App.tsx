@@ -1,6 +1,6 @@
 // src/App.tsx
 import React, { useRef, useState } from "react";
-import { ShotForm } from "./components/ShotForm";
+import { ShotForm, type ShotDraft } from "./components/ShotForm";
 import { Settings } from "./components/Settings";
 import { Greeting } from "./components/Greeting";
 import { TabBar } from "./components/TabBar";
@@ -34,6 +34,7 @@ const App: React.FC = () => {
   const [historyQuery, setHistoryQuery] =
     useState<HistoryQuery>(emptyHistoryQuery);
   const titleRef = useRef<HTMLHeadingElement>(null);
+  const [draft, setDraft] = useState<ShotDraft | null>(null);
 
   // Only edit a shot that still exists. If the one being edited disappears —
   // deleted from the list, or wiped by a backup import — editing ends on its own
@@ -60,9 +61,26 @@ const App: React.FC = () => {
     setEditingShot(null);
   };
 
+  // Dismissing the sheet (Escape, the Android Back gesture) keeps whatever was
+  // typed and restores it next time — chosen over a "discard?" confirm so an
+  // accidental edge-swipe costs nothing and there is no extra decision to
+  // dismiss. Saving and an explicit Cancel are the deliberate acts that throw
+  // the draft away; this ref tells the unmount report which one happened.
+  const discardDraft = useRef(false);
+
+  const handleDraftChange = (next: ShotDraft | null) => {
+    setDraft(discardDraft.current ? null : next);
+    discardDraft.current = false;
+  };
+
+  const discardAndClose = () => {
+    discardDraft.current = true;
+    closeSheet();
+  };
+
   const handleAddShot = (shot: ShotEntry) => {
     addShot(shot);
-    closeSheet();
+    discardAndClose();
   };
 
   const handleUpdateShot = (shot: ShotEntry) => {
@@ -131,22 +149,29 @@ const App: React.FC = () => {
           fallbackFocusRef={titleRef}
         >
           <ShotForm
+            // Remount on a change of subject, so the form re-seeds from the new
+            // shot (or from a fresh/draft state) rather than needing an effect
+            // to sync it — see the note in ShotForm.
+            key={activeEditingShot?.id ?? "new"}
             headingId={SHEET_HEADING_ID}
             onAddShot={handleAddShot}
             onUpdateShot={handleUpdateShot}
             editingShot={activeEditingShot}
             onCancelEdit={closeSheet}
             shots={shots}
+            draft={draft}
+            onDraftChange={handleDraftChange}
           />
           {/* A new-shot sheet has no Cancel of its own (ShotForm only renders one
-              while editing), so it needs an explicit way out besides Escape. */}
+              while editing), so it needs an explicit way out besides Escape.
+              Cancel means "throw this away" — unlike Escape/Back, which keep it. */}
           {!activeEditingShot && (
             <button
               type="button"
               className="secondary-button sheet-close"
-              onClick={closeSheet}
+              onClick={discardAndClose}
             >
-              Cancel
+              Discard
             </button>
           )}
         </Modal>

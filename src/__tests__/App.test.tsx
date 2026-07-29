@@ -5,6 +5,7 @@ import { ShotsProvider } from "../context/ShotsContext";
 import { ProfileProvider } from "../context/ProfileContext";
 import type { ShotEntry } from "../types/shot";
 import { STORAGE_KEYS } from "../storageKeys";
+import { todayLocalISO } from "../utils/datetime";
 
 // App reads both stores via context (Settings uses the profile store), so mount
 // it under the same providers main.tsx does.
@@ -91,17 +92,92 @@ describe("App — logging via the sheet", () => {
     expect(screen.getByRole("button", { name: /See all/ })).toBeInTheDocument();
   });
 
-  it("Cancel closes the new-shot sheet without saving", () => {
+  it("Discard closes the new-shot sheet without saving", () => {
     renderApp();
 
     fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" })
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Discard" })
     );
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     // Nothing was logged, so the teaser still shows its empty state.
     expect(screen.getByText(/No shots logged yet/)).toBeInTheDocument();
+  });
+});
+
+describe("App — an interrupted entry is not lost", () => {
+  const openSheet = () =>
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+  const notesField = () =>
+    within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i);
+
+  it("restores what was typed when the sheet is dismissed with Escape", () => {
+    renderApp();
+    openSheet();
+    fireEvent.change(notesField(), { target: { value: "half-written" } });
+
+    // Escape and the Android Back gesture are easy to fire by accident on a long
+    // form, so they keep the entry rather than destroying it.
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    openSheet();
+    expect(notesField()).toHaveValue("half-written");
+  });
+
+  it("Discard throws the entry away, so the next sheet is blank", () => {
+    renderApp();
+    openSheet();
+    fireEvent.change(notesField(), { target: { value: "not wanted" } });
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Discard" })
+    );
+
+    openSheet();
+    expect(notesField()).toHaveValue("");
+  });
+
+  it("saving clears the draft", () => {
+    renderApp();
+    openSheet();
+    fireEvent.change(notesField(), { target: { value: "logged for real" } });
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+    );
+    expect(screen.getByText("logged for real")).toBeInTheDocument();
+
+    openSheet();
+    expect(notesField()).toHaveValue("");
+  });
+
+  it("does not treat an untouched form as a draft", () => {
+    seedShots([
+      { id: "prev", date: "2026-06-01", doseMg: 60, testosteroneEster: "cypionate" },
+    ]);
+    renderApp();
+    openSheet();
+    // Only the carried-forward values are present — nothing the user typed.
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    openSheet();
+    const sheet = screen.getByRole("dialog");
+    expect(within(sheet).getByLabelText("Dose (mg)")).toHaveValue(60);
+    expect(within(sheet).getByLabelText("Date")).toHaveValue(todayLocalISO());
+  });
+
+  it("keeps the edit sheet out of the draft system", () => {
+    seedShots([{ id: "a", date: "2026-06-01", notes: "original" }]);
+    renderApp();
+    goTo("History");
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.change(notesField(), { target: { value: "abandoned edit" } });
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    // An abandoned edit must not leak into the next NEW shot.
+    goTo("Home");
+    openSheet();
+    expect(notesField()).toHaveValue("");
   });
 });
 
