@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, act } from "@testing-library/react";
+import { render, screen, fireEvent, act, within } from "@testing-library/react";
 import { useState } from "react";
 import { HistoryView } from "../HistoryView";
 import {
@@ -69,6 +69,61 @@ describe("HistoryView", () => {
     openFilters();
     fireEvent.change(screen.getByLabelText("Site"), { target: { value: "thigh" } });
     expect(screen.getByText("Showing 2 of 2 shots")).toBeInTheDocument();
+  });
+
+  it("filters by an inclusive date range from the picker", () => {
+    render(<Harness />);
+    openFilters();
+
+    fireEvent.change(screen.getByLabelText("From"), { target: { value: "2026-06-15" } });
+    expect(screen.getByText("Showing 2 of 2 shots")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("To"), { target: { value: "2026-06-15" } });
+    // Both bounds inclusive, so the 15th itself is the only match.
+    expect(screen.getByText("Showing 1 of 1 shot")).toBeInTheDocument();
+    expect(screen.getByText("quite sore")).toBeInTheDocument();
+  });
+
+  it("treats a cleared date bound as no constraint", () => {
+    render(<Harness />);
+    openFilters();
+    const from = screen.getByLabelText("From");
+
+    fireEvent.change(from, { target: { value: "2026-07-01" } });
+    expect(screen.getByText("Showing 1 of 1 shot")).toBeInTheDocument();
+
+    // Emptying the picker (or a partially-typed, impossible date) must restore
+    // the full list rather than filtering on a bad bound.
+    fireEvent.change(from, { target: { value: "" } });
+    expect(screen.getByText("Showing 3 of 3 shots")).toBeInTheDocument();
+  });
+
+  it("filters by position and by type of T", () => {
+    const shots2: ShotEntry[] = [
+      { id: "a", date: "2026-06-01", injectionSitePosition: "left", testosteroneEster: "cypionate" },
+      { id: "b", date: "2026-06-02", injectionSitePosition: "right", testosteroneEster: "enanthate" },
+    ];
+    render(<Harness data={shots2} />);
+    openFilters();
+
+    fireEvent.change(screen.getByLabelText("Position"), { target: { value: "left" } });
+    expect(screen.getByText("Showing 1 of 1 shot")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Position"), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("Type of T"), { target: { value: "enanthate" } });
+    expect(screen.getByText("Showing 1 of 1 shot")).toBeInTheDocument();
+  });
+
+  it("combines a date range with a facet", () => {
+    render(<Harness />);
+    openFilters();
+    fireEvent.change(screen.getByLabelText("From"), { target: { value: "2026-06-10" } });
+    fireEvent.change(screen.getByLabelText("Site"), { target: { value: "thigh" } });
+    // 06-15 is glute and 06-01 is out of range, leaving only 07-01 (thigh).
+    expect(screen.getByText("Showing 1 of 1 shot")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Filters, 2 active" })
+    ).toBeInTheDocument();
   });
 
   it("filters pain by band rather than a raw 0–10 range", () => {
@@ -317,6 +372,59 @@ describe("HistoryView", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("hands focus to a neighbouring row when one is deleted", () => {
+    // Deleting unmounts the row holding the focused button; without a handoff
+    // focus falls to <body> and a keyboard user is stranded at the top of a long
+    // list.
+    const Deletable = () => {
+      const [data, setData] = useState<ShotEntry[]>(shots);
+      const [query, setQuery] = useState<HistoryQuery>(emptyHistoryQuery);
+      return (
+        <HistoryView
+          shots={data}
+          query={query}
+          onQueryChange={setQuery}
+          onEditShot={vi.fn()}
+          onDeleteShot={(id) => setData((cur) => cur.filter((s) => s.id !== id))}
+        />
+      );
+    };
+    render(<Deletable />);
+
+    const rows = screen.getAllByRole("listitem");
+    const middle = rows[1];
+    const del = within(middle).getByRole("button", { name: "Delete" });
+    del.focus();
+    fireEvent.click(del);
+
+    expect(document.body).not.toHaveFocus();
+    expect(document.activeElement).toHaveClass("shot-list-item");
+  });
+
+  it("falls back to the count line when the last row is deleted", () => {
+    const One = () => {
+      const [data, setData] = useState<ShotEntry[]>([
+        { id: "only", date: "2026-06-01", notes: "last one" },
+      ]);
+      const [query, setQuery] = useState<HistoryQuery>(emptyHistoryQuery);
+      return (
+        <HistoryView
+          shots={data}
+          query={query}
+          onQueryChange={setQuery}
+          onEditShot={vi.fn()}
+          onDeleteShot={(id) => setData((cur) => cur.filter((s) => s.id !== id))}
+        />
+      );
+    };
+    render(<One />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    // No rows left to receive focus, so it lands on the status line rather than
+    // <body>.
+    expect(document.activeElement).toHaveClass("history__count");
   });
 
   it("announces the result count politely", () => {

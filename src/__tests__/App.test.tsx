@@ -103,6 +103,17 @@ describe("App — logging via the sheet", () => {
     expect(screen.getByRole("button", { name: /See all/ })).toBeInTheDocument();
   });
 
+  it("puts initial focus on the first field, not on Close", () => {
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+
+    // Landing on Close would mean a stray Enter dismisses the form just opened;
+    // a data-entry dialog should start on data entry.
+    expect(
+      within(screen.getByRole("dialog")).getByLabelText("Date")
+    ).toHaveFocus();
+  });
+
   it("the top-bar close dismisses without saving", async () => {
     renderApp();
 

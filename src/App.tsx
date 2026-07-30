@@ -34,6 +34,9 @@ const App: React.FC = () => {
   const [historyQuery, setHistoryQuery] =
     useState<HistoryQuery>(emptyHistoryQuery);
   const titleRef = useRef<HTMLHeadingElement>(null);
+  // Initial focus goes to the first field, not the sheet's own Close button —
+  // landing on Close means a stray Enter dismisses the form you just opened.
+  const dateFieldRef = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState<ShotDraft | null>(null);
 
   // Only edit a shot that still exists. If the one being edited disappears —
@@ -166,6 +169,7 @@ const App: React.FC = () => {
           onClose={closeSheet}
           variant="sheet"
           closing={closing}
+          initialFocusRef={dateFieldRef}
           fallbackFocusRef={titleRef}
         >
           <ShotForm
@@ -181,6 +185,7 @@ const App: React.FC = () => {
             shots={shots}
             draft={draft}
             onDraftChange={handleDraftChange}
+            firstFieldRef={dateFieldRef}
           />
         </Modal>
       )}

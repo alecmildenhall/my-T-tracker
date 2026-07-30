@@ -122,6 +122,38 @@ describe("Modal", () => {
     unmount();
   });
 
+  it("starts the sheet off-screen so it has somewhere to animate from", () => {
+    // Without a first paint in the closed state the browser has nothing to
+    // transition, and the sheet would simply appear.
+    render(
+      <Modal labelledBy="s" onClose={vi.fn()} variant="sheet">
+        <h2 id="s">Sheet</h2>
+      </Modal>
+    );
+    expect(screen.getByRole("dialog")).toHaveClass("is-closed");
+  });
+
+  it("marks the sheet closing so the exit transition can play", () => {
+    render(
+      <Modal labelledBy="s" onClose={vi.fn()} variant="sheet" closing>
+        <h2 id="s">Sheet</h2>
+      </Modal>
+    );
+    const overlay = screen.getByRole("dialog");
+    expect(overlay).toHaveClass("is-closing");
+    expect(overlay).toHaveClass("is-closed");
+  });
+
+  it("does not put a compact confirm dialog through the sheet animation", () => {
+    render(
+      <Modal labelledBy="d" onClose={vi.fn()}>
+        <h2 id="d">Remove this?</h2>
+      </Modal>
+    );
+    // The animation is styled per-variant; a confirm box appears at once.
+    expect(screen.getByRole("dialog")).toHaveClass("dialog-overlay--dialog");
+  });
+
   it("sheet variant ignores backdrop clicks but still closes on Escape", () => {
     const onClose = vi.fn();
     render(

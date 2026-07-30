@@ -82,20 +82,43 @@ export const Modal: React.FC<ModalProps> = ({
   // forget. Escape (below) and Back now agree on what dismissal means.
   useBackToClose(onClose);
 
-  // Move focus into the dialog on open; restore it to the opener on close.
+  // Focus management and the page lock live in ONE effect, deliberately.
+  //
+  // `aria-modal` is advisory and the Tab trap only intercepts Tab, so without
+  // `inert` a screen-reader or voice-control user can still reach and activate
+  // the tab bar rendered after this dialog — switching views underneath an open
+  // sheet. `inert` blocks focus, clicks, and AT access in one attribute. The
+  // scroll lock stops the list behind a long sheet scrolling away when the
+  // form's own scroll reaches its end, leaving the user somewhere else on close.
+  //
+  // They are combined because the ORDER of the teardown matters: `inert` makes
+  // its whole subtree unfocusable, so restoring focus to the opener before
+  // lifting inert silently fails and focus lands nowhere useful. Splitting these
+  // into two effects made that ordering an accident of declaration order — and
+  // jsdom ignores `inert` entirely, so no unit test would notice.
   useEffect(() => {
+    const root = document.getElementById("root");
     const previouslyFocused = document.activeElement as HTMLElement | null;
     // The restore target (a persistent opener like the Import button, or else
     // whatever had focus) is captured now, at open, so the cleanup doesn't read
     // a ref that may have changed.
     const restoreTarget = restoreFocusRef?.current ?? previouslyFocused;
     const fallbackTarget = fallbackFocusRef?.current ?? null;
+
+    const { overflow } = document.body.style;
+    document.body.style.overflow = "hidden";
+    root?.setAttribute("inert", "");
+
     const target =
       initialFocusRef?.current ??
       dialogRef.current?.querySelector<HTMLElement>(FOCUSABLE) ??
       null;
     target?.focus();
+
     return () => {
+      // Lift inert FIRST, or the focus calls below hit an unfocusable subtree.
+      root?.removeAttribute("inert");
+      document.body.style.overflow = overflow;
       // If the opener was removed while the dialog was open (a confirm deleted
       // its row), focusing it is a no-op that drops focus to <body>; fall back to
       // a logical location instead.
@@ -107,27 +130,6 @@ export const Modal: React.FC<ModalProps> = ({
     };
     // Mount/unmount only — the refs are read at open and close respectively.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Lock the page behind the dialog and take it out of the accessibility tree.
-  //
-  // `aria-modal` is advisory and the Tab trap only intercepts Tab, so without
-  // `inert` a screen-reader or voice-control user can still reach and activate
-  // the tab bar rendered after this dialog — switching views underneath an open
-  // sheet. `inert` blocks focus, clicks, and AT access in one attribute.
-  //
-  // The scroll lock stops the list behind a long sheet scrolling away when the
-  // form's own scroll reaches its end, which would leave the user somewhere else
-  // entirely after cancelling.
-  useEffect(() => {
-    const root = document.getElementById("root");
-    const { overflow } = document.body.style;
-    document.body.style.overflow = "hidden";
-    root?.setAttribute("inert", "");
-    return () => {
-      document.body.style.overflow = overflow;
-      root?.removeAttribute("inert");
-    };
   }, []);
 
   // Escape closes. Hold the latest onClose in a ref so the window listener is

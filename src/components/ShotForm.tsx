@@ -93,6 +93,9 @@ interface ShotFormProps {
   /** Reports the in-progress values when the form goes away, so dismissing the
    *  sheet never destroys typing. `null` means "nothing worth keeping". */
   onDraftChange?: (draft: ShotDraft | null) => void;
+  /** Attached to the first field, so a containing dialog can put initial focus
+   *  on data entry rather than on its own Close button. */
+  firstFieldRef?: React.Ref<HTMLInputElement>;
 }
 
 export const ShotForm: React.FC<ShotFormProps> = ({
@@ -104,6 +107,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   headingId,
   draft,
   onDraftChange,
+  firstFieldRef,
 }) => {
   // Values that genuinely stay the same shot-to-shot start pre-filled from the
   // last shot, so their field is already filled and their chip already selected.
@@ -328,6 +332,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
         <label>
           Date
           <input
+            ref={firstFieldRef}
             type="date"
             value={date}
             onChange={(e) => {
