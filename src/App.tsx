@@ -43,7 +43,22 @@ const App: React.FC = () => {
   // either mode — the ✕ looks identical for a new shot and an edit, so it had
   // better behave the same. Session-only, like `draft`: a fresh launch starts
   // clean rather than resurrecting week-old half-edits.
-  const [editDrafts, setEditDrafts] = useState<Record<string, ShotDraft>>({});
+  // Each entry remembers the exact shot object it was parked against, not just
+  // the id. An id alone is not enough: importing a backup exported from this same
+  // device brings the same ids back with different contents, and a draft keyed
+  // only by id would then re-seed the sheet with pre-import values and overwrite
+  // the entry that was just restored. Object identity catches every way the
+  // record can change — update, delete, wholesale replace, cross-tab sync — because
+  // useShots only ever replaces the objects it actually touches.
+  const [editDrafts, setEditDrafts] = useState<
+    Record<string, { draft: ShotDraft; parkedAgainst: ShotEntry }>
+  >({});
+
+  /** The parked draft for a shot, or null if the shot has changed underneath it. */
+  const draftForShot = (shot: ShotEntry): ShotDraft | null => {
+    const parked = editDrafts[shot.id];
+    return parked && parked.parkedAgainst === shot ? parked.draft : null;
+  };
 
   // Only edit a shot that still exists. If the one being edited disappears —
   // deleted from the list, or wiped by a backup import — editing ends on its own
@@ -122,11 +137,11 @@ const App: React.FC = () => {
     // Each mode keeps its own work. Writing an edit into `draft` would wipe an
     // unfinished NEW shot parked earlier, so edits go to their own per-shot slot.
     if (activeEditingShot) {
-      const { id } = activeEditingShot;
+      const shot = activeEditingShot;
       setEditDrafts((prev) => {
         const next = { ...prev };
-        if (live) next[id] = live;
-        else delete next[id];
+        if (live) next[shot.id] = { draft: live, parkedAgainst: shot };
+        else delete next[shot.id];
         return next;
       });
     } else {
@@ -247,7 +262,7 @@ const App: React.FC = () => {
             onDismiss={dismissSheet}
             shots={shots}
             draft={
-              activeEditingShot ? editDrafts[activeEditingShot.id] ?? null : draft
+              activeEditingShot ? draftForShot(activeEditingShot) : draft
             }
             liveDraftRef={liveDraft}
             firstFieldRef={dateFieldRef}

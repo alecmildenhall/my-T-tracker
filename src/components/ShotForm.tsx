@@ -534,8 +534,12 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       </div>
 
       <div className="form-row">
-        <label>
-          Pain (0–10)
+        {/* Wrapped like the date and dose fields: .form-row is a flex row, so an
+            unwrapped error span becomes a third flex item and squeezes a text
+            column in between Pain and Mood. */}
+        <div className="field-cell">
+          <label>
+            Pain (0–10)
           <input
             type="number"
             min={0}
@@ -548,12 +552,13 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             aria-invalid={painError ? true : undefined}
             aria-describedby={painError ? "pain-error" : undefined}
           />
-        </label>
-        {painError && (
-          <span id="pain-error" className="field-error" role="alert">
-            {painError}
-          </span>
-        )}
+          </label>
+          {painError && (
+            <span id="pain-error" className="field-error" role="alert">
+              {painError}
+            </span>
+          )}
+        </div>
 
         <label>
           Mood

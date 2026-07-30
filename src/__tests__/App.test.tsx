@@ -355,6 +355,37 @@ describe("App — an interrupted entry is not lost", () => {
     expect(stored[0].notes).toBe("original");
   });
 
+  it("drops a parked edit when the shot itself changes underneath it", async () => {
+    // Importing a backup exported from this same device brings the same ids back
+    // with different contents. A draft keyed only by id would silently re-seed the
+    // sheet with pre-import values and overwrite the entry just restored.
+    seedShots([{ id: "a", date: "2026-06-01", notes: "original" }]);
+    renderApp();
+    goTo("History");
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.change(notesField(), { target: { value: "parked edit" } });
+    fireEvent.keyDown(window, { key: "Escape" });
+    await sheetGone();
+
+    // Same id, different content — as a restore would produce.
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: STORAGE_KEYS.shots,
+          newValue: JSON.stringify([
+            { id: "a", date: "2026-06-01", notes: "restored from backup" },
+          ]),
+          storageArea: window.localStorage,
+        })
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    // The restored value, not the stale draft.
+    expect(notesField()).toHaveValue("restored from backup");
+  });
+
   it("forgets the edit draft once that shot is saved", async () => {
     seedShots([{ id: "a", date: "2026-06-01", notes: "before" }]);
     renderApp();

@@ -446,6 +446,10 @@ describe("HistoryView", () => {
     const del = within(middle).getByRole("button", { name: "Delete" });
     del.focus();
     fireEvent.click(del);
+    // Deleting is confirmed first (interim, until slice C's undo).
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" })
+    );
 
     expect(document.body).not.toHaveFocus();
     expect(document.activeElement).toHaveClass("shot-list-item");
@@ -470,9 +474,46 @@ describe("HistoryView", () => {
     render(<One />);
 
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" })
+    );
     // No rows left to receive focus, so it lands on the status line rather than
     // <body>.
     expect(document.activeElement).toHaveClass("history__count");
+  });
+
+  it("confirms before deleting, and keeps the shot if you back out", () => {
+    const Deletable = () => {
+      const [data, setData] = useState<ShotEntry[]>(shots);
+      const [query, setQuery] = useState<HistoryQuery>(emptyHistoryQuery);
+      return (
+        <HistoryView
+          shots={data}
+          query={query}
+          onQueryChange={setQuery}
+          onEditShot={vi.fn()}
+          onDeleteShot={(id) => setData((cur) => cur.filter((s) => s.id !== id))}
+        />
+      );
+    };
+    render(<Deletable />);
+
+    // There is no undo until slice C and no copy anywhere else, so a mis-tap on a
+    // dense list must not be able to destroy an entry outright.
+    fireEvent.click(within(screen.getAllByRole("listitem")[0]).getByRole("button", { name: "Delete" }));
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveTextContent("no undo");
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Keep it" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByText("Showing 3 of 3 shots")).toBeInTheDocument();
+
+    // Confirming really does delete.
+    fireEvent.click(within(screen.getAllByRole("listitem")[0]).getByRole("button", { name: "Delete" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" })
+    );
+    expect(screen.getByText("Showing 2 of 2 shots")).toBeInTheDocument();
   });
 
   it("announces the result count politely", () => {

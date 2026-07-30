@@ -28,6 +28,7 @@ import { toCivilDate } from "../utils/civilDate";
 import { suggestionsFor, normalizeValue } from "../utils/suggestions";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { ShotListItem } from "./ShotListItem";
+import { Modal } from "./Modal";
 
 /** Pause in typing before the search re-runs. Short — the work is in-memory. */
 const SEARCH_DEBOUNCE_MS = 200;
@@ -48,6 +49,14 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   onDeleteShot,
 }) => {
   const [filtersOpen, setFiltersOpen] = useState(false);
+  // INTERIM — slice C replaces this with an undo snackbar (undo-over-confirm is
+  // the end state the roadmap chose). Until then Delete sits beside Edit on every
+  // row of a dense phone list, there is no undo, and there is no server copy, so
+  // one mis-tap permanently loses a logged entry. A confirm is throwaway work and
+  // worth it against that.
+  const [pendingDelete, setPendingDelete] = useState<ShotEntry | null>(null);
+  const cancelDeleteRef = useRef<HTMLButtonElement>(null);
+  const sectionRef = useRef<HTMLElement>(null);
   // Local, not lifted: see HistoryQuery. Owning it here is also what makes the
   // render-time reset below legal — React allows a component to adjust its OWN
   // state during render, but updating a parent's from render is an error.
@@ -55,18 +64,24 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   const debouncedText = useDebouncedValue(query.text, SEARCH_DEBOUNCE_MS);
   const listRef = useRef<HTMLUListElement>(null);
   const countRef = useRef<HTMLParagraphElement>(null);
-  /** Index of the first row revealed by the last "Load more"; null when the
-   *  render wasn't caused by one. */
-  const revealFrom = useRef<number | null>(null);
+  /** Row index to focus once the next render lands — set by "Load more" (the
+   *  first newly revealed row) and by a delete (the row that takes its place).
+   *  null when the render wasn't caused by either. */
+  const focusRowAt = useRef<number | null>(null);
 
-  // Move focus to the first newly revealed row after "Load more" — the button
-  // itself may have just unmounted, and focus must not fall to <body>.
+  // Deferred to an effect rather than done inline, because both triggers destroy
+  // the element that had focus: "Load more" unmounts its own button on the last
+  // page, and a confirmed delete unmounts the row AND the dialog — whose own
+  // focus-restore would otherwise run last and win. Effects run after the removed
+  // children's cleanup, so this is the final word.
   useEffect(() => {
-    const from = revealFrom.current;
-    revealFrom.current = null;
-    if (from === null) return;
+    const at = focusRowAt.current;
+    focusRowAt.current = null;
+    if (at === null) return;
     const rows = listRef.current?.querySelectorAll<HTMLElement>("li");
-    rows?.[from]?.focus();
+    // Deleting the last row leaves nothing at that index; fall back to the
+    // previous row, then to the count line, rather than dropping to <body>.
+    (rows?.[at] ?? rows?.[at - 1] ?? countRef.current)?.focus();
   });
 
   // Facet options come from the user's own logged values, so the dropdowns only
@@ -95,17 +110,30 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
       : { options: [selected, ...options], value: selected };
   };
 
+  // Sorted alphabetically, NOT by suggestionsFor's most-recently-used order.
+  // Recency is right for the log form's reuse chips — the value you want next is
+  // usually the one you used last — but a filter list is scanned and returned to,
+  // so it has to sit still. Under recency ordering the options reshuffle every
+  // time a shot is logged with a different value, and "the second one down" is a
+  // different facet on the next visit.
+  const stable = (values: string[]) =>
+    [...values].sort((a, b) => a.localeCompare(b));
+
   const site = useMemo(
-    () => facet(suggestionsFor(shots, "injectionSite"), query.filter.site),
+    () => facet(stable(suggestionsFor(shots, "injectionSite")), query.filter.site),
     [shots, query.filter.site]
   );
   const position = useMemo(
     () =>
-      facet(suggestionsFor(shots, "injectionSitePosition"), query.filter.position),
+      facet(
+        stable(suggestionsFor(shots, "injectionSitePosition")),
+        query.filter.position
+      ),
     [shots, query.filter.position]
   );
   const ester = useMemo(
-    () => facet(suggestionsFor(shots, "testosteroneEster"), query.filter.ester),
+    () =>
+      facet(stable(suggestionsFor(shots, "testosteroneEster")), query.filter.ester),
     [shots, query.filter.ester]
   );
 
@@ -159,15 +187,14 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   // list. Hand focus to the neighbouring row (or the count line, when the list
   // empties) — the same care the sheet and "Load more" already take.
   const handleDelete = (id: string) => {
-    const index = page.items.findIndex((s) => s.id === id);
-    const rows = listRef.current?.querySelectorAll<HTMLElement>("li");
-    const neighbour = rows?.[index + 1] ?? rows?.[index - 1] ?? null;
+    // After removal, this index holds what was the next row down.
+    focusRowAt.current = page.items.findIndex((s) => s.id === id);
+    setPendingDelete(null);
     onDeleteShot(id);
-    (neighbour ?? countRef.current)?.focus();
   };
 
   return (
-    <section className="history">
+    <section className="history" ref={sectionRef}>
       <div className="history__controls">
         <label className="history__search">
           <span className="visually-hidden">Search notes and mood</span>
@@ -331,7 +358,9 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
               key={shot.id}
               shot={shot}
               onEdit={onEditShot}
-              onDelete={handleDelete}
+              onDelete={(id) =>
+                setPendingDelete(page.items.find((s) => s.id === id) ?? null)
+              }
             />
           ))}
         </ul>
@@ -346,12 +375,44 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
             // focus to <body> and dump a keyboard or screen-reader user at the
             // top of the document mid-task. Send focus to the first newly
             // revealed row instead — the content they asked for.
-            revealFrom.current = page.items.length;
+            focusRowAt.current = page.items.length;
             setLimit((current) => current + PAGE_SIZE);
           }}
         >
           Load more
         </button>
+      )}
+
+      {pendingDelete && (
+        <Modal
+          labelledBy="delete-shot-title"
+          onClose={() => setPendingDelete(null)}
+          initialFocusRef={cancelDeleteRef}
+          fallbackFocusRef={sectionRef}
+        >
+          <h3 id="delete-shot-title">Delete this shot?</h3>
+          <p className="dialog-text">
+            The entry from <b>{pendingDelete.date}</b> will be removed from this
+            device. There is no undo, and no copy anywhere else.
+          </p>
+          <div className="dialog-actions">
+            <button
+              ref={cancelDeleteRef}
+              type="button"
+              className="secondary-button"
+              onClick={() => setPendingDelete(null)}
+            >
+              Keep it
+            </button>
+            <button
+              type="button"
+              className="dialog-danger"
+              onClick={() => handleDelete(pendingDelete.id)}
+            >
+              Delete
+            </button>
+          </div>
+        </Modal>
       )}
     </section>
   );
