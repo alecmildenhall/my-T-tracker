@@ -38,6 +38,12 @@ const App: React.FC = () => {
   // landing on Close means a stray Enter dismisses the form you just opened.
   const dateFieldRef = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState<ShotDraft | null>(null);
+  // In-progress edits, keyed by shot id. Closing an edit remembers the changes
+  // and reopening that shot restores them, so dismissal never loses work in
+  // either mode — the ✕ looks identical for a new shot and an edit, so it had
+  // better behave the same. Session-only, like `draft`: a fresh launch starts
+  // clean rather than resurrecting week-old half-edits.
+  const [editDrafts, setEditDrafts] = useState<Record<string, ShotDraft>>({});
 
   // Only edit a shot that still exists. If the one being edited disappears —
   // deleted from the list, or wiped by a backup import — editing ends on its own
@@ -112,11 +118,20 @@ const App: React.FC = () => {
     // post-save reset keeps the date, so the form still reads as dirty),
     // inviting a duplicate.
     if (closingRef.current) return;
-    // Only a new-shot sheet owns the draft. Editing must leave it untouched:
-    // abandoning an edit would otherwise wipe an unfinished new shot the user had
-    // parked earlier — and saving an edit already leaves it alone, so writing
-    // here made dismiss and save disagree.
-    if (!activeEditingShot) setDraft(liveDraft.current);
+    const live = liveDraft.current;
+    // Each mode keeps its own work. Writing an edit into `draft` would wipe an
+    // unfinished NEW shot parked earlier, so edits go to their own per-shot slot.
+    if (activeEditingShot) {
+      const { id } = activeEditingShot;
+      setEditDrafts((prev) => {
+        const next = { ...prev };
+        if (live) next[id] = live;
+        else delete next[id];
+        return next;
+      });
+    } else {
+      setDraft(live);
+    }
     closeSheet();
   };
 
@@ -148,6 +163,13 @@ const App: React.FC = () => {
   const handleUpdateShot = (shot: ShotEntry) => {
     if (closingRef.current) return;
     updateShot(shot.id, shot);
+    // Saved, so there is nothing in progress left to restore for this shot.
+    liveDraft.current = null;
+    setEditDrafts((prev) => {
+      const next = { ...prev };
+      delete next[shot.id];
+      return next;
+    });
     closeSheet();
   };
 
@@ -224,7 +246,9 @@ const App: React.FC = () => {
             editingShot={activeEditingShot}
             onDismiss={dismissSheet}
             shots={shots}
-            draft={draft}
+            draft={
+              activeEditingShot ? editDrafts[activeEditingShot.id] ?? null : draft
+            }
             liveDraftRef={liveDraft}
             firstFieldRef={dateFieldRef}
           />

@@ -202,9 +202,15 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
               </>
             )}
           </button>
+          {/* "Clear all", not "Clear": the search field already has a native ✕
+              that clears only the text, so an ambiguous label would read as a
+              second control for the same job. Two affordances with distinct
+              scopes — clear the query, clear everything — is the standard
+              faceted-search arrangement; what matters is that the wider one says
+              so. */}
           {(activeFacets > 0 || query.text !== "") && (
             <button type="button" className="link-button" onClick={clearAll}>
-              Clear
+              Clear all
             </button>
           )}
         </div>

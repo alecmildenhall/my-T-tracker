@@ -132,6 +132,32 @@ export const Modal: React.FC<ModalProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Track the *visual* viewport while a dialog is open, exposed as `--sheet-h`.
+  //
+  // iOS Safari does not shrink the layout viewport when the on-screen keyboard
+  // opens, so a `height: 100%` sheet keeps its full height and the keyboard
+  // covers the bottom — which is the pinned Save button, the one thing the
+  // three-region layout exists to keep reachable. `visualViewport.height` is the
+  // space actually visible, so sizing to it lifts the bar above the keyboard.
+  // Android resizes the layout viewport itself, where this is a no-op.
+  //
+  // Height only, deliberately: the overlay is `position: fixed; inset: 0` and
+  // body scroll is locked, so `offsetTop` stays ~0 and reading it would add
+  // jitter for no gain. NOTE: verified in Chrome and by unit test, but not yet on
+  // real iOS hardware — see the mobile checklist in README.
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const apply = () =>
+      document.documentElement.style.setProperty("--sheet-h", `${vv.height}px`);
+    apply();
+    vv.addEventListener("resize", apply);
+    return () => {
+      vv.removeEventListener("resize", apply);
+      document.documentElement.style.removeProperty("--sheet-h");
+    };
+  }, []);
+
   // Escape closes. Hold the latest onClose in a ref so the window listener is
   // subscribed once, not re-added on every render when callers pass a fresh
   // inline onClose. (This is React's recommended stable pattern; useEffectEvent

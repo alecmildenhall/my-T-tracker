@@ -46,6 +46,10 @@ function carryForward(shots: ShotEntry[]): {
  * a half-typed number that isn't a valid entry yet.
  */
 export interface ShotDraft {
+  /** `""` means "whatever today is" — the date was never touched, so a restored
+   *  draft should follow today rather than freeze the day it was parked on. A
+   *  real date here was chosen deliberately (logging yesterday's shot) and is
+   *  preserved verbatim. */
   date: string;
   time: string;
   doseMg: string;
@@ -79,16 +83,20 @@ interface ShotFormProps {
   onAddShot: (shot: ShotEntry) => void;
   onUpdateShot?: (shot: ShotEntry) => void;
   editingShot?: ShotEntry | null;
-  /** Close the sheet. For a new shot this KEEPS the draft (reopening restores
-   *  it); while editing it abandons the unsaved changes. Renders the ✕ in the
-   *  top bar — omit it and the bar shows just the title. */
+  /** Close the sheet. Never destructive: the parent keeps whatever was entered
+   *  and restores it next time this same form is opened, for a new shot or an
+   *  edit alike. Renders the ✕ in the top bar — omit it and the bar shows just
+   *  the title. */
   onDismiss?: () => void;
   /** Past shots, used to suggest previously-entered values for reuse. */
   shots?: ShotEntry[];
   /** id for the form's heading, so a containing dialog can point
    *  `aria-labelledby` at it instead of repeating the title. */
   headingId?: string;
-  /** A previously interrupted new-shot entry to restore. Ignored while editing. */
+  /** An interrupted entry to restore, in either mode — the parent keeps new-shot
+   *  and per-shot edit drafts separately and hands over whichever applies. Takes
+   *  precedence over `editingShot`'s stored values, and its empty `date` means
+   *  "follow today". */
   draft?: ShotDraft | null;
   /** Kept pointed at the in-progress values (or null when there is nothing worth
    *  keeping), so the parent can read them at the moment it decides whether a
@@ -133,7 +141,11 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   // Precedence: the shot being edited, then a restored draft, then a fresh form
   // (today + carried-forward values). A draft only ever applies to a new shot.
   const initial = editingShot;
-  const start: ShotDraft = useMemo(
+  // What the form would show with no draft: the shot being edited, or a fresh
+  // form. Kept separately from `start` so "has unsaved input" always compares
+  // against the underlying record, even when a draft was restored on top — which
+  // is what lets a restored draft re-publish itself instead of reading as clean.
+  const opened: ShotDraft = useMemo(
     () =>
       initial
         ? {
@@ -148,8 +160,16 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             mood: initial.mood ?? "",
             notes: initial.notes ?? "",
           }
-        : draft ?? { ...freshDraft(), ...carried },
-    // Mount-time seed only; later changes flow through the sync effect below.
+        : { ...freshDraft(), ...carried },
+    // Mount-time seed only; the component is remounted (via `key`) when the shot
+    // being edited changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
+  // A restored draft wins over both, and its empty `date` means "follow today".
+  const start: ShotDraft = useMemo(
+    () => (draft ? { ...draft, date: draft.date || todayLocalISO() } : opened),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
@@ -307,23 +327,29 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     notes,
   };
 
-  // Whether anything has been typed beyond the values the form opened with.
-  // Drives both the low-key "Clear form" escape hatch below and what the parent
-  // sees as a restorable draft — one definition, so they can't disagree. An
-  // untouched form is not a draft, so carried-forward values alone never
-  // resurrect a sheet.
-  const baseline: ShotDraft = { ...freshDraft(), ...carried };
-  const dirty =
-    !editingShot &&
-    (Object.keys(current) as (keyof ShotDraft)[]).some(
-      (k) => current[k] !== baseline[k]
-    );
+  // Anything the user has entered that isn't in the underlying record yet —
+  // measured against `opened` (the shot being edited, or a fresh form), never
+  // against a restored draft, so restoring and re-parking doesn't read as clean.
+  // Applies in both modes: editing an existing shot has unsaved input too.
+  const hasUnsavedInput = (Object.keys(current) as (keyof ShotDraft)[]).some(
+    (k) => current[k] !== opened[k]
+  );
 
   // Publish the live values for the parent to read on dismissal. In an effect
   // rather than during render so the render stays pure; effects run after every
   // render, so the ref is current well before any click or keypress.
   useEffect(() => {
-    if (liveDraftRef) liveDraftRef.current = dirty ? current : null;
+    if (!liveDraftRef) return;
+    liveDraftRef.current = hasUnsavedInput
+      ? {
+          ...current,
+          // An untouched date is stored as "follow today" rather than frozen:
+          // parking on Monday and reopening on Wednesday should log Wednesday.
+          // A date the user actually changed is kept verbatim — someone part-way
+          // through logging yesterday's shot meant that date.
+          date: current.date === todayLocalISO() ? "" : current.date,
+        }
+      : null;
   });
 
   return (
@@ -553,7 +579,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
         {/* Closing keeps what you typed, so discarding needs its own control —
             but a quiet one, at the end of the fields rather than competing with
             Save. Only offered once there is something to clear. */}
-        {dirty && (
+        {hasUnsavedInput && !editingShot && (
           <button type="button" className="link-button" onClick={resetForm}>
             Clear form
           </button>

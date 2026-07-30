@@ -951,8 +951,11 @@ textarea {
      what makes the middle region scroll and the two bars stay reachable. Without
      it the sheet grows to the full height of the form, and on any viewport
      shorter than that — a landscape phone, a short desktop window — the pinned
-     top bar and Save button are clipped off-screen with no way to reach them. */
-  max-height: 100%;
+     top bar and Save button are clipped off-screen with no way to reach them.
+     `--sheet-h` is the visual viewport (set by Modal while open), so an iOS
+     keyboard shrinks the sheet instead of covering its Save button; it falls back
+     to 100% wherever visualViewport is unavailable. */
+  max-height: var(--sheet-h, 100%);
   /* The sheet itself never scrolls: its middle region does, so the pinned bars
      stay put. */
   overflow: hidden;
@@ -1070,7 +1073,7 @@ textarea {
 
   .dialog--sheet {
     max-width: none;
-    height: 100%;
+    height: var(--sheet-h, 100%);
     border-radius: 0;
   }
 }

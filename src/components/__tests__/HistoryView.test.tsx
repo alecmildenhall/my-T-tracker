@@ -157,7 +157,7 @@ describe("HistoryView", () => {
     expect(screen.getByText("Showing 3 of 3 shots")).toBeInTheDocument();
   });
 
-  it("Clear resets search and filters together", async () => {
+  it("Clear all resets search and filters together", async () => {
     vi.useFakeTimers();
     try {
       render(<Harness />);
@@ -169,7 +169,7 @@ describe("HistoryView", () => {
       await settleSearch();
       expect(screen.getByText("Showing 1 of 1 shot")).toBeInTheDocument();
 
-      fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+      fireEvent.click(screen.getByRole("button", { name: "Clear all" }));
       await settleSearch();
       expect(screen.getByText("Showing 3 of 3 shots")).toBeInTheDocument();
     } finally {

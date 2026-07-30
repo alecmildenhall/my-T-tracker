@@ -304,6 +304,57 @@ describe("App — an interrupted entry is not lost", () => {
     expect(screen.getByText("saved once")).toBeInTheDocument();
   });
 
+  it("remembers an abandoned edit and restores it when that shot is reopened", async () => {
+    seedShots([
+      { id: "a", date: "2026-06-01", notes: "first" },
+      { id: "b", date: "2026-06-08", notes: "second" },
+    ]);
+    renderApp();
+    goTo("History");
+
+    // Start rewriting one shot, then close without saving.
+    const row = screen.getByText("first").closest("li")!;
+    fireEvent.click(within(row).getByRole("button", { name: "Edit" }));
+    fireEvent.change(notesField(), { target: { value: "rewritten but unsaved" } });
+    fireEvent.keyDown(window, { key: "Escape" });
+    await sheetGone();
+
+    // The stored shot is untouched...
+    expect(screen.getByText("first")).toBeInTheDocument();
+
+    // ...and reopening the SAME shot brings the unsaved rewrite back.
+    fireEvent.click(
+      within(screen.getByText("first").closest("li")!).getByRole("button", { name: "Edit" })
+    );
+    expect(notesField()).toHaveValue("rewritten but unsaved");
+    fireEvent.keyDown(window, { key: "Escape" });
+    await sheetGone();
+
+    // A different shot is unaffected — drafts are per shot, not global.
+    fireEvent.click(
+      within(screen.getByText("second").closest("li")!).getByRole("button", { name: "Edit" })
+    );
+    expect(notesField()).toHaveValue("second");
+  });
+
+  it("forgets the edit draft once that shot is saved", async () => {
+    seedShots([{ id: "a", date: "2026-06-01", notes: "before" }]);
+    renderApp();
+    goTo("History");
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.change(notesField(), { target: { value: "after" } });
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Update shot" })
+    );
+    await sheetGone();
+    expect(screen.getByText("after")).toBeInTheDocument();
+
+    // Reopening shows the saved value, not a leftover draft.
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(notesField()).toHaveValue("after");
+  });
+
   it("keeps the edit sheet out of the draft system", async () => {
     seedShots([{ id: "a", date: "2026-06-01", notes: "original" }]);
     renderApp();

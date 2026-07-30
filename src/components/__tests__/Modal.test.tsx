@@ -166,6 +166,39 @@ describe("Modal", () => {
     vi.restoreAllMocks();
   });
 
+  it("sizes itself to the visual viewport, so a keyboard can't cover it", () => {
+    // iOS Safari keeps the layout viewport full height when the keyboard opens,
+    // so a height:100% sheet would put its pinned Save button under the keyboard.
+    // visualViewport.height is the space actually visible.
+    const listeners: Record<string, () => void> = {};
+    const fakeViewport = {
+      height: 800,
+      addEventListener: (type: string, fn: () => void) => {
+        listeners[type] = fn;
+      },
+      removeEventListener: () => {},
+    };
+    vi.stubGlobal("visualViewport", fakeViewport);
+
+    const { unmount } = render(
+      <Modal labelledBy="v" onClose={vi.fn()} variant="sheet">
+        <h2 id="v">Sheet</h2>
+      </Modal>
+    );
+    const read = () =>
+      document.documentElement.style.getPropertyValue("--sheet-h");
+    expect(read()).toBe("800px");
+
+    // Keyboard opens: the visible area shrinks and the sheet follows.
+    fakeViewport.height = 420;
+    act(() => listeners.resize?.());
+    expect(read()).toBe("420px");
+
+    // Cleared on close, so it never constrains a later dialog.
+    unmount();
+    expect(read()).toBe("");
+  });
+
   it("starts the sheet off-screen so it has somewhere to animate from", () => {
     // Without a first paint in the closed state the browser has nothing to
     // transition, and the sheet would simply appear.

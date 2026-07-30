@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { ShotForm } from "../ShotForm";
+import { ShotForm, type ShotDraft } from "../ShotForm";
 import type { ShotEntry } from "../../types/shot";
+import { todayLocalISO } from "../../utils/datetime";
 
 beforeEach(() => {
   localStorage.clear();
@@ -303,5 +304,70 @@ describe("ShotForm field mapping", () => {
       testosteroneEster: "cypionate",
       carrierOil: "grapeseed",
     });
+  });
+});
+
+describe("ShotForm draft publishing", () => {
+  const emptyRef = () => ({ current: null as ShotDraft | null });
+
+  it("publishes an untouched date as \"follow today\", not the parked day", () => {
+    // Parking on Monday and reopening on Wednesday should log Wednesday. Freezing
+    // the day it was parked on would silently log a shot under the wrong date.
+    const ref = emptyRef();
+    render(<ShotForm onAddShot={vi.fn()} liveDraftRef={ref} />);
+    fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "wip" } });
+
+    expect(ref.current).not.toBeNull();
+    expect(ref.current!.date).toBe("");
+    expect(ref.current!.notes).toBe("wip");
+  });
+
+  it("keeps a date the user actually changed", () => {
+    // Someone part-way through logging yesterday's shot meant that date.
+    const ref = emptyRef();
+    render(<ShotForm onAddShot={vi.fn()} liveDraftRef={ref} />);
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-06-01" } });
+
+    expect(ref.current!.date).toBe("2026-06-01");
+  });
+
+  it("restores a 'follow today' draft onto today's date", () => {
+    const draft: ShotDraft = {
+      date: "",
+      time: "",
+      doseMg: "",
+      injectionSite: "",
+      injectionSitePosition: "",
+      testosteroneEster: "",
+      carrierOil: "",
+      painScore: "",
+      mood: "",
+      notes: "carried over",
+    };
+    render(<ShotForm onAddShot={vi.fn()} draft={draft} />);
+
+    expect(screen.getByLabelText("Date")).toHaveValue(todayLocalISO());
+    expect(screen.getByLabelText("Notes")).toHaveValue("carried over");
+  });
+
+  it("reports unsaved changes while editing, so an edit can be restored too", () => {
+    const ref = emptyRef();
+    const editing: ShotEntry = { id: "e1", date: "2026-06-01", notes: "original" };
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        onUpdateShot={vi.fn()}
+        editingShot={editing}
+        liveDraftRef={ref}
+      />
+    );
+    // Untouched: nothing to remember.
+    expect(ref.current).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "rewritten" } });
+    expect(ref.current!.notes).toBe("rewritten");
+    // The shot's own date was not touched, so it is preserved as-is rather than
+    // being treated as "follow today".
+    expect(ref.current!.date).toBe("2026-06-01");
   });
 });
