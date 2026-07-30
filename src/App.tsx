@@ -83,26 +83,27 @@ const App: React.FC = () => {
     []
   );
 
-  // Dismissing the sheet (Escape, the Android Back gesture) keeps whatever was
+  // Dismissing the sheet (Escape, the Android Back gesture, ✕) keeps whatever was
   // typed and restores it next time — chosen over a "discard?" confirm so an
   // accidental edge-swipe costs nothing and there is no extra decision to
-  // dismiss. Saving and an explicit Cancel are the deliberate acts that throw
-  // the draft away; this ref tells the unmount report which one happened.
-  const discardDraft = useRef(false);
+  // dismiss. Saving is the deliberate act that clears it.
+  //
+  // Each path states its own intent by setting `draft` directly, reading the live
+  // values from the form when it wants to keep them. The alternative — having the
+  // form report on unmount and a boolean ref tell this component why it closed —
+  // put the intent in one-shot mutable state that a missed or repeated report
+  // would leave pointing the wrong way.
+  const liveDraft = useRef<ShotDraft | null>(null);
 
-  const handleDraftChange = (next: ShotDraft | null) => {
-    setDraft(discardDraft.current ? null : next);
-    discardDraft.current = false;
-  };
-
-  const discardAndClose = () => {
-    discardDraft.current = true;
+  const dismissSheet = () => {
+    setDraft(liveDraft.current);
     closeSheet();
   };
 
   const handleAddShot = (shot: ShotEntry) => {
     addShot(shot);
-    discardAndClose();
+    setDraft(null);
+    closeSheet();
   };
 
   const handleUpdateShot = (shot: ShotEntry) => {
@@ -166,7 +167,7 @@ const App: React.FC = () => {
       {sheetOpen && (
         <Modal
           labelledBy={SHEET_HEADING_ID}
-          onClose={closeSheet}
+          onClose={dismissSheet}
           variant="sheet"
           closing={closing}
           initialFocusRef={dateFieldRef}
@@ -181,10 +182,10 @@ const App: React.FC = () => {
             onAddShot={handleAddShot}
             onUpdateShot={handleUpdateShot}
             editingShot={activeEditingShot}
-            onDismiss={closeSheet}
+            onDismiss={dismissSheet}
             shots={shots}
             draft={draft}
-            onDraftChange={handleDraftChange}
+            liveDraftRef={liveDraft}
             firstFieldRef={dateFieldRef}
           />
         </Modal>

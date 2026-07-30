@@ -90,9 +90,11 @@ interface ShotFormProps {
   headingId?: string;
   /** A previously interrupted new-shot entry to restore. Ignored while editing. */
   draft?: ShotDraft | null;
-  /** Reports the in-progress values when the form goes away, so dismissing the
-   *  sheet never destroys typing. `null` means "nothing worth keeping". */
-  onDraftChange?: (draft: ShotDraft | null) => void;
+  /** Kept pointed at the in-progress values (or null when there is nothing worth
+   *  keeping), so the parent can read them at the moment it decides whether a
+   *  dismissal keeps or discards. A ref rather than a change callback: the parent
+   *  asks, instead of being told and having to remember why. */
+  liveDraftRef?: React.RefObject<ShotDraft | null>;
   /** Attached to the first field, so a containing dialog can put initial focus
    *  on data entry rather than on its own Close button. */
   firstFieldRef?: React.Ref<HTMLInputElement>;
@@ -106,7 +108,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   shots = [],
   headingId,
   draft,
-  onDraftChange,
+  liveDraftRef,
   firstFieldRef,
 }) => {
   // Values that genuinely stay the same shot-to-shot start pre-filled from the
@@ -207,42 +209,6 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   // development double-invoke and wiped a restored draft; remounting is both
   // simpler and immune to that.
 
-  // Report the in-progress values when the form goes away, so dismissing the
-  // sheet (Escape, the Android Back gesture) never destroys typing — reopening
-  // restores it. Saving and an explicit Discard are the deliberate acts that
-  // clear it, and the parent decides which happened.
-  const current: ShotDraft = {
-    date,
-    time,
-    doseMg,
-    injectionSite,
-    injectionSitePosition,
-    testosteroneEster,
-    carrierOil,
-    painScore,
-    mood,
-    notes,
-  };
-  const liveRef = useRef({ current, editingShot, onDraftChange });
-  liveRef.current = { current, editingShot, onDraftChange };
-  useEffect(
-    () => () => {
-      const { current: values, editingShot: editing, onDraftChange: report } =
-        liveRef.current;
-      if (editing || !report) return;
-      // An untouched form is nothing worth restoring — comparing against the
-      // same baseline it was seeded from means carried-forward values alone
-      // don't count as a draft. This also makes StrictMode's simulated unmount
-      // a no-op on a freshly opened form.
-      const baseline: ShotDraft = { ...freshDraft(), ...carriedRef.current };
-      const touched = (Object.keys(values) as (keyof ShotDraft)[]).some(
-        (k) => values[k] !== baseline[k]
-      );
-      report(touched ? values : null);
-    },
-    []
-  );
-
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
 
@@ -296,14 +262,37 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     }
   };
 
-  // Whether anything has been typed beyond the values the form opened with —
-  // drives the low-key "Clear form" escape hatch below.
+  const current: ShotDraft = {
+    date,
+    time,
+    doseMg,
+    injectionSite,
+    injectionSitePosition,
+    testosteroneEster,
+    carrierOil,
+    painScore,
+    mood,
+    notes,
+  };
+
+  // Whether anything has been typed beyond the values the form opened with.
+  // Drives both the low-key "Clear form" escape hatch below and what the parent
+  // sees as a restorable draft — one definition, so they can't disagree. An
+  // untouched form is not a draft, so carried-forward values alone never
+  // resurrect a sheet.
   const baseline: ShotDraft = { ...freshDraft(), ...carried };
   const dirty =
     !editingShot &&
     (Object.keys(current) as (keyof ShotDraft)[]).some(
       (k) => current[k] !== baseline[k]
     );
+
+  // Publish the live values for the parent to read on dismissal. In an effect
+  // rather than during render so the render stays pure; effects run after every
+  // render, so the ref is current well before any click or keypress.
+  useEffect(() => {
+    if (liveDraftRef) liveDraftRef.current = dirty ? current : null;
+  });
 
   return (
     // Three regions: a pinned bar, the scrolling fields, and a pinned action.

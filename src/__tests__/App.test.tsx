@@ -177,6 +177,27 @@ describe("App — an interrupted entry is not lost", () => {
     expect(notesField()).toHaveValue("");
   });
 
+  it("keeps a draft written straight after a save", async () => {
+    // The sequence most likely to expose a leaked "discard" flag: save (which
+    // clears the draft), then immediately start another entry and dismiss it.
+    // Each path now states its own intent, so nothing carries over.
+    renderApp();
+    openSheet();
+    fireEvent.change(notesField(), { target: { value: "shot one" } });
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+    );
+    await sheetGone();
+
+    openSheet();
+    fireEvent.change(notesField(), { target: { value: "shot two, unfinished" } });
+    fireEvent.keyDown(window, { key: "Escape" });
+    await sheetGone();
+
+    openSheet();
+    expect(notesField()).toHaveValue("shot two, unfinished");
+  });
+
   it("does not treat an untouched form as a draft", async () => {
     seedShots([
       { id: "prev", date: "2026-06-01", doseMg: 60, testosteroneEster: "cypionate" },
