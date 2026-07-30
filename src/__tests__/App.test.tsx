@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { render, screen, fireEvent, within, act } from "@testing-library/react";
+import { render, screen, fireEvent, within, act, waitFor } from "@testing-library/react";
 import App from "../App";
 import { ShotsProvider } from "../context/ShotsContext";
 import { ProfileProvider } from "../context/ProfileContext";
@@ -23,6 +23,17 @@ const seedShots = (shots: ShotEntry[]) =>
 
 const goTo = (tab: "Home" | "History" | "Settings") =>
   fireEvent.click(within(screen.getByRole("navigation")).getByRole("button", { name: tab }));
+
+/** The sheet plays a 200ms exit transition before unmounting, so its removal is
+ *  asynchronous. */
+const sheetGone = () =>
+  waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+/** Dismiss via the top-bar ✕ — which KEEPS the draft, like Escape and Back. */
+const dismissSheet = (name: RegExp | string = "Close") =>
+  fireEvent.click(
+    within(screen.getByRole("dialog")).getByRole("button", { name })
+  );
 
 beforeEach(() => localStorage.clear());
 
@@ -75,7 +86,7 @@ describe("App — navigation", () => {
 });
 
 describe("App — logging via the sheet", () => {
-  it("opens the form in a dialog and closes it after saving", () => {
+  it("opens the form in a dialog and closes it after saving", async () => {
     renderApp();
 
     // The form is not inline on Home — it lives behind the primary action.
@@ -88,19 +99,17 @@ describe("App — logging via the sheet", () => {
     fireEvent.click(within(sheet).getByRole("button", { name: "Save shot" }));
 
     // Saving dismisses the sheet and the shot lands in the teaser.
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await sheetGone();
     expect(screen.getByRole("button", { name: /See all/ })).toBeInTheDocument();
   });
 
-  it("Discard closes the new-shot sheet without saving", () => {
+  it("the top-bar close dismisses without saving", async () => {
     renderApp();
 
     fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
-    fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Discard" })
-    );
+    dismissSheet();
 
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await sheetGone();
     // Nothing was logged, so the teaser still shows its empty state.
     expect(screen.getByText(/No shots logged yet/)).toBeInTheDocument();
   });
@@ -112,7 +121,7 @@ describe("App — an interrupted entry is not lost", () => {
   const notesField = () =>
     within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i);
 
-  it("restores what was typed when the sheet is dismissed with Escape", () => {
+  it("restores what was typed when the sheet is dismissed with Escape", async () => {
     renderApp();
     openSheet();
     fireEvent.change(notesField(), { target: { value: "half-written" } });
@@ -120,38 +129,44 @@ describe("App — an interrupted entry is not lost", () => {
     // Escape and the Android Back gesture are easy to fire by accident on a long
     // form, so they keep the entry rather than destroying it.
     fireEvent.keyDown(window, { key: "Escape" });
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await sheetGone();
 
     openSheet();
     expect(notesField()).toHaveValue("half-written");
   });
 
-  it("Discard throws the entry away, so the next sheet is blank", () => {
+  it("'Clear form' empties it, so nothing is restored next time", async () => {
     renderApp();
     openSheet();
     fireEvent.change(notesField(), { target: { value: "not wanted" } });
-    fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Discard" })
-    );
 
+    // Closing keeps a draft, so discarding needs its own control.
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Clear form" })
+    );
+    expect(notesField()).toHaveValue("");
+
+    dismissSheet();
+    await sheetGone();
     openSheet();
     expect(notesField()).toHaveValue("");
   });
 
-  it("saving clears the draft", () => {
+  it("saving clears the draft", async () => {
     renderApp();
     openSheet();
     fireEvent.change(notesField(), { target: { value: "logged for real" } });
     fireEvent.click(
       within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
     );
+    await sheetGone();
     expect(screen.getByText("logged for real")).toBeInTheDocument();
 
     openSheet();
     expect(notesField()).toHaveValue("");
   });
 
-  it("does not treat an untouched form as a draft", () => {
+  it("does not treat an untouched form as a draft", async () => {
     seedShots([
       { id: "prev", date: "2026-06-01", doseMg: 60, testosteroneEster: "cypionate" },
     ]);
@@ -159,6 +174,7 @@ describe("App — an interrupted entry is not lost", () => {
     openSheet();
     // Only the carried-forward values are present — nothing the user typed.
     fireEvent.keyDown(window, { key: "Escape" });
+    await sheetGone();
 
     openSheet();
     const sheet = screen.getByRole("dialog");
@@ -166,13 +182,14 @@ describe("App — an interrupted entry is not lost", () => {
     expect(within(sheet).getByLabelText("Date")).toHaveValue(todayLocalISO());
   });
 
-  it("keeps the edit sheet out of the draft system", () => {
+  it("keeps the edit sheet out of the draft system", async () => {
     seedShots([{ id: "a", date: "2026-06-01", notes: "original" }]);
     renderApp();
     goTo("History");
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     fireEvent.change(notesField(), { target: { value: "abandoned edit" } });
     fireEvent.keyDown(window, { key: "Escape" });
+    await sheetGone();
 
     // An abandoned edit must not leak into the next NEW shot.
     goTo("Home");
@@ -182,7 +199,7 @@ describe("App — an interrupted entry is not lost", () => {
 });
 
 describe("App — editing from History", () => {
-  it("edits in a sheet over the list, leaving the list's filters underneath", () => {
+  it("edits in a sheet over the list, leaving the list's filters underneath", async () => {
     seedShots([{ id: "a", date: "2026-06-01", notes: "original" }]);
     renderApp();
     goTo("History");
@@ -199,7 +216,7 @@ describe("App — editing from History", () => {
     fireEvent.change(notes, { target: { value: "updated" } });
     fireEvent.click(within(sheet).getByRole("button", { name: "Update shot" }));
 
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await sheetGone();
     expect(screen.getByText("updated")).toBeInTheDocument();
   });
 

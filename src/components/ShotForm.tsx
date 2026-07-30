@@ -79,7 +79,10 @@ interface ShotFormProps {
   onAddShot: (shot: ShotEntry) => void;
   onUpdateShot?: (shot: ShotEntry) => void;
   editingShot?: ShotEntry | null;
-  onCancelEdit?: () => void;
+  /** Close the sheet. For a new shot this KEEPS the draft (reopening restores
+   *  it); while editing it abandons the unsaved changes. Renders the ✕ in the
+   *  top bar — omit it and the bar shows just the title. */
+  onDismiss?: () => void;
   /** Past shots, used to suggest previously-entered values for reuse. */
   shots?: ShotEntry[];
   /** id for the form's heading, so a containing dialog can point
@@ -96,7 +99,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   onAddShot,
   onUpdateShot,
   editingShot,
-  onCancelEdit,
+  onDismiss,
   shots = [],
   headingId,
   draft,
@@ -289,17 +292,37 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     }
   };
 
-  const handleCancel = () => {
-    onCancelEdit?.();
-    // The editing-sync effect also resets once onCancelEdit clears editingShot;
-    // resetting here too keeps ShotForm self-contained if a parent's onCancelEdit
-    // doesn't drop the edit.
-    resetForm();
-  };
+  // Whether anything has been typed beyond the values the form opened with —
+  // drives the low-key "Clear form" escape hatch below.
+  const baseline: ShotDraft = { ...freshDraft(), ...carried };
+  const dirty =
+    !editingShot &&
+    (Object.keys(current) as (keyof ShotDraft)[]).some(
+      (k) => current[k] !== baseline[k]
+    );
 
   return (
+    // Three regions: a pinned bar, the scrolling fields, and a pinned action.
+    // Save must stay reachable without scrolling past ten fields, and Close sits
+    // top-left — away from the thumb, so it isn't hit by accident.
     <form className="shot-form" onSubmit={handleSubmit}>
-      <h2 id={headingId}>{editingShot ? "Edit shot" : "Log a shot"}</h2>
+      <div className="shot-form__bar shot-form__bar--top">
+        {onDismiss && (
+          <button
+            type="button"
+            className="shot-form__close"
+            onClick={onDismiss}
+            aria-label={editingShot ? "Cancel editing" : "Close"}
+          >
+            ✕
+          </button>
+        )}
+        <h2 id={headingId} className="shot-form__title">
+          {editingShot ? "Edit shot" : "Log a shot"}
+        </h2>
+      </div>
+
+      <div className="shot-form__scroll">
 
       <div className="form-row">
         <label>
@@ -476,18 +499,21 @@ export const ShotForm: React.FC<ShotFormProps> = ({
         />
       </label>
 
-      <button type="submit" className="primary-button">
-        {editingShot ? "Update shot" : "Save shot"}
-      </button>
-      {editingShot && onCancelEdit && (
-        <button
-          type="button"
-          className="secondary-button"
-          onClick={handleCancel}
-        >
-          Cancel
+        {/* Closing keeps what you typed, so discarding needs its own control —
+            but a quiet one, at the end of the fields rather than competing with
+            Save. Only offered once there is something to clear. */}
+        {dirty && (
+          <button type="button" className="link-button" onClick={resetForm}>
+            Clear form
+          </button>
+        )}
+      </div>
+
+      <div className="shot-form__bar shot-form__bar--bottom">
+        <button type="submit" className="primary-button shot-form__save">
+          {editingShot ? "Update shot" : "Save shot"}
         </button>
-      )}
+      </div>
     </form>
   );
 };

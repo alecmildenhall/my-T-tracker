@@ -4,7 +4,7 @@
 // callers: labelled dialog role, Escape to close, backdrop-click to close,
 // a focus trap (Tab/Shift+Tab wrap inside), initial focus, and focus restored
 // to the opener on close.
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useBackToClose } from "../hooks/useBackToClose";
 
@@ -34,8 +34,15 @@ interface ModalProps {
    *  for long content like the shot form, where a small centred box would scroll
    *  awkwardly inside a scrolling page. */
   variant?: "dialog" | "sheet";
+  /** True while the parent is playing the exit animation before unmounting. Only
+   *  the sheet variant animates; a compact confirm dialog appears at once. */
+  closing?: boolean;
   children: React.ReactNode;
 }
+
+/** How long the sheet's exit transition runs — must match styles.css. Exported
+ *  so the parent can hold the dialog mounted for exactly that long. */
+export const SHEET_EXIT_MS = 200;
 
 export const Modal: React.FC<ModalProps> = ({
   labelledBy,
@@ -44,9 +51,29 @@ export const Modal: React.FC<ModalProps> = ({
   restoreFocusRef,
   fallbackFocusRef,
   variant = "dialog",
+  closing = false,
   children,
 }) => {
   const dialogRef = useRef<HTMLDivElement>(null);
+
+  // The sheet must paint once in its off-screen state before transitioning in,
+  // or the browser has nothing to animate from. Two frames: the first commits
+  // the pre-entry styles, the second flips them. Focus never waits on this — the
+  // dialog is usable from the first frame; the motion is decoration over it.
+  const [entered, setEntered] = useState(false);
+  useEffect(() => {
+    let inner = 0;
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => setEntered(true));
+    });
+    return () => {
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
+    };
+  }, []);
+
+  // Off-screen before entering and again while leaving.
+  const offscreen = !entered || closing;
 
   // Every dialog, not just the shot sheet: the rename/remove confirms and the
   // "Replace your data?" import confirm would otherwise let a reflexive Back
@@ -147,7 +174,9 @@ export const Modal: React.FC<ModalProps> = ({
     // mis-aimed click.
     // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/click-events-have-key-events
     <div
-      className={`dialog-overlay dialog-overlay--${variant}`}
+      className={`dialog-overlay dialog-overlay--${variant}${
+        offscreen ? " is-closed" : ""
+      }${closing ? " is-closing" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-labelledby={labelledBy}
@@ -159,7 +188,9 @@ export const Modal: React.FC<ModalProps> = ({
       {/* onKeyDown here is the focus trap, not a widget interaction. */}
       {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
       <div
-        className={`dialog dialog--${variant}`}
+        className={`dialog dialog--${variant}${offscreen ? " is-closed" : ""}${
+          closing ? " is-closing" : ""
+        }`}
         ref={dialogRef}
         onKeyDown={trapTab}
       >

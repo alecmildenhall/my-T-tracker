@@ -1,5 +1,5 @@
 // src/App.tsx
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ShotForm, type ShotDraft } from "./components/ShotForm";
 import { Settings } from "./components/Settings";
 import { Greeting } from "./components/Greeting";
@@ -7,7 +7,7 @@ import { TabBar } from "./components/TabBar";
 import { RecentShots } from "./components/RecentShots";
 import { HistoryView } from "./components/HistoryView";
 import { emptyHistoryQuery, type HistoryQuery } from "./utils/historyQuery";
-import { Modal } from "./components/Modal";
+import { Modal, SHEET_EXIT_MS } from "./components/Modal";
 import { useShotsContext } from "./context/ShotsContext";
 import type { ShotEntry } from "./types/shot";
 import type { View } from "./types/view";
@@ -56,10 +56,29 @@ const App: React.FC = () => {
 
   const sheetOpen = loggingNew || activeEditingShot !== null;
 
+  // Dismissing plays the sheet's exit animation before unmounting: React would
+  // otherwise remove the element instantly, leaving nothing on screen to animate
+  // out. The sheet stays mounted (and marked `closing`) for exactly the
+  // transition's length, then goes.
+  const [closing, setClosing] = useState(false);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const closeSheet = () => {
-    setLoggingNew(false);
-    setEditingShot(null);
+    if (closing) return; // already on the way out
+    setClosing(true);
+    closeTimer.current = setTimeout(() => {
+      setClosing(false);
+      setLoggingNew(false);
+      setEditingShot(null);
+    }, SHEET_EXIT_MS);
   };
+
+  useEffect(
+    () => () => {
+      if (closeTimer.current) clearTimeout(closeTimer.current);
+    },
+    []
+  );
 
   // Dismissing the sheet (Escape, the Android Back gesture) keeps whatever was
   // typed and restores it next time — chosen over a "discard?" confirm so an
@@ -146,6 +165,7 @@ const App: React.FC = () => {
           labelledBy={SHEET_HEADING_ID}
           onClose={closeSheet}
           variant="sheet"
+          closing={closing}
           fallbackFocusRef={titleRef}
         >
           <ShotForm
@@ -157,23 +177,11 @@ const App: React.FC = () => {
             onAddShot={handleAddShot}
             onUpdateShot={handleUpdateShot}
             editingShot={activeEditingShot}
-            onCancelEdit={closeSheet}
+            onDismiss={closeSheet}
             shots={shots}
             draft={draft}
             onDraftChange={handleDraftChange}
           />
-          {/* A new-shot sheet has no Cancel of its own (ShotForm only renders one
-              while editing), so it needs an explicit way out besides Escape.
-              Cancel means "throw this away" — unlike Escape/Back, which keep it. */}
-          {!activeEditingShot && (
-            <button
-              type="button"
-              className="secondary-button sheet-close"
-              onClick={discardAndClose}
-            >
-              Discard
-            </button>
-          )}
         </Modal>
       )}
 
