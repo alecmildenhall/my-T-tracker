@@ -56,7 +56,7 @@ The long-term product goal is to give users a clear, friendly choice about where
 Planned storage modes:
 
 - **Local only**  
-  The default mode. Entries stay on the current device and nothing is uploaded. The tradeoff is that deleting the app, clearing browser data, or losing the device may delete entries unless the user exports a backup.
+  The default mode. Entries stay on the current device and nothing is uploaded. The tradeoff is that deleting the app, clearing browser data, or losing the device may delete entries unless the user exports a backup — and, on iOS Safari, so can *simply not opening the app for a week*, because the browser evicts an uninstalled site's storage on its own. Local-only is a promise about privacy, never about permanence; see **Data Durability** in the roadmap. Say so plainly in the product rather than implying the data is safe just because it never left the phone.
 
 - **Manual backup**  
   The user can export and later restore their data, ideally as an encrypted backup file. The user chooses where to save it, such as device files, iCloud Drive, Google Drive, external storage, or another private location.
@@ -345,10 +345,24 @@ Milestones should be configurable eventually, but the first version should avoid
 - [ ] Add a **developer data viewer** (raw JSON, export panel)
 - [ ] Strengthen accessibility (labels, keyboard navigation)
 
+### Data Durability — the constraint the storage plan has to answer
+
+Local-only storage is a privacy guarantee, not a persistence one, and the browser is allowed to delete it. This is the single biggest threat to the product's actual promise: there is no server copy, so anything the browser evicts is gone. Treat the items below as data-safety work, not polish.
+
+- **On iOS/macOS Safari, an uninstalled site's storage is evicted after roughly 7 days without a first-party visit** (WebKit ITP applies to localStorage, IndexedDB, and friends). It counts days the browser is *used* without visiting, not calendar days. Someone injecting **weekly** sits exactly on that boundary — the worst possible fit for this app. Chrome, Firefox and Android don't do this, though every browser can still evict under storage pressure, and "clear website data" wipes everything anywhere.
+- **Installing is what confers durability, not being a PWA.** A PWA still used in a Safari tab gets the same ITP treatment; the exemption comes from adding it to the home screen. So the PWA work below is only protective once the user actually installs, which makes the install prompt a data-safety feature and not a growth one. _Verify the current eviction window against WebKit's documentation before relying on the exact number — the policy has changed before._
+- **Nothing is guaranteed even then.** An installed app's storage can still go when the device is low on space, and the user can always clear it. **Backup export is the only real recovery path**, which is why it should be easy to find, easy to repeat, and worth actively reminding people about rather than burying in Settings.
+- **Ask for persistent storage** via `navigator.storage.persist()` where it exists (good support in Chrome/Firefox; Safari grants heuristically). Cheap, and it moves the app out of the "evict first" bucket.
+- **Surface failed writes.** `useLocalStorage` currently swallows a write error to `console.warn` — so a save can appear to succeed, update the UI, and never persist. That happens for real: Safari private browsing throws on `setItem`, and quota-exceeded hits on a full device. With no server copy this is unrecoverable, and a console warning is a message to a developer who will never read it. Tell the user instead.
+- **Capacitor moves storage off the webview** (Preferences/SQLite) precisely because the OS can clear webview storage. That swaps *which* fallible call sits behind `useLocalStorage`; it does not remove the need to handle failure, and the error-surfacing above is reused unchanged.
+
+**On observability generally:** the usual tooling — crash reporters, metrics, session replay, tracing — is permanently out of scope here, not deferred. All of it means shipping facts about the user off the device, which the privacy model forbids and the product's whole pitch depends on refusing. The underlying need doesn't disappear, it relocates: **the user is the only observer**, so "how would anyone know this broke?" becomes "does the app say so, in the moment, in words the person can act on?" That is why silent failures rank as severe in this codebase — a save that quietly does nothing is this app's version of an outage. The developer-facing half is the planned **raw-JSON data viewer**: with no logs to inspect, the user's own export *is* the diagnostic artifact (and it carries health data plus a possible preferred name, so a redacted, structure-only variant is worth considering before asking anyone to send one).
+
 ### Mid-Term (v0.3 → v0.5)
 
-- Add **PWA support** (installable, offline-first)
-- Add **encrypted backup files** with clear restore instructions
+- Add **PWA support** (installable, offline-first) — _also the durability fix for iOS: see **Data Durability** above. Pair it with an install prompt and `navigator.storage.persist()`, and treat install as the point at which the data becomes reasonably safe._
+- Surface **storage write failures** to the user instead of `console.warn` — private mode and a full device both make a save silently fail today
+- Add **encrypted backup files** with clear restore instructions — _the only true recovery path; worth a gentle periodic reminder to export, since eviction is silent_
 - Add **app disguise mode**: change app icon and name for discretion (presets: clock, calculator, football, weather). This is a _cover_ (hides that the app is a T tracker), not encryption — it does not make the stored data unreadable.
 - Add an **optional app lock**, off by default: gate opening the app behind the device biometric / passcode rather than a custom in-app password (nothing new for the user to forget, no recovery flow to build). Best implemented on the Capacitor build, where native biometric APIs exist; complements disguise mode (cover) and encrypted backups (secrecy).
 - Add a short, skippable **first-run overview** pointing to what lives in Settings (journey/milestones, saved values, export/backup, and — once built — app lock), so privacy options are discoverable without a setup wall.
@@ -362,7 +376,7 @@ Milestones should be configurable eventually, but the first version should avoid
 
 ### Long-Term (Post-MVP)
 
-- Optional **encrypted sync** for recovery and cross-device use
+- Optional **encrypted sync** for recovery and cross-device use — _also the first time a lost device or an evicted browser store stops meaning lost data; until it exists, backup export carries that entire burden (see **Data Durability**)_
 - Native mobile packaging with Capacitor if app-store distribution is needed
 - App Store / Google Play distribution if native packaging is justified
 - Native reminder support if PWA reminders are not reliable enough
