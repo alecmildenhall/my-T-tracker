@@ -219,6 +219,14 @@ The preferred path is to keep one React app as the core product and avoid buildi
 3. **Capacitor mobile wrapper, only when needed**  
    Use Capacitor later if App Store / Google Play distribution, native reminders, or more reliable device storage become important enough to justify the added maintenance. Avoid a separate desktop app unless a specific desktop-only need appears.
 
+   **A native app does genuinely fix durability.** App-sandbox storage is not subject to browser eviction — no ITP, no 7-day timer — so it survives until the user deletes the app. Capacitor gets there by wrapping this same React app rather than forking a second codebase, so it is packaging work, not a rewrite.
+
+   **But store distribution carries a privacy cost a PWA does not.** An App Store / Play install is tied to the user's Apple or Google account: visible in purchase history, in family sharing, and restorable across their devices. For an app that already plans disguise mode and an app lock, "there is a permanent record on my Apple ID that I installed a testosterone tracker" is a real exposure — and a home-screen PWA creates no such trail. Durability and leaving-no-trace pull in opposite directions here; neither option wins outright, and the choice should be made deliberately rather than by drift.
+
+   Other costs worth knowing before committing: Apple Developer is **$99/year ongoing** even for a free app (Google Play is $25 once); review adds release latency and health apps draw extra scrutiny; and **disguise mode is only partly achievable on iOS** — alternate app *icons* are supported, renaming the app is not, so that feature is weaker on an App Store build than the concept suggests.
+
+   **What should actually trigger the move:** not durability, which an installed PWA plus `navigator.storage.persist()` plus easy backup export largely covers at zero cost. The real reasons are **reliable local notifications** (the "shot due soon" reminder is unreliable as a PWA, especially on iOS), **biometric app lock**, and **discoverability** for people who look for apps in a store rather than a browser. If none of those are pressing, the wrapper is maintenance without payoff.
+
 ### UI Timing And Responsiveness
 
 The major UI overhaul should happen after the core logging data model is stable, but before PWA/app-store work. The goal is to avoid polishing screens that may change, while still making the app feel trustworthy before it reaches real users.
@@ -363,7 +371,7 @@ Local-only storage is a privacy guarantee, not a persistence one, and the browse
 - Add **PWA support** (installable, offline-first) — _also the durability fix for iOS: see **Data Durability** above. Pair it with an install prompt and `navigator.storage.persist()`, and treat install as the point at which the data becomes reasonably safe._
 - Surface **storage write failures** to the user instead of `console.warn` — private mode and a full device both make a save silently fail today
 - Add **encrypted backup files** with clear restore instructions — _the only true recovery path; worth a gentle periodic reminder to export, since eviction is silent_
-- Add **app disguise mode**: change app icon and name for discretion (presets: clock, calculator, football, weather). This is a _cover_ (hides that the app is a T tracker), not encryption — it does not make the stored data unreadable.
+- Add **app disguise mode**: change app icon and name for discretion (presets: clock, calculator, football, weather). This is a _cover_ (hides that the app is a T tracker), not encryption — it does not make the stored data unreadable. _Platform limit: iOS supports alternate app icons but not renaming an installed app, so the name half of this only works on Android and on a home-screen PWA (where the user names the shortcut themselves)._
 - Add an **optional app lock**, off by default: gate opening the app behind the device biometric / passcode rather than a custom in-app password (nothing new for the user to forget, no recovery flow to build). Best implemented on the Capacitor build, where native biometric APIs exist; complements disguise mode (cover) and encrypted backups (secrecy).
 - Add a short, skippable **first-run overview** pointing to what lives in Settings (journey/milestones, saved values, export/backup, and — once built — app lock), so privacy options are discoverable without a setup wall.
 - ~~Add optional **symptom tagging** (fatigue, anxiety, headache)~~ — _pulled earlier into **slice B½ (Logging model)**; charts need the model first_
@@ -377,8 +385,8 @@ Local-only storage is a privacy guarantee, not a persistence one, and the browse
 ### Long-Term (Post-MVP)
 
 - Optional **encrypted sync** for recovery and cross-device use — _also the first time a lost device or an evicted browser store stops meaning lost data; until it exists, backup export carries that entire burden (see **Data Durability**)_
-- Native mobile packaging with Capacitor if app-store distribution is needed
-- App Store / Google Play distribution if native packaging is justified
+- Native mobile packaging with Capacitor if app-store distribution is needed — _also the point at which storage stops being evictable at all (see the Capacitor note under Recommended Product Path); weigh that against the account trail a store install leaves_
+- App Store / Google Play distribution if native packaging is justified — _decide deliberately: a store listing ties the app to the user's Apple/Google account, which a home-screen PWA never does. Also check whether the OS's automatic cloud backup (iCloud / Google Drive) is on for app data, since that would quietly move health data off the device and contradict the local-only promise; both can be disabled per-app, at the cost of losing free device-restore._
 - Native reminder support if PWA reminders are not reliable enough
 - Cross-device sync using private keys
 - StoryGraph-style **trend analytics** and correlations
