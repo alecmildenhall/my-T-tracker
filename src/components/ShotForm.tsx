@@ -235,9 +235,14 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       parsedDose !== undefined && (!Number.isFinite(parsedDose) || parsedDose < 0)
         ? "Dose must be a positive number."
         : null;
-    // Also mirrors the schema, which stores pain as a whole number 0–10 — so a
-    // decimal must be refused rather than saved, or the entry would fail to
-    // re-import from its own backup.
+    // INTERIM — retires with the numeric pain input in slice B½, which replaces
+    // it with None/Mild/Moderate/Severe chips (see the roadmap). It exists only
+    // because the native step/max constraints were cancelling the submit event
+    // silently, leaving a dead Save button. Don't build on it.
+    //
+    // Mirrors the schema, which stores pain as a whole number 0–10 — so a decimal
+    // must be refused rather than saved, or the entry would fail to re-import
+    // from its own backup.
     const nextPainError =
       parsedPain !== undefined &&
       (!Number.isInteger(parsedPain) || parsedPain < 0 || parsedPain > 10)
