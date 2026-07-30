@@ -214,6 +214,57 @@ describe("App — an interrupted entry is not lost", () => {
     expect(within(sheet).getByLabelText("Date")).toHaveValue(todayLocalISO());
   });
 
+  it("does not clobber a parked draft when an edit is abandoned", async () => {
+    seedShots([{ id: "a", date: "2026-06-01", notes: "existing" }]);
+    renderApp();
+
+    // Park an unfinished new shot.
+    openSheet();
+    fireEvent.change(notesField(), { target: { value: "parked" } });
+    fireEvent.keyDown(window, { key: "Escape" });
+    await sheetGone();
+
+    // Abandon an edit. Only a new-shot sheet owns the draft, so this must leave
+    // it alone — saving an edit already does.
+    goTo("History");
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.keyDown(window, { key: "Escape" });
+    await sheetGone();
+
+    goTo("Home");
+    openSheet();
+    expect(notesField()).toHaveValue("parked");
+  });
+
+  it("does not resurrect a just-saved shot when Back lands during the exit", async () => {
+    renderApp();
+    openSheet();
+    // Backdate it: the post-save reset keeps the date, so the form still reads
+    // as dirty afterwards and would republish itself as a draft.
+    fireEvent.change(within(screen.getByRole("dialog")).getByLabelText("Date"), {
+      target: { value: "2026-06-01" },
+    });
+    fireEvent.change(notesField(), { target: { value: "saved once" } });
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+    );
+
+    // Impatient Escape inside the exit-animation window, while the sheet is still
+    // mounted and listening.
+    fireEvent.keyDown(window, { key: "Escape" });
+    await sheetGone();
+
+    openSheet();
+    // Assert the DATE, not the notes: the post-save reset clears notes but keeps
+    // the date, so notes reads empty whether or not a draft was resurrected. The
+    // backdate is the only field that gives it away — and a restored draft here
+    // would invite logging the same shot twice.
+    expect(within(screen.getByRole("dialog")).getByLabelText("Date")).toHaveValue(
+      todayLocalISO()
+    );
+    expect(screen.getByText("saved once")).toBeInTheDocument();
+  });
+
   it("keeps the edit sheet out of the draft system", async () => {
     seedShots([{ id: "a", date: "2026-06-01", notes: "original" }]);
     renderApp();

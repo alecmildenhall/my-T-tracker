@@ -244,6 +244,47 @@ describe("HistoryView", () => {
     expect(screen.getByText(/No shots match these filters/)).toBeInTheDocument();
   });
 
+  it("renders the canonical option when a rename changes only the casing", () => {
+    // Renaming "Thigh" to "thigh" in Settings is explicitly supported, and the
+    // History query survives the tab trip — so the stored selection can differ
+    // from the option list by casing only. The select must show the canonical
+    // option rather than a value matching nothing, which would blank the control
+    // while it is still filtering.
+    const Recased = () => {
+      const [data, setData] = useState<ShotEntry[]>([
+        { id: "x", date: "2026-06-01", injectionSite: "Thigh" },
+      ]);
+      const [query, setQuery] = useState<HistoryQuery>(emptyHistoryQuery);
+      return (
+        <>
+          <button
+            type="button"
+            onClick={() => setData([{ id: "x", date: "2026-06-01", injectionSite: "thigh" }])}
+          >
+            rename
+          </button>
+          <HistoryView
+            shots={data}
+            query={query}
+            onQueryChange={setQuery}
+            onEditShot={vi.fn()}
+            onDeleteShot={vi.fn()}
+          />
+        </>
+      );
+    };
+    render(<Recased />);
+    openFilters();
+    fireEvent.change(screen.getByLabelText("Site"), { target: { value: "Thigh" } });
+    fireEvent.click(screen.getByRole("button", { name: "rename" }));
+
+    const sel = screen.getByLabelText("Site") as HTMLSelectElement;
+    expect(sel.selectedIndex).not.toBe(-1);
+    expect(sel.value).toBe("thigh");
+    // Still filtering, and still only one shot matches.
+    expect(screen.getByText("Showing 1 of 1 shot")).toBeInTheDocument();
+  });
+
   it("does not offer the same value twice when only its casing differs", () => {
     // suggestionsFor keeps the most recent display form, so a casing change can
     // make the preserved selection and the fresh option look like two choices

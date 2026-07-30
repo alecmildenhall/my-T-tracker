@@ -75,30 +75,37 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   // last "glute" shot (one tap away, here in History) would otherwise leave the
   // select rendering blank while still filtering, with the badge as the only
   // clue.
-  // Compared with normalizeValue, matching how filterShots itself matches: an
-  // exact comparison would list "Thigh" and "thigh" as two options that filter
-  // identically, once a later shot changes the casing suggestionsFor reports.
-  const withSelected = (options: string[], selected?: string) =>
-    selected &&
-    !options.some((o) => normalizeValue(o) === normalizeValue(selected))
-      ? [selected, ...options]
-      : options;
+  // Returns the options AND the value to render, because the two can disagree.
+  // Matching is case-insensitive (as filterShots matches), so when the stored
+  // selection differs only in casing from the option list — renaming "Thigh" to
+  // "thigh" in Settings does exactly that, and the query survives the tab trip —
+  // the select must render the *canonical* option, or its value matches nothing
+  // and the control goes blank while still filtering. When the value is gone from
+  // the list entirely, it is prepended so it stays visible.
+  const facet = (
+    options: string[],
+    selected?: string
+  ): { options: string[]; value: string } => {
+    if (!selected) return { options, value: "" };
+    const canonical = options.find(
+      (o) => normalizeValue(o) === normalizeValue(selected)
+    );
+    return canonical
+      ? { options, value: canonical }
+      : { options: [selected, ...options], value: selected };
+  };
 
-  const siteOptions = useMemo(
-    () => withSelected(suggestionsFor(shots, "injectionSite"), query.filter.site),
+  const site = useMemo(
+    () => facet(suggestionsFor(shots, "injectionSite"), query.filter.site),
     [shots, query.filter.site]
   );
-  const positionOptions = useMemo(
+  const position = useMemo(
     () =>
-      withSelected(
-        suggestionsFor(shots, "injectionSitePosition"),
-        query.filter.position
-      ),
+      facet(suggestionsFor(shots, "injectionSitePosition"), query.filter.position),
     [shots, query.filter.position]
   );
-  const esterOptions = useMemo(
-    () =>
-      withSelected(suggestionsFor(shots, "testosteroneEster"), query.filter.ester),
+  const ester = useMemo(
+    () => facet(suggestionsFor(shots, "testosteroneEster"), query.filter.ester),
     [shots, query.filter.ester]
   );
 
@@ -234,11 +241,11 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
               <label>
                 Site
                 <select
-                  value={query.filter.site ?? ""}
+                  value={site.value}
                   onChange={(e) => setFilter({ site: e.target.value })}
                 >
                   <option value="">Any</option>
-                  {siteOptions.map((v) => (
+                  {site.options.map((v) => (
                     <option key={v} value={v}>{v}</option>
                   ))}
                 </select>
@@ -246,11 +253,11 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
               <label>
                 Position
                 <select
-                  value={query.filter.position ?? ""}
+                  value={position.value}
                   onChange={(e) => setFilter({ position: e.target.value })}
                 >
                   <option value="">Any</option>
-                  {positionOptions.map((v) => (
+                  {position.options.map((v) => (
                     <option key={v} value={v}>{v}</option>
                   ))}
                 </select>
@@ -261,11 +268,11 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
               <label>
                 Type of T
                 <select
-                  value={query.filter.ester ?? ""}
+                  value={ester.value}
                   onChange={(e) => setFilter({ ester: e.target.value })}
                 >
                   <option value="">Any</option>
-                  {esterOptions.map((v) => (
+                  {ester.options.map((v) => (
                     <option key={v} value={v}>{v}</option>
                   ))}
                 </select>

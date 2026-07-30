@@ -96,13 +96,35 @@ const App: React.FC = () => {
   const liveDraft = useRef<ShotDraft | null>(null);
 
   const dismissSheet = () => {
-    setDraft(liveDraft.current);
+    // Already on the way out: the sheet stays mounted through its exit animation
+    // with the Escape and Back listeners still live, so a stray press in that
+    // window must not re-decide the draft. Without this, pressing Back just after
+    // saving a backdated shot restored the entry that was already saved (the
+    // post-save reset keeps the date, so the form still reads as dirty),
+    // inviting a duplicate.
+    if (closing) return;
+    // Only a new-shot sheet owns the draft. Editing must leave it untouched:
+    // abandoning an edit would otherwise wipe an unfinished new shot the user had
+    // parked earlier — and saving an edit already leaves it alone, so writing
+    // here made dismiss and save disagree.
+    if (!activeEditingShot) setDraft(liveDraft.current);
     closeSheet();
+  };
+
+  // Saving clears the draft *and* the live values behind it. The sheet stays
+  // mounted through the exit animation with its Escape and Back listeners live,
+  // and the post-save reset deliberately keeps the date — so on a backdated shot
+  // the form still counts as dirty and would republish. An impatient Back press
+  // in that window would then restore the entry that was just saved, inviting a
+  // duplicate.
+  const clearDraft = () => {
+    liveDraft.current = null;
+    setDraft(null);
   };
 
   const handleAddShot = (shot: ShotEntry) => {
     addShot(shot);
-    setDraft(null);
+    clearDraft();
     closeSheet();
   };
 
