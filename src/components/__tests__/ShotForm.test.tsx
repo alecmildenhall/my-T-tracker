@@ -206,6 +206,63 @@ describe("ShotForm field mapping", () => {
     expect(onAddShot.mock.calls[0][0]).toMatchObject({ doseMg: 62.5 });
   });
 
+  it("refuses a decimal pain score with a visible message, not a dead button", () => {
+    // Pain is stored as a whole 0–10 (the schema enforces it, so a decimal would
+    // fail to re-import from its own backup). The native step/max constraints used
+    // to cancel the submit event outright: nothing saved, nothing said.
+    const onAddShot = vi.fn();
+    render(<ShotForm onAddShot={onAddShot} />);
+    fireEvent.change(screen.getByLabelText("Pain (0–10)"), { target: { value: "2.5" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+
+    expect(onAddShot).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Pain must be a whole number from 0 to 10."
+    );
+
+    // Correcting it clears the message and saves.
+    fireEvent.change(screen.getByLabelText("Pain (0–10)"), { target: { value: "3" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+    expect(onAddShot.mock.calls[0][0]).toMatchObject({ painScore: 3 });
+  });
+
+  it("keeps an error message out of the field's accessible name", () => {
+    // Text inside a <label> becomes part of the field's accessible name, so an
+    // error rendered there would rename the field to "Pain (0–10)<the error>" —
+    // breaking both screen-reader announcements and label-based queries. The
+    // error is a sibling, reached via aria-describedby.
+    render(<ShotForm onAddShot={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Pain (0–10)"), { target: { value: "2.5" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+
+    const pain = screen.getByLabelText("Pain (0–10)");
+    expect(pain).toHaveAccessibleName("Pain (0–10)");
+    expect(pain).toHaveAttribute("aria-invalid", "true");
+    expect(pain).toHaveAccessibleDescription(
+      "Pain must be a whole number from 0 to 10."
+    );
+  });
+
+  it("refuses an out-of-range pain score too", () => {
+    const onAddShot = vi.fn();
+    render(<ShotForm onAddShot={onAddShot} />);
+    fireEvent.change(screen.getByLabelText("Pain (0–10)"), { target: { value: "15" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+
+    expect(onAddShot).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+  });
+
+  it("refuses a negative dose with a message", () => {
+    const onAddShot = vi.fn();
+    render(<ShotForm onAddShot={onAddShot} />);
+    fireEvent.change(screen.getByLabelText("Dose (mg)"), { target: { value: "-5" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+
+    expect(onAddShot).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent("Dose must be a positive number.");
+  });
+
   it("stores omitted optional fields as undefined, never empty strings", () => {
     // The project rule: ShotEntry optionals must never be "" (see CLAUDE.md).
     const onAddShot = vi.fn();

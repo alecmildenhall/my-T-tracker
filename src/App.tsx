@@ -65,11 +65,20 @@ const App: React.FC = () => {
   // transition's length, then goes.
   const [closing, setClosing] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The same fact as `closing`, held in a ref because the guards below need it
+  // SYNCHRONOUSLY. State updates are async, so a rapid double-tap fires both
+  // handlers before React re-renders and every one of them reads `closing` as
+  // false — which is exactly how a double-tap on Save wrote the shot twice.
+  // (`pointer-events: none` on the closing sheet has the same problem: the class
+  // only lands on the next render.)
+  const closingRef = useRef(false);
 
   const closeSheet = () => {
-    if (closing) return; // already on the way out
+    if (closingRef.current) return; // already on the way out
+    closingRef.current = true;
     setClosing(true);
     closeTimer.current = setTimeout(() => {
+      closingRef.current = false;
       setClosing(false);
       setLoggingNew(false);
       setEditingShot(null);
@@ -102,7 +111,7 @@ const App: React.FC = () => {
     // saving a backdated shot restored the entry that was already saved (the
     // post-save reset keeps the date, so the form still reads as dirty),
     // inviting a duplicate.
-    if (closing) return;
+    if (closingRef.current) return;
     // Only a new-shot sheet owns the draft. Editing must leave it untouched:
     // abandoning an edit would otherwise wipe an unfinished new shot the user had
     // parked earlier — and saving an edit already leaves it alone, so writing
@@ -122,13 +131,22 @@ const App: React.FC = () => {
     setDraft(null);
   };
 
+  // Both save paths bail once the sheet is closing, for the same reason
+  // dismissSheet does: the sheet stays mounted through its 200ms exit animation
+  // and only `#root` is inert, so its own Save button is still live. Without this
+  // a double-tap inside that window wrote the shot twice — the second a blank
+  // duplicate, since the post-save reset had already cleared the fields — and a
+  // Save landing just after ✕/Escape saved a shot the user had just dismissed.
+  // 200ms is precisely a double-tap, and there is no undo until slice C.
   const handleAddShot = (shot: ShotEntry) => {
+    if (closingRef.current) return;
     addShot(shot);
     clearDraft();
     closeSheet();
   };
 
   const handleUpdateShot = (shot: ShotEntry) => {
+    if (closingRef.current) return;
     updateShot(shot.id, shot);
     closeSheet();
   };

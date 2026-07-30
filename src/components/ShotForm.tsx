@@ -156,6 +156,8 @@ export const ShotForm: React.FC<ShotFormProps> = ({
 
   const [date, setDate] = useState<string>(start.date);
   const [dateError, setDateError] = useState<string | null>(null);
+  const [doseError, setDoseError] = useState<string | null>(null);
+  const [painError, setPainError] = useState<string | null>(null);
   const [time, setTime] = useState<string>(start.time);
   const [doseMg, setDoseMg] = useState<string>(start.doseMg);
   const [injectionSite, setInjectionSite] = useState<string>(start.injectionSite);
@@ -189,6 +191,8 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   const resetForm = useCallback(() => {
     setDate(todayLocalISO());
     setDateError(null);
+    setDoseError(null);
+    setPainError(null);
     setTime("");
     setInjectionSite("");
     setInjectionSitePosition("");
@@ -212,17 +216,40 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
 
-    // Parse the date at the entry boundary. A native date picker only ever emits
-    // a valid YYYY-MM-DD (or empty, caught by `required`), so this rarely fires —
-    // but a text-field fallback (older browsers) or a paste could produce an
-    // impossible date. Surface it inline rather than silently accepting or
-    // dropping it, and block the save.
+    // Every field is validated here, and the form carries `noValidate`, so the
+    // browser never silently refuses to submit. It used to: a decimal dose or
+    // pain score (or a pain score above 10) failed the native `step`/`max`
+    // constraints, which cancels the submit event outright — the button appeared
+    // to do nothing at all, with no message and nothing saved. Whatever we reject
+    // now, we say why, next to the field.
     const parsedDate = toCivilDate(date);
-    if (!parsedDate) {
-      setDateError("Please enter a real calendar date (YYYY-MM-DD).");
-      return;
-    }
-    setDateError(null);
+    const parsedDose = doseMg === "" ? undefined : Number(doseMg);
+    const parsedPain = painScore === "" ? undefined : Number(painScore);
+
+    const nextDateError = parsedDate
+      ? null
+      : "Please enter a real calendar date (YYYY-MM-DD).";
+    // Mirrors the storage schema: a finite, non-negative number. Fractional doses
+    // are fine (62.5mg while titrating is ordinary).
+    const nextDoseError =
+      parsedDose !== undefined && (!Number.isFinite(parsedDose) || parsedDose < 0)
+        ? "Dose must be a positive number."
+        : null;
+    // Also mirrors the schema, which stores pain as a whole number 0–10 — so a
+    // decimal must be refused rather than saved, or the entry would fail to
+    // re-import from its own backup.
+    const nextPainError =
+      parsedPain !== undefined &&
+      (!Number.isInteger(parsedPain) || parsedPain < 0 || parsedPain > 10)
+        ? "Pain must be a whole number from 0 to 10."
+        : null;
+
+    setDateError(nextDateError);
+    setDoseError(nextDoseError);
+    setPainError(nextPainError);
+    // `!parsedDate` is implied by nextDateError, but stating it narrows the type
+    // so the branded CivilDate below can't be null.
+    if (nextDateError || nextDoseError || nextPainError || !parsedDate) return;
 
     const newShot: ShotEntry = {
       id: editingShot ? editingShot.id : newId(),
@@ -231,12 +258,12 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       // trust boundary, not just a yes/no gate.
       date: parsedDate,
       time: time || undefined,
-      doseMg: doseMg ? Number(doseMg) : undefined,
+      doseMg: parsedDose,
       injectionSite: injectionSite || undefined,
       injectionSitePosition: injectionSitePosition || undefined,
       testosteroneEster: testosteroneEster || undefined,
       carrierOil: carrierOil || undefined,
-      painScore: painScore ? Number(painScore) : undefined,
+      painScore: parsedPain,
       mood: mood || undefined,
       notes: notes || undefined,
     };
@@ -298,7 +325,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // Three regions: a pinned bar, the scrolling fields, and a pinned action.
     // Save must stay reachable without scrolling past ten fields, and Close sits
     // top-left — away from the thumb, so it isn't hit by accident.
-    <form className="shot-form" onSubmit={handleSubmit}>
+    <form className="shot-form" onSubmit={handleSubmit} noValidate>
       <div className="shot-form__bar shot-form__bar--top">
         {onDismiss && (
           <button
@@ -318,26 +345,32 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       <div className="shot-form__scroll">
 
       <div className="form-row">
-        <label>
-          Date
-          <input
-            ref={firstFieldRef}
-            type="date"
-            value={date}
-            onChange={(e) => {
-              setDate(e.target.value);
-              if (dateError) setDateError(null);
-            }}
-            required
-            aria-invalid={dateError ? true : undefined}
-            aria-describedby={dateError ? "date-error" : undefined}
-          />
+        {/* The error is a SIBLING of the label, never inside it: text inside a
+            <label> becomes part of the field's accessible name, so an error
+            message there would rename the field to "Date <the whole error>".
+            aria-describedby is how it reaches assistive tech. */}
+        <div className="field-cell">
+          <label>
+            Date
+            <input
+              ref={firstFieldRef}
+              type="date"
+              value={date}
+              onChange={(e) => {
+                setDate(e.target.value);
+                if (dateError) setDateError(null);
+              }}
+              required
+              aria-invalid={dateError ? true : undefined}
+              aria-describedby={dateError ? "date-error" : undefined}
+            />
+          </label>
           {dateError && (
             <span id="date-error" className="field-error" role="alert">
               {dateError}
             </span>
           )}
-        </label>
+        </div>
 
         <div className="field-cell">
           <label>
@@ -377,8 +410,15 @@ export const ShotForm: React.FC<ShotFormProps> = ({
               value={doseMg}
               onChange={(e) => setDoseMg(e.target.value)}
               placeholder="e.g. 50"
+              aria-invalid={doseError ? true : undefined}
+              aria-describedby={doseError ? "dose-error" : undefined}
             />
           </label>
+          {doseError && (
+            <span id="dose-error" className="field-error" role="alert">
+              {doseError}
+            </span>
+          )}
           <SuggestionChips
             label="dose"
             suggestions={suggestions.dose}
@@ -474,8 +514,15 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             value={painScore}
             onChange={(e) => setPainScore(e.target.value)}
             placeholder="e.g. 3"
+            aria-invalid={painError ? true : undefined}
+            aria-describedby={painError ? "pain-error" : undefined}
           />
         </label>
+        {painError && (
+          <span id="pain-error" className="field-error" role="alert">
+            {painError}
+          </span>
+        )}
 
         <label>
           Mood

@@ -1106,6 +1106,14 @@ textarea {
   transition-duration: 200ms;
 }
 
+/* A sheet on its way out takes no more input. The handlers also guard on
+   `closing`, but this stops the press landing at all — the sheet is portaled
+   outside the inert app root, so its own Save button would otherwise stay
+   clickable for the whole 200ms slide. */
+.dialog-overlay--sheet.is-closing {
+  pointer-events: none;
+}
+
 /* Longhands, not the `transition` shorthand: the shorthand would reset
    transition-property back to `transform`, and being more specific it would beat
    the reduced-motion rule below that switches the property to `opacity` — so the

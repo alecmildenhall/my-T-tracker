@@ -236,6 +236,45 @@ describe("App — an interrupted entry is not lost", () => {
     expect(notesField()).toHaveValue("parked");
   });
 
+  it("cannot save twice by double-tapping through the exit animation", async () => {
+    // The sheet stays mounted for its 200ms slide and is portaled outside the
+    // inert app root, so Save is still live. 200ms is exactly a double-tap, and
+    // the post-save reset means the second write would be a blank duplicate.
+    renderApp();
+    openSheet();
+    fireEvent.change(notesField(), { target: { value: "only once" } });
+    const save = within(screen.getByRole("dialog")).getByRole("button", {
+      name: "Save shot",
+    });
+    // All three inside ONE act, so React batches them exactly as a real browser
+    // does. Separate fireEvent calls each flush a render in between, which let
+    // the state-based guard look like it worked while the browser saved three
+    // times — the guard has to be a ref, read synchronously.
+    act(() => {
+      save.click();
+      save.click();
+      save.click();
+    });
+    await sheetGone();
+
+    expect(screen.getAllByText("only once")).toHaveLength(1);
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEYS.shots)!);
+    expect(stored).toHaveLength(1);
+  });
+
+  it("does not save a shot that was just dismissed", async () => {
+    renderApp();
+    openSheet();
+    fireEvent.change(notesField(), { target: { value: "changed my mind" } });
+    const sheet = screen.getByRole("dialog");
+    // Dismiss, then a Save press lands inside the exit window.
+    fireEvent.click(within(sheet).getByRole("button", { name: "Close" }));
+    fireEvent.click(within(sheet).getByRole("button", { name: "Save shot" }));
+    await sheetGone();
+
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEYS.shots) ?? "[]")).toHaveLength(0);
+  });
+
   it("does not resurrect a just-saved shot when Back lands during the exit", async () => {
     renderApp();
     openSheet();
