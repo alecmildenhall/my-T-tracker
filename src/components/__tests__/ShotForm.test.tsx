@@ -192,6 +192,42 @@ describe("ShotForm field mapping", () => {
     expect(saved.id).toBeTruthy();
   });
 
+  it("surfaces a message when the date is empty", () => {
+    // The form carries `noValidate`, so a missing date no longer bounces off the
+    // browser's `required` check — it reaches our validation, and must say so
+    // rather than leaving Save looking broken.
+    const onAddShot = vi.fn();
+    render(<ShotForm onAddShot={onAddShot} />);
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+
+    expect(onAddShot).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Please enter a real calendar date"
+    );
+    expect(screen.getByLabelText("Date")).toHaveAttribute("aria-invalid", "true");
+
+    // Typing a date clears the message as you go, not only on the next submit.
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-06-15" } });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("carries forward from the newest shot whatever order the array is in", () => {
+    // Storage is append-order today, but an imported backup can arrive in any
+    // order — the newest shot must still win.
+    const onAddShot = vi.fn();
+    render(
+      <ShotForm
+        onAddShot={onAddShot}
+        shots={[
+          { id: "new", date: "2026-07-01", doseMg: 80 },
+          { id: "old", date: "2026-01-01", doseMg: 20 },
+        ]}
+      />
+    );
+    expect(screen.getByLabelText("Dose (mg)")).toHaveValue(80);
+  });
+
   it("accepts a fractional dose", () => {
     // Titrated doses like 62.5mg are ordinary and doseMg is a float, but the
     // input carried step=1 — so the browser's constraint validation blocked the

@@ -96,6 +96,13 @@ describe("HistoryView", () => {
     // the full list rather than filtering on a bad bound.
     fireEvent.change(from, { target: { value: "" } });
     expect(screen.getByText("Showing 3 of 3 shots")).toBeInTheDocument();
+
+    // Same for the upper bound.
+    const to = screen.getByLabelText("To");
+    fireEvent.change(to, { target: { value: "2026-06-01" } });
+    expect(screen.getByText("Showing 1 of 1 shot")).toBeInTheDocument();
+    fireEvent.change(to, { target: { value: "" } });
+    expect(screen.getByText("Showing 3 of 3 shots")).toBeInTheDocument();
   });
 
   it("filters by position and by type of T", () => {

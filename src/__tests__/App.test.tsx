@@ -337,6 +337,24 @@ describe("App — an interrupted entry is not lost", () => {
     expect(notesField()).toHaveValue("second");
   });
 
+  it("does not update a shot that was just dismissed", async () => {
+    // The edit path needs the same closing guard as the new-shot path: the sheet
+    // is still mounted and its Update button still live through the exit.
+    seedShots([{ id: "a", date: "2026-06-01", notes: "original" }]);
+    renderApp();
+    goTo("History");
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.change(notesField(), { target: { value: "should not land" } });
+    const sheet = screen.getByRole("dialog");
+    fireEvent.click(within(sheet).getByRole("button", { name: "Cancel editing" }));
+    fireEvent.click(within(sheet).getByRole("button", { name: "Update shot" }));
+    await sheetGone();
+
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEYS.shots)!);
+    expect(stored[0].notes).toBe("original");
+  });
+
   it("forgets the edit draft once that shot is saved", async () => {
     seedShots([{ id: "a", date: "2026-06-01", notes: "before" }]);
     renderApp();
