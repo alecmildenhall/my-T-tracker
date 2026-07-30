@@ -148,3 +148,103 @@ describe("ShotForm suggestion chips", () => {
     expect(oilInput().value).toBe("sesame");
   });
 });
+
+describe("ShotForm field mapping", () => {
+  it("saves every field to the property it belongs to", () => {
+    // Exercises all ten onChange handlers in one pass, and — more usefully —
+    // pins the field-to-model mapping. A field wired to the wrong property
+    // (mood into notes, position into site) would still look right on screen and
+    // still round-trip through the form; only the saved object reveals it.
+    const onAddShot = vi.fn();
+    render(<ShotForm onAddShot={onAddShot} />);
+
+    const byLabel = (text: string) =>
+      screen.getByLabelText(text) as HTMLInputElement | HTMLTextAreaElement;
+
+    fireEvent.change(byLabel("Date"), { target: { value: "2026-06-15" } });
+    fireEvent.change(byLabel("Time"), { target: { value: "20:45" } });
+    fireEvent.change(byLabel("Dose (mg)"), { target: { value: "62.5" } });
+    fireEvent.change(byLabel("Injection site"), { target: { value: "glute" } });
+    fireEvent.change(byLabel("Position"), { target: { value: "right" } });
+    fireEvent.change(byLabel("Type of T"), { target: { value: "enanthate" } });
+    fireEvent.change(byLabel("Carrier oil"), { target: { value: "sesame" } });
+    fireEvent.change(byLabel("Pain (0\u201310)"), { target: { value: "4" } });
+    fireEvent.change(byLabel("Mood"), { target: { value: "good" } });
+    fireEvent.change(byLabel("Notes"), { target: { value: "smooth one" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+
+    expect(onAddShot).toHaveBeenCalledTimes(1);
+    const saved = onAddShot.mock.calls[0][0] as ShotEntry;
+    expect(saved).toMatchObject({
+      date: "2026-06-15",
+      time: "20:45",
+      doseMg: 62.5,
+      injectionSite: "glute",
+      injectionSitePosition: "right",
+      testosteroneEster: "enanthate",
+      carrierOil: "sesame",
+      painScore: 4,
+      mood: "good",
+      notes: "smooth one",
+    });
+    expect(saved.id).toBeTruthy();
+  });
+
+  it("accepts a fractional dose", () => {
+    // Titrated doses like 62.5mg are ordinary and doseMg is a float, but the
+    // input carried step=1 — so the browser's constraint validation blocked the
+    // submit event outright and the form silently did nothing.
+    const onAddShot = vi.fn();
+    render(<ShotForm onAddShot={onAddShot} />);
+    const dose = screen.getByLabelText("Dose (mg)") as HTMLInputElement;
+
+    fireEvent.change(dose, { target: { value: "62.5" } });
+    expect(dose.checkValidity()).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+    expect(onAddShot.mock.calls[0][0]).toMatchObject({ doseMg: 62.5 });
+  });
+
+  it("stores omitted optional fields as undefined, never empty strings", () => {
+    // The project rule: ShotEntry optionals must never be "" (see CLAUDE.md).
+    const onAddShot = vi.fn();
+    render(<ShotForm onAddShot={onAddShot} />);
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+
+    const saved = onAddShot.mock.calls[0][0] as ShotEntry;
+    for (const key of [
+      "time",
+      "doseMg",
+      "injectionSite",
+      "injectionSitePosition",
+      "testosteroneEster",
+      "carrierOil",
+      "painScore",
+      "mood",
+      "notes",
+    ] as const) {
+      expect(saved[key]).toBeUndefined();
+    }
+  });
+
+  it("fills type of T and carrier oil from their reuse chips", () => {
+    const onAddShot = vi.fn();
+    render(
+      <ShotForm
+        onAddShot={onAddShot}
+        shots={[
+          { id: "1", date: "2026-05-01", testosteroneEster: "cypionate", carrierOil: "grapeseed" },
+        ]}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "cypionate" }));
+    fireEvent.click(screen.getByRole("button", { name: "grapeseed" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+
+    expect(onAddShot.mock.calls[0][0]).toMatchObject({
+      testosteroneEster: "cypionate",
+      carrierOil: "grapeseed",
+    });
+  });
+});

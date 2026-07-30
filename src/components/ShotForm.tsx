@@ -367,7 +367,12 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             <input
               type="number"
               min={0}
-              step={1}
+              // "any", not 1: fractional doses are ordinary (62.5mg, 12.5mg when
+              // titrating), doseMg is a float in the model, and the field already
+              // declares inputMode="decimal". With step=1 the browser silently
+              // refused to submit a decimal dose — constraint validation blocks
+              // the submit event, so the form just appeared to do nothing.
+              step="any"
               inputMode="decimal"
               value={doseMg}
               onChange={(e) => setDoseMg(e.target.value)}
