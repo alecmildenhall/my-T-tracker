@@ -122,6 +122,50 @@ describe("Modal", () => {
     unmount();
   });
 
+  it("lifts inert before restoring focus, not after", () => {
+    // The ordering bug this guards: `inert` makes its subtree unfocusable, so
+    // restoring focus to the opener while the root is still inert silently fails
+    // and focus lands nowhere. jsdom doesn't implement inert's *behaviour*, so
+    // the symptom is invisible here — but the call ORDER is observable, and that
+    // is the actual invariant.
+    const root = document.createElement("div");
+    root.id = "root";
+    const opener = document.createElement("button");
+    root.appendChild(opener);
+    document.body.appendChild(root);
+
+    const calls: string[] = [];
+    // Spies must call through: swallowing focus() would leave activeElement on
+    // <body>, so the Modal would capture the wrong restore target.
+    const realRemove = root.removeAttribute.bind(root);
+    vi.spyOn(root, "removeAttribute").mockImplementation((name: string) => {
+      if (name === "inert") calls.push("inert-lifted");
+      realRemove(name);
+    });
+    const realFocus = opener.focus.bind(opener);
+    vi.spyOn(opener, "focus").mockImplementation(() => {
+      calls.push("focus-restored");
+      realFocus();
+    });
+
+    realFocus();
+    const { unmount } = render(
+      <Modal labelledBy="o" onClose={vi.fn()}>
+        <h2 id="o">Ordering</h2>
+      </Modal>
+    );
+    unmount();
+
+    // StrictMode makes this happen more than once; the invariant is the order.
+    expect(calls).toContain("inert-lifted");
+    expect(calls).toContain("focus-restored");
+    expect(calls.indexOf("inert-lifted")).toBeLessThan(
+      calls.indexOf("focus-restored")
+    );
+    root.remove();
+    vi.restoreAllMocks();
+  });
+
   it("starts the sheet off-screen so it has somewhere to animate from", () => {
     // Without a first paint in the closed state the browser has nothing to
     // transition, and the sheet would simply appear.
