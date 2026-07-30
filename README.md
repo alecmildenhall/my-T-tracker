@@ -227,6 +227,15 @@ The preferred path is to keep one React app as the core product and avoid buildi
 
    **What should actually trigger the move:** not durability, which an installed PWA plus `navigator.storage.persist()` plus easy backup export largely covers at zero cost. The real reasons are **reliable local notifications** (the "shot due soon" reminder is unreliable as a PWA, especially on iOS), **biometric app lock**, and **discoverability** for people who look for apps in a store rather than a browser. If none of those are pressing, the wrapper is maintenance without payoff.
 
+4. **Ship both, from one repo.**  
+   The PWA and the store apps are two distributions of the *same* app, not two products — offer both and let people pick the trade-off that suits them: the store build is more durable and gets real notifications, the PWA leaves no account trail. Neither is the "real" version.
+
+   **One repository, one React source.** Capacitor adds `ios/` and `android/` folders alongside the existing app and wraps the same web build; it does not fork the codebase. Two repos (or a duplicated `web/` and `native/` tree) would be a mistake — every fix would need doing twice and the two would drift, which is exactly the failure mode this project avoids elsewhere by keeping one source of truth.
+
+   What legitimately differs between targets is narrow and belongs behind the seams that already exist: **storage** (localStorage vs a native store), **notifications** (Web Notifications vs a native scheduler), and **biometrics** (nothing vs a native API). Each is a small adapter chosen at runtime, not a parallel implementation. The selector layer added in slice A is the same idea and the same seam.
+
+   Practical notes for whoever picks this up: keep one version number across both, since a user comparing them will assume they match; the store build still needs the PWA's install/export flows because people move between them; and test the *web* build first, since it is the one that can ship the same day.
+
 ### UI Timing And Responsiveness
 
 The major UI overhaul should happen after the core logging data model is stable, but before PWA/app-store work. The goal is to avoid polishing screens that may change, while still making the app feel trustworthy before it reaches real users.
@@ -361,6 +370,12 @@ Local-only storage is a privacy guarantee, not a persistence one, and the browse
 - **Installing is what confers durability, not being a PWA.** A PWA still used in a Safari tab gets the same ITP treatment; the exemption comes from adding it to the home screen. So the PWA work below is only protective once the user actually installs, which makes the install prompt a data-safety feature and not a growth one. _Verify the current eviction window against WebKit's documentation before relying on the exact number — the policy has changed before._
 - **Nothing is guaranteed even then.** An installed app's storage can still go when the device is low on space, and the user can always clear it. **Backup export is the only real recovery path**, which is why it should be easy to find, easy to repeat, and worth actively reminding people about rather than burying in Settings.
 - **Ask for persistent storage** via `navigator.storage.persist()` where it exists (good support in Chrome/Firefox; Safari grants heuristically). Cheap, and it moves the app out of the "evict first" bucket.
+- **Once storage is gone, it cannot be detected.** Anything the app might leave as a breadcrumb — a flag, a marker, a cookie — is swept in the same pass, so on the next launch a wiped install is indistinguishable from a brand-new one. There is no "it looks like you lost data" message to write. That is precisely why the defences below have to be preventive and visible *before* anything goes wrong; silent, unrecoverable, undetectable loss is the worst outcome this product can produce, and the user should never be the one who has to know about eviction policies.
+- **Defend it in the UI, in this order:**
+  1. **Offer to install, and say why** — "keeps your entries from being cleared", not a bare "add to home screen". The reason is the whole point.
+  2. **Request `storage.persist()`** on launch where supported.
+  3. **Warn while at risk.** `navigator.storage.persisted()` reports whether storage is durable, so when it is not, show a calm, dismissible banner rather than letting someone find out by losing a year of entries.
+  4. **Nudge a backup** when the last export is old, since export is the only recovery that survives everything.
 - **Surface failed writes.** `useLocalStorage` currently swallows a write error to `console.warn` — so a save can appear to succeed, update the UI, and never persist. That happens for real: Safari private browsing throws on `setItem`, and quota-exceeded hits on a full device. With no server copy this is unrecoverable, and a console warning is a message to a developer who will never read it. Tell the user instead.
 - **Capacitor moves storage off the webview** (Preferences/SQLite) precisely because the OS can clear webview storage. That swaps *which* fallible call sits behind `useLocalStorage`; it does not remove the need to handle failure, and the error-surfacing above is reused unchanged.
 
@@ -369,6 +384,7 @@ Local-only storage is a privacy guarantee, not a persistence one, and the browse
 ### Mid-Term (v0.3 → v0.5)
 
 - Add **PWA support** (installable, offline-first) — _also the durability fix for iOS: see **Data Durability** above. Pair it with an install prompt and `navigator.storage.persist()`, and treat install as the point at which the data becomes reasonably safe._
+- Add the **storage-at-risk defences**: an install offer that explains *why*, a `storage.persist()` request, a dismissible banner while `storage.persisted()` is false, and a backup nudge when the last export is stale — _eviction is silent and undetectable after the fact, so these are the only protection there is (see **Data Durability**)_
 - Surface **storage write failures** to the user instead of `console.warn` — private mode and a full device both make a save silently fail today
 - Add **encrypted backup files** with clear restore instructions — _the only true recovery path; worth a gentle periodic reminder to export, since eviction is silent_
 - Add **app disguise mode**: change app icon and name for discretion (presets: clock, calculator, football, weather). This is a _cover_ (hides that the app is a T tracker), not encryption — it does not make the stored data unreadable. _Platform limit: iOS supports alternate app icons but not renaming an installed app, so the name half of this only works on Android and on a home-screen PWA (where the user names the shortcut themselves)._
@@ -386,6 +402,7 @@ Local-only storage is a privacy guarantee, not a persistence one, and the browse
 
 - Optional **encrypted sync** for recovery and cross-device use — _also the first time a lost device or an evicted browser store stops meaning lost data; until it exists, backup export carries that entire burden (see **Data Durability**)_
 - Native mobile packaging with Capacitor if app-store distribution is needed — _also the point at which storage stops being evictable at all (see the Capacitor note under Recommended Product Path); weigh that against the account trail a store install leaves_
+- **Offer PWA and store builds side by side** as two distributions of one app, from one repo — _the store build is more durable and gets real notifications; the PWA leaves no account trail. Let people choose; don't retire either._
 - App Store / Google Play distribution if native packaging is justified — _decide deliberately: a store listing ties the app to the user's Apple/Google account, which a home-screen PWA never does. Also check whether the OS's automatic cloud backup (iCloud / Google Drive) is on for app data, since that would quietly move health data off the device and contradict the local-only promise; both can be disabled per-app, at the cost of losing free device-restore._
 - Native reminder support if PWA reminders are not reliable enough
 - Cross-device sync using private keys
