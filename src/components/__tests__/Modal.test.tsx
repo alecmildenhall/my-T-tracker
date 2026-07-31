@@ -72,6 +72,28 @@ describe("Modal", () => {
     expect(confirm).toHaveFocus();
   });
 
+  it("keeps Tab inside even from the dialog container itself", () => {
+    // The container carries tabIndex -1 as the last-resort focus target, but
+    // FOCUSABLE excludes tabindex="-1", so it is neither the first nor the last
+    // focusable and fell through both wrap branches. It is reachable in practice:
+    // .dialog has padding, and clicking that dead space focuses it. With #root
+    // inert there is nothing earlier in the document, so an unintercepted
+    // Shift+Tab took focus clean out of the page.
+    render(<Harness />);
+    const dialog = screen.getByRole("dialog").querySelector(".dialog") as HTMLElement;
+    const cancel = screen.getByRole("button", { name: "Cancel" });
+    const confirm = screen.getByRole("button", { name: "Confirm" });
+
+    dialog.focus();
+    expect(dialog).toHaveFocus();
+    fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true });
+    expect(confirm).toHaveFocus(); // wrapped to the last control, not out of the page
+
+    dialog.focus();
+    fireEvent.keyDown(dialog, { key: "Tab" });
+    expect(cancel).toHaveFocus(); // forward goes to the first
+  });
+
   it("leaves every other key alone", () => {
     // The trap runs on the dialog's keydown, so it sees ordinary typing too. If
     // its Tab guard ever went, entering text in the shot sheet would yank focus

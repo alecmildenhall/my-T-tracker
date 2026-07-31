@@ -167,14 +167,27 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     []
   );
 
-  // A restored draft wins over both, and its empty `date` means "follow today".
+  // A restored draft wins over both. Its empty `date` means "follow today" — but
+  // ONLY for a new shot, mirroring the write side below.
+  //
+  // An empty date is two different things depending on mode, and conflating them
+  // corrupts data: on a new shot it is the untouched default, but on an edit it
+  // means the user emptied the field (native date inputs are clearable). Expanding
+  // that to today would silently re-date the shot on reopening — a shot logged in
+  // May came back as today, months out, and Update wrote it. When editing, an
+  // empty date is restored as empty; submitting is blocked until it is filled,
+  // which is the honest outcome.
   const start: ShotDraft = useMemo(
-    () => (draft ? { ...draft, date: draft.date || todayLocalISO() } : opened),
+    () =>
+      draft
+        ? { ...draft, date: draft.date || (editingShot ? "" : todayLocalISO()) }
+        : opened,
     // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
 
   const [date, setDate] = useState<string>(start.date);
+  const headingRef = useRef<HTMLHeadingElement>(null);
   const [dateError, setDateError] = useState<string | null>(null);
   const [doseError, setDoseError] = useState<string | null>(null);
   const [painError, setPainError] = useState<string | null>(null);
@@ -224,14 +237,19 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     setDoseMg(doseMg);
     setTestosteroneEster(testosteroneEster);
     setCarrierOil(carrierOil);
-    // "Clear form" is the only caller that is a control, and clearing makes it
-    // vanish (there is nothing left to clear), so without this focus drops to
-    // <body> — inside an OPEN dialog, where the Tab trap then cannot re-engage
-    // because it only wraps from the first or last focusable. The form is now in
-    // exactly the state a freshly opened sheet is in, so focus goes where a fresh
-    // sheet puts it: the first field.
-    firstFieldRef?.current?.focus();
-  }, [firstFieldRef]);
+    // "Clear form" is the only caller, and clearing makes it vanish (there is
+    // nothing left to clear), so without this focus drops to <body> — inside an
+    // OPEN dialog, where the Tab trap then cannot re-engage because it only wraps
+    // from the first or last focusable.
+    //
+    // The heading, NOT the first field: that field is <input type="date">, and
+    // focusing it from inside a click handler is exactly what makes iOS Safari and
+    // Android Chrome throw up the date wheel — so a quiet "Clear form" link at the
+    // bottom of the sheet would cover half the screen with a picker nobody asked
+    // for. The heading summons no keyboard and no picker, names the region that
+    // just changed for a screen reader, and keeps focus inside the trap.
+    headingRef.current?.focus();
+  }, []);
 
   // NOTE: there is deliberately no "sync the form to editingShot" effect. The
   // state above is seeded once at mount, and the parent gives this component a
@@ -383,7 +401,13 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             ✕
           </button>
         )}
-        <h2 id={headingId} className="shot-form__title">
+        {/* Focusable only as the target "Clear form" hands to — see resetForm. */}
+        <h2
+          id={headingId}
+          className="shot-form__title"
+          ref={headingRef}
+          tabIndex={-1}
+        >
           {editingShot ? "Edit shot" : "Log a shot"}
         </h2>
       </div>

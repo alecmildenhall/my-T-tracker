@@ -199,10 +199,18 @@ export const Modal: React.FC<ModalProps> = ({
     if (!focusables || focusables.length === 0) return;
     const first = focusables[0];
     const last = focusables[focusables.length - 1];
-    if (e.shiftKey && document.activeElement === first) {
+    // The container itself is focusable (tabIndex -1, as the last-resort target
+    // when nothing inside can take focus) but FOCUSABLE excludes tabindex="-1",
+    // so it is neither `first` nor `last` and would fall through both branches
+    // below. It is genuinely reachable: `.dialog` has padding, and clicking that
+    // dead space focuses it — from there Shift+Tab was not intercepted and, with
+    // #root inert leaving nothing earlier in the document, focus left the page
+    // entirely. Treat the container as sitting before the first control.
+    const onContainer = document.activeElement === dialogRef.current;
+    if (e.shiftKey && (onContainer || document.activeElement === first)) {
       e.preventDefault();
       last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
+    } else if (!e.shiftKey && (onContainer || document.activeElement === last)) {
       e.preventDefault();
       first.focus();
     }

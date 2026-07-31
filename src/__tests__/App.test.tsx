@@ -217,7 +217,11 @@ describe("App — an interrupted entry is not lost", () => {
       within(screen.getByRole("dialog")).queryByRole("button", { name: "Clear form" })
     ).toBeNull();
     expect(document.activeElement).not.toBe(document.body);
-    expect(within(screen.getByRole("dialog")).getByLabelText("Date")).toHaveFocus();
+    // The heading, not the Date field: focusing <input type="date"> from a click
+    // handler makes mobile browsers throw up the native picker over the sheet.
+    expect(
+      within(screen.getByRole("dialog")).getByRole("heading", { name: "Log a shot" })
+    ).toHaveFocus();
   });
 
   it("saving clears the draft", async () => {
@@ -379,6 +383,35 @@ describe("App — an interrupted entry is not lost", () => {
       await new Promise((r) => setTimeout(r, SHEET_EXIT_MS + 60));
     });
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("does not re-date an edited shot whose date field was left empty", async () => {
+    // The other half of the sentinel problem: "" means BOTH "untouched default"
+    // and "the user emptied this field" (native date inputs are clearable). On an
+    // edit the second reading is the real one, and expanding it to today moved a
+    // shot logged in May to today — months out — the moment it was reopened.
+    seedShots([{ id: "a", date: "2026-05-05", notes: "logged in May" }]);
+    renderApp();
+
+    goTo("History");
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.change(within(screen.getByRole("dialog")).getByLabelText("Date"), {
+      target: { value: "" },
+    });
+    fireEvent.keyDown(window, { key: "Escape" });
+    await sheetGone();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const sheet = screen.getByRole("dialog");
+    // Restored as the user left it — empty — not silently filled with today.
+    expect(within(sheet).getByLabelText("Date")).toHaveValue("");
+    expect(within(sheet).getByLabelText("Notes")).toHaveValue("logged in May");
+
+    // And it cannot be saved in that state, so nothing can be re-dated by accident.
+    fireEvent.click(within(sheet).getByRole("button", { name: "Update shot" }));
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEYS.shots)!)[0].date).toBe(
+      "2026-05-05"
+    );
   });
 
   it("cannot save twice by double-tapping through the exit animation", async () => {
