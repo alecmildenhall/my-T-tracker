@@ -46,26 +46,33 @@ export const ShotListItem: React.FC<ShotListItemProps> = ({
 
       {shot.notes && <p className="shot-list-item__notes">{shot.notes}</p>}
 
-      <div className="shot-list-item__actions">
-        {onEdit && (
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={() => onEdit(shot)}
-          >
-            Edit
-          </button>
-        )}
-        {onDelete && (
-          <button
-            type="button"
-            className="secondary-button secondary-button--danger"
-            onClick={() => onDelete(shot.id)}
-          >
-            Delete
-          </button>
-        )}
-      </div>
+      {/* Only when there is something to put in it. The Home teaser is read-only
+          and passes neither handler, where an unconditional wrapper is an empty
+          flex row still carrying its top margin — 8px per row, 24px of nothing
+          on the one screen whose whole point is fitting greeting, button and
+          teaser above the fold. */}
+      {(onEdit || onDelete) && (
+        <div className="shot-list-item__actions">
+          {onEdit && (
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => onEdit(shot)}
+            >
+              Edit
+            </button>
+          )}
+          {onDelete && (
+            <button
+              type="button"
+              className="secondary-button secondary-button--danger"
+              onClick={() => onDelete(shot.id)}
+            >
+              Delete
+            </button>
+          )}
+        </div>
+      )}
     </li>
   );
 };

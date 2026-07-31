@@ -204,7 +204,11 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   };
 
   return (
-    <section className="history" ref={sectionRef}>
+    // tabIndex -1 so this can actually receive focus when the delete confirm
+    // falls back to it (its row having vanished underneath). Without it,
+    // `section.focus()` is a silent no-op and focus lands on <body> — the same
+    // trap the row and heading targets avoid by carrying tabIndex themselves.
+    <section className="history" ref={sectionRef} tabIndex={-1}>
       <div className="history__controls">
         <label className="history__search">
           <span className="visually-hidden">Search notes and mood</span>

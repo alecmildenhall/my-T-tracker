@@ -29,6 +29,17 @@ const App: React.FC = () => {
   // Always starts on Home — never "last tab used". Logging is the primary
   // action, and reopening the app never lands on a data view in public.
   const [view, setView] = useState<View>("home");
+  // Every route to a new destination goes through here, so none of them can
+  // forget the scroll reset — "See all" used to, and opened History at whatever
+  // offset Home was scrolled to.
+  const navigate = (next: View) => {
+    setView(next);
+    // Each tab is a separate destination, so it starts at its own top. Without
+    // this you land mid-page in the new view — scrolled deep into History,
+    // tapping Settings drops you into the middle of a panel with no heading in
+    // sight.
+    window.scrollTo({ top: 0 });
+  };
   // Lifted so a trip to Home and back keeps the filter you were using. Session
   // only: deliberately not persisted, so a fresh launch is never pre-filtered.
   const [historyQuery, setHistoryQuery] =
@@ -217,7 +228,7 @@ const App: React.FC = () => {
           >
             + Log a shot
           </button>
-          <RecentShots shots={shots} onSeeAll={() => setView("history")} />
+          <RecentShots shots={shots} onSeeAll={() => navigate("history")} />
         </main>
       )}
 
@@ -277,17 +288,7 @@ const App: React.FC = () => {
         </small>
       </footer>
 
-      <TabBar
-        view={view}
-        onNavigate={(next) => {
-          setView(next);
-          // Each tab is a separate destination, so it starts at its own top.
-          // Without this you land mid-page in the new view — scrolled deep into
-          // History, tapping Settings drops you into the middle of a panel with
-          // no heading in sight.
-          window.scrollTo({ top: 0 });
-        }}
-      />
+      <TabBar view={view} onNavigate={navigate} />
     </div>
   );
 };

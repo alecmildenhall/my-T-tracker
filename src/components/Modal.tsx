@@ -126,9 +126,23 @@ export const Modal: React.FC<ModalProps> = ({
       // If the opener was removed while the dialog was open (a confirm deleted
       // its row), focusing it is a no-op that drops focus to <body>; fall back to
       // a logical location instead.
-      if (restoreTarget?.isConnected) {
-        restoreTarget.focus();
-      } else {
+      //
+      // <body> is excluded explicitly, and it is the common case rather than an
+      // edge one: `document.activeElement` is <body> whenever nothing holds
+      // focus, and Safari does not focus a <button> when you tap it — so on the
+      // app's primary platform, opening the sheet by tapping "Log a shot"
+      // captures <body> as the opener. It IS connected, so the guard below used
+      // to take the restore branch, `body.focus()` did nothing, and the fallback
+      // never ran — leaving focus nowhere and the next Tab back at the top of
+      // the page, which is precisely what fallbackFocusRef exists to prevent.
+      const restorable =
+        restoreTarget && restoreTarget !== document.body && restoreTarget.isConnected;
+      if (restorable) restoreTarget.focus();
+      // Verify rather than assume: focus() on an element that is not focusable
+      // (no tabindex, disabled, hidden) silently does nothing and leaves focus on
+      // <body>. Checking the result covers both a non-focusable opener and a
+      // non-focusable fallback, instead of trusting either to be focusable.
+      if (!restorable || document.activeElement === document.body) {
         fallbackTarget?.focus();
       }
     };

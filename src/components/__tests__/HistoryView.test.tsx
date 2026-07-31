@@ -503,6 +503,48 @@ describe("HistoryView", () => {
     expect(document.activeElement).toHaveClass("history__count");
   });
 
+  it("does not strand focus when the row vanishes under an open confirm", () => {
+    // The confirm's opener is the row's Delete button. If the row disappears
+    // while the dialog is open — a cross-tab storage sync, or an import
+    // replacing the data — the opener is gone on close and Modal uses its
+    // fallback. That fallback is this view's <section>, which is a no-op target
+    // unless it carries tabIndex, so focus would silently land on <body>.
+    // `focusRowAt` is null on this path, so nothing else catches it.
+    const Vanishing = () => {
+      const [data, setData] = useState<ShotEntry[]>(shots);
+      const [query, setQuery] = useState<HistoryQuery>(emptyHistoryQuery);
+      return (
+        <>
+          <button type="button" onClick={() => setData([])}>
+            wipe
+          </button>
+          <HistoryView
+            shots={data}
+            query={query}
+            onQueryChange={setQuery}
+            onEditShot={vi.fn()}
+            onDeleteShot={vi.fn()}
+          />
+        </>
+      );
+    };
+    render(<Vanishing />);
+
+    fireEvent.click(
+      within(screen.getAllByRole("listitem")[0]).getByRole("button", {
+        name: "Delete",
+      })
+    );
+    // The data is replaced underneath the open dialog.
+    fireEvent.click(screen.getByRole("button", { name: "wipe" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Keep it" })
+    );
+
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement).toHaveClass("history");
+  });
+
   it("confirms before deleting, and keeps the shot if you back out", () => {
     const Deletable = () => {
       const [data, setData] = useState<ShotEntry[]>(shots);

@@ -25,6 +25,14 @@ describe("RecentShots", () => {
     expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
   });
 
+  it("leaves no empty actions row taking up space on each teaser card", () => {
+    // A read-only row rendered the actions wrapper regardless, so each card
+    // carried an empty flex div and its top margin — 24px of nothing on the one
+    // screen that has to fit greeting, log button and teaser above the fold.
+    render(<RecentShots shots={makeShots(3)} onSeeAll={vi.fn()} />);
+    expect(document.querySelectorAll(".shot-list-item__actions")).toHaveLength(0);
+  });
+
   it("offers 'See all' only once something has been logged", () => {
     const onSeeAll = vi.fn();
     const { rerender } = render(<RecentShots shots={[]} onSeeAll={onSeeAll} />);

@@ -347,7 +347,15 @@ export const ShotForm: React.FC<ShotFormProps> = ({
           // parking on Monday and reopening on Wednesday should log Wednesday.
           // A date the user actually changed is kept verbatim — someone part-way
           // through logging yesterday's shot meant that date.
-          date: current.date === todayLocalISO() ? "" : current.date,
+          //
+          // NEW SHOTS ONLY. An edit has a date that already means something: the
+          // day that shot was actually taken. Storing "follow today" for a shot
+          // dated today would silently re-date it on reopening — park an edit
+          // just before midnight, come back after, and `start` re-expands "" to
+          // the new today, moving a logged shot to a day it did not happen. The
+          // sentinel is about an untouched *default*, and an edit has none.
+          date:
+            !editingShot && current.date === todayLocalISO() ? "" : current.date,
         }
       : null;
   });

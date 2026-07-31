@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, fireEvent, within, act, waitFor } from "@testing-library/react";
 import App from "../App";
 import { ShotsProvider } from "../context/ShotsContext";
@@ -82,6 +82,25 @@ describe("App — navigation", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /See all/ }));
     expect(screen.getByPlaceholderText(/Search notes/)).toBeInTheDocument();
+  });
+
+  it("starts every destination at its own top, however you got there", () => {
+    // The tabs reset scroll; "See all" is the other way into History and used to
+    // skip it, opening the list at whatever offset Home was scrolled to.
+    seedShots([{ id: "a", date: "2026-06-01" }]);
+    const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+    try {
+      renderApp();
+
+      fireEvent.click(screen.getByRole("button", { name: /See all/ }));
+      expect(scrollTo).toHaveBeenCalledWith({ top: 0 });
+
+      scrollTo.mockClear();
+      goTo("Settings");
+      expect(scrollTo).toHaveBeenCalledWith({ top: 0 });
+    } finally {
+      scrollTo.mockRestore();
+    }
   });
 });
 
@@ -234,6 +253,48 @@ describe("App — an interrupted entry is not lost", () => {
     goTo("Home");
     openSheet();
     expect(notesField()).toHaveValue("parked");
+  });
+
+  it("does not re-date an edited shot when a parked edit outlives the day", async () => {
+    // "Untouched date follows today" is right for a NEW shot and wrong for an
+    // edit: an edit's date already means the day that shot was taken. Park an
+    // edit of a shot dated today, cross midnight with the session alive (a phone
+    // left open), reopen — the date must still be the shot's own, not the new
+    // today, and saving must not move a logged shot to a day it did not happen.
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-07-13T23:55:00"));
+      seedShots([{ id: "a", date: "2026-07-13", notes: "before" }]);
+      renderApp();
+
+      goTo("History");
+      fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+      fireEvent.change(notesField(), { target: { value: "after" } });
+      fireEvent.keyDown(window, { key: "Escape" });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(250);
+      });
+
+      // Midnight passes while the parked edit sits in memory.
+      vi.setSystemTime(new Date("2026-07-14T00:10:00"));
+
+      fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+      const sheet = screen.getByRole("dialog");
+      expect(within(sheet).getByLabelText("Date")).toHaveValue("2026-07-13");
+      expect(within(sheet).getByLabelText("Notes")).toHaveValue("after");
+
+      fireEvent.click(within(sheet).getByRole("button", { name: "Update shot" }));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(250);
+      });
+
+      const stored = JSON.parse(localStorage.getItem(STORAGE_KEYS.shots)!);
+      expect(stored).toHaveLength(1);
+      expect(stored[0].date).toBe("2026-07-13");
+      expect(stored[0].notes).toBe("after");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("cannot save twice by double-tapping through the exit animation", async () => {

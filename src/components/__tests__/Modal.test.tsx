@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent, act } from "@testing-library/react";
+import { render, screen, fireEvent, act, configure } from "@testing-library/react";
 import { useRef, useState } from "react";
 import { Modal } from "../Modal";
 
@@ -87,6 +87,101 @@ describe("Modal", () => {
     }
   });
 
+  it("uses the fallback when nothing had focus before it opened", () => {
+    // document.activeElement is <body> whenever nothing holds focus — the norm
+    // for touch users, and specifically for Safari, which does not focus a
+    // <button> when tapped. <body> IS connected, so an isConnected-only guard
+    // took the restore branch, body.focus() did nothing, and the fallback never
+    // ran: focus ended up nowhere on the app's primary platform.
+    const Fallback = () => {
+      const heading = useRef<HTMLHeadingElement>(null);
+      const [open, setOpen] = useState(true);
+      return (
+        <>
+          <h1 ref={heading} tabIndex={-1}>
+            Title
+          </h1>
+          {open && (
+            <Modal
+              labelledBy="ft"
+              onClose={() => setOpen(false)}
+              fallbackFocusRef={heading}
+            >
+              <h3 id="ft">T</h3>
+              <button type="button">Only button</button>
+            </Modal>
+          )}
+        </>
+      );
+    };
+    // StrictMode is off for THIS test only, and deliberately: its extra
+    // mount/cleanup/mount re-captures `previouslyFocused` *after* the first
+    // cleanup has already moved focus, so by the real close the restore target is
+    // a genuine element and the "nothing was focused" condition under test no
+    // longer holds. With the double-invoke on, this test passes whether or not
+    // the bug is present — verified by mutation.
+    configure({ reactStrictMode: false });
+    try {
+      // Nothing focused at open time.
+      (document.activeElement as HTMLElement)?.blur?.();
+      expect(document.activeElement).toBe(document.body);
+
+      render(<Fallback />);
+      fireEvent.keyDown(window, { key: "Escape" });
+
+      expect(document.activeElement).not.toBe(document.body);
+      expect(document.activeElement).toBe(
+        screen.getByRole("heading", { name: "Title" })
+      );
+    } finally {
+      configure({ reactStrictMode: true });
+    }
+  });
+
+  it("falls back when the restore target cannot actually take focus", () => {
+    // focus() on a non-focusable element is a silent no-op, so a restore target
+    // that is still connected but unfocusable strands focus just as surely as a
+    // removed one. The result has to be checked, not assumed.
+    const Unfocusable = () => {
+      // A plain <span>: present and connected, but with no tabindex it cannot
+      // take focus. Callers point restoreFocusRef at a persistent landmark
+      // exactly like this when the real opener isn't reliably focused.
+      const restoreTo = useRef<HTMLSpanElement>(null);
+      const heading = useRef<HTMLHeadingElement>(null);
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <h1 ref={heading} tabIndex={-1}>
+            Fallback heading
+          </h1>
+          <span ref={restoreTo}>not focusable</span>
+          <button type="button" onClick={() => setOpen(true)}>
+            Open
+          </button>
+          {open && (
+            <Modal
+              labelledBy="ut"
+              onClose={() => setOpen(false)}
+              restoreFocusRef={restoreTo}
+              fallbackFocusRef={heading}
+            >
+              <h3 id="ut">T</h3>
+              <button type="button">Only button</button>
+            </Modal>
+          )}
+        </>
+      );
+    };
+    render(<Unfocusable />);
+    fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement).toBe(
+      screen.getByRole("heading", { name: "Fallback heading" })
+    );
+  });
+
   it("focuses itself when its content holds nothing focusable", () => {
     // A plain message dialog is legitimate. With nothing inside to focus, leaving
     // focus where it was means leaving it in the root that was just marked inert
@@ -95,24 +190,31 @@ describe("Modal", () => {
     const onClose = vi.fn();
     const opener = document.createElement("button");
     document.body.appendChild(opener);
-    opener.focus();
+    // finally, not a trailing remove(): a failing assertion would otherwise skip
+    // the cleanup and leave a stray focused button in the body for every later
+    // test in this file, turning one failure into a confusing cascade.
+    try {
+      opener.focus();
 
-    render(
-      <Modal labelledBy="nt" onClose={onClose}>
-        <h3 id="nt">Nothing to focus</h3>
-        <p>Just a message.</p>
-      </Modal>
-    );
-    const dialog = screen.getByRole("dialog");
+      render(
+        <Modal labelledBy="nt" onClose={onClose}>
+          <h3 id="nt">Nothing to focus</h3>
+          <p>Just a message.</p>
+        </Modal>
+      );
+      const dialog = screen.getByRole("dialog");
 
-    expect(document.activeElement).not.toBe(document.body);
-    expect(dialog).toContainElement(document.activeElement as HTMLElement);
-    // And Tab is a no-op rather than a crash, since there is nothing to cycle.
-    expect(() => fireEvent.keyDown(dialog, { key: "Tab" })).not.toThrow();
+      expect(document.activeElement).not.toBe(document.body);
+      expect(document.activeElement).not.toBe(opener);
+      expect(dialog).toContainElement(document.activeElement as HTMLElement);
+      // And Tab is a no-op rather than a crash, since there is nothing to cycle.
+      expect(() => fireEvent.keyDown(dialog, { key: "Tab" })).not.toThrow();
 
-    fireEvent.keyDown(window, { key: "Escape" });
-    expect(onClose).toHaveBeenCalledTimes(1);
-    opener.remove();
+      fireEvent.keyDown(window, { key: "Escape" });
+      expect(onClose).toHaveBeenCalledTimes(1);
+    } finally {
+      opener.remove();
+    }
   });
 
   it("closes on Escape and on backdrop click", () => {
