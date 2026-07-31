@@ -112,7 +112,11 @@ export const Modal: React.FC<ModalProps> = ({
     const target =
       initialFocusRef?.current ??
       dialogRef.current?.querySelector<HTMLElement>(FOCUSABLE) ??
-      null;
+      // Nothing focusable inside: land on the dialog itself (WAI-ARIA APG's
+      // fallback) rather than nowhere. Leaving focus where it was is not an
+      // option — that element is inside the root just marked inert, so the
+      // browser drops focus to <body> and Escape becomes the only way out.
+      dialogRef.current;
     target?.focus();
 
     return () => {
@@ -221,6 +225,12 @@ export const Modal: React.FC<ModalProps> = ({
         }`}
         ref={dialogRef}
         onKeyDown={trapTab}
+        // Focusable only as the last-resort target below — a dialog whose
+        // content holds nothing focusable would otherwise open with focus still
+        // outside it, in a subtree that was just marked inert, stranding it on
+        // <body>. Both dialogs shipped today focus real content, so this is a
+        // guard for the next plain-message dialog, not a live fix.
+        tabIndex={-1}
       >
         {children}
       </div>

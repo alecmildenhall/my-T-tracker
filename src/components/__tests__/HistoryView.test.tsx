@@ -184,6 +184,27 @@ describe("HistoryView", () => {
     }
   });
 
+  it("Clear all hands focus to the Filters toggle instead of dropping it", () => {
+    // The button removes itself once there is nothing left to clear, so without a
+    // hand-off focus lands on <body> and the next Tab restarts at the top of the
+    // document — the same stranding the delete and "Load more" paths guard against.
+    render(<Harness />);
+    openFilters();
+    fireEvent.change(screen.getByLabelText("Site"), { target: { value: "thigh" } });
+
+    const clear = screen.getByRole("button", { name: "Clear all" });
+    clear.focus();
+    expect(document.activeElement).toBe(clear);
+
+    fireEvent.click(clear);
+
+    expect(screen.queryByRole("button", { name: "Clear all" })).toBeNull();
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: /^Filters/ })
+    );
+  });
+
   it("shows the empty-log message when nothing has been logged", () => {
     render(<Harness data={[]} />);
     expect(
@@ -514,6 +535,40 @@ describe("HistoryView", () => {
       within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" })
     );
     expect(screen.getByText("Showing 2 of 2 shots")).toBeInTheDocument();
+  });
+
+  it("keeps the shot when the confirm is dismissed rather than answered", () => {
+    // Escape and the Android Back gesture both close a dialog without touching
+    // either button, so they route through onClose rather than "Keep it". A
+    // dismissal that fell through to the delete would be the worst possible
+    // outcome for a destructive confirm — and it is the one path neither button
+    // click exercises.
+    const Deletable = () => {
+      const [data, setData] = useState<ShotEntry[]>(shots);
+      const [query, setQuery] = useState<HistoryQuery>(emptyHistoryQuery);
+      return (
+        <HistoryView
+          shots={data}
+          query={query}
+          onQueryChange={setQuery}
+          onEditShot={vi.fn()}
+          onDeleteShot={(id) => setData((cur) => cur.filter((s) => s.id !== id))}
+        />
+      );
+    };
+    render(<Deletable />);
+
+    fireEvent.click(
+      within(screen.getAllByRole("listitem")[0]).getByRole("button", {
+        name: "Delete",
+      })
+    );
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByText("Showing 3 of 3 shots")).toBeInTheDocument();
   });
 
   it("announces the result count politely", () => {

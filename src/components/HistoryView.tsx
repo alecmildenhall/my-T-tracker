@@ -57,6 +57,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   const [pendingDelete, setPendingDelete] = useState<ShotEntry | null>(null);
   const cancelDeleteRef = useRef<HTMLButtonElement>(null);
   const sectionRef = useRef<HTMLElement>(null);
+  const filtersToggleRef = useRef<HTMLButtonElement>(null);
   // Local, not lifted: see HistoryQuery. Owning it here is also what makes the
   // render-time reset below legal — React allows a component to adjust its OWN
   // state during render, but updating a parent's from render is an error.
@@ -180,6 +181,15 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   const clearAll = () => {
     setLimit(PAGE_SIZE);
     onQueryChange(emptyHistoryQuery);
+    // "Clear all" is the last thing it does before removing itself — with nothing
+    // left to clear the button unmounts, and focus would fall to <body>, sending
+    // the next Tab back to the top of the document. Hand focus to the Filters
+    // toggle beside it: it always survives, it is the control that owns what was
+    // just cleared, and its badge vanishing is the confirmation a screen-reader
+    // user needs. Same care as the delete and "Load more" hand-offs above; no
+    // deferral needed, since this button is removed by its own click rather than
+    // by a dialog closing on top of it.
+    filtersToggleRef.current?.focus();
   };
 
   // Deleting unmounts the row holding the focused button, which would drop focus
@@ -210,6 +220,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
           <button
             type="button"
             className="secondary-button"
+            ref={filtersToggleRef}
             aria-expanded={filtersOpen}
             aria-controls="history-filters"
             onClick={() => setFiltersOpen((open) => !open)}

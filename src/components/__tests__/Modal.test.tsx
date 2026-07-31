@@ -72,6 +72,49 @@ describe("Modal", () => {
     expect(confirm).toHaveFocus();
   });
 
+  it("leaves every other key alone", () => {
+    // The trap runs on the dialog's keydown, so it sees ordinary typing too. If
+    // its Tab guard ever went, entering text in the shot sheet would yank focus
+    // to the top of the form on each keystroke — the trap has to be inert for
+    // everything that is not Tab.
+    render(<Harness />);
+    const confirm = screen.getByRole("button", { name: "Confirm" });
+    confirm.focus();
+
+    for (const key of ["a", "Enter", "ArrowDown", " "]) {
+      fireEvent.keyDown(confirm, { key });
+      expect(confirm).toHaveFocus();
+    }
+  });
+
+  it("focuses itself when its content holds nothing focusable", () => {
+    // A plain message dialog is legitimate. With nothing inside to focus, leaving
+    // focus where it was means leaving it in the root that was just marked inert
+    // — the browser drops it to <body>, so the dialog is announced to nobody and
+    // Tab restarts at the top of the page behind it.
+    const onClose = vi.fn();
+    const opener = document.createElement("button");
+    document.body.appendChild(opener);
+    opener.focus();
+
+    render(
+      <Modal labelledBy="nt" onClose={onClose}>
+        <h3 id="nt">Nothing to focus</h3>
+        <p>Just a message.</p>
+      </Modal>
+    );
+    const dialog = screen.getByRole("dialog");
+
+    expect(document.activeElement).not.toBe(document.body);
+    expect(dialog).toContainElement(document.activeElement as HTMLElement);
+    // And Tab is a no-op rather than a crash, since there is nothing to cycle.
+    expect(() => fireEvent.keyDown(dialog, { key: "Tab" })).not.toThrow();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+    opener.remove();
+  });
+
   it("closes on Escape and on backdrop click", () => {
     const onClose = vi.fn();
     render(<Harness onClose={onClose} />);
