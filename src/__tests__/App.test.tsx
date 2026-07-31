@@ -5,6 +5,7 @@ import { ShotsProvider } from "../context/ShotsContext";
 import { ProfileProvider } from "../context/ProfileContext";
 import type { ShotEntry } from "../types/shot";
 import { STORAGE_KEYS } from "../storageKeys";
+import { SHEET_EXIT_MS } from "../components/Modal";
 import { todayLocalISO } from "../utils/datetime";
 
 // App reads both stores via context (Settings uses the profile store), so mount
@@ -196,6 +197,29 @@ describe("App — an interrupted entry is not lost", () => {
     expect(notesField()).toHaveValue("");
   });
 
+  it("'Clear form' keeps focus inside the sheet after removing itself", () => {
+    // Clearing makes the button vanish (nothing left to clear), and focus would
+    // drop to <body> — inside an OPEN dialog, where the Tab trap cannot re-engage
+    // because it only wraps from the first or last focusable. The form is now in
+    // the state a freshly opened sheet is in, so focus goes where a fresh sheet
+    // puts it.
+    renderApp();
+    openSheet();
+    fireEvent.change(notesField(), { target: { value: "not wanted" } });
+
+    const clear = within(screen.getByRole("dialog")).getByRole("button", {
+      name: "Clear form",
+    });
+    clear.focus();
+    fireEvent.click(clear);
+
+    expect(
+      within(screen.getByRole("dialog")).queryByRole("button", { name: "Clear form" })
+    ).toBeNull();
+    expect(document.activeElement).not.toBe(document.body);
+    expect(within(screen.getByRole("dialog")).getByLabelText("Date")).toHaveFocus();
+  });
+
   it("saving clears the draft", async () => {
     renderApp();
     openSheet();
@@ -309,6 +333,52 @@ describe("App — an interrupted entry is not lost", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("opens a usable sheet when the last one vanished mid-animation", async () => {
+    // The exit timer is not the only way a sheet goes: if the shot being edited
+    // disappears while it is animating out (a cross-tab delete, or an import
+    // replacing the store) the render-phase release unmounts it at once and
+    // leaves the timer pending with `closing` still true. The NEXT sheet then
+    // mounts already marked closing — off-screen and pointer-events: none — so
+    // "Log a shot" looks like it does nothing, and the stale timer removes the
+    // ghost a moment later.
+    seedShots([
+      { id: "victim", date: "2026-07-20" },
+      { id: "other", date: "2026-07-13" },
+    ]);
+    renderApp();
+
+    goTo("History");
+    fireEvent.click(screen.getAllByRole("button", { name: "Edit" })[0]);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    // Start the exit, then delete that shot from another tab before it finishes.
+    fireEvent.keyDown(window, { key: "Escape" });
+    act(() => {
+      const next = JSON.stringify([{ id: "other", date: "2026-07-13" }]);
+      localStorage.setItem(STORAGE_KEYS.shots, next);
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: STORAGE_KEYS.shots,
+          newValue: next,
+          storageArea: localStorage,
+        })
+      );
+    });
+    await sheetGone();
+
+    goTo("Home");
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+
+    const sheet = screen.getByRole("dialog");
+    // Not marked closing, so it is actually on screen and can be interacted with.
+    expect(sheet.querySelector(".dialog--sheet")).not.toHaveClass("is-closing");
+    // And it is still there once the old timer's window has passed.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, SHEET_EXIT_MS + 60));
+    });
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
   it("cannot save twice by double-tapping through the exit animation", async () => {

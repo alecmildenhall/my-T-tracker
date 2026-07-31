@@ -335,6 +335,22 @@ textarea {
   background: radial-gradient(circle at top left, #020617, #020617 60%);
 }
 
+/* Focus rings for the elements the app moves focus to ITSELF, none of which is a
+   widget the user tabbed onto: a row after "Load more" or a delete, the count
+   line when the list empties, the History section when a confirm's row vanished,
+   and the page title when an open sheet's shot disappeared. Without these the
+   hand-off is invisible — focus moves, nothing on screen changes, and a sighted
+   keyboard user's next Tab starts somewhere they cannot see (WCAG 2.4.7).
+   `:focus`, not `:focus-visible`, for the reason already documented on
+   .dialog-actions: Chrome does not mark programmatic focus as :focus-visible. */
+.shot-list-item:focus,
+.history__count:focus,
+.history:focus,
+.app-title:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .shot-list-item__header {
   display: flex;
   justify-content: space-between;

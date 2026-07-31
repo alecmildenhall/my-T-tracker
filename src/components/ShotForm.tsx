@@ -105,7 +105,7 @@ interface ShotFormProps {
   liveDraftRef?: React.RefObject<ShotDraft | null>;
   /** Attached to the first field, so a containing dialog can put initial focus
    *  on data entry rather than on its own Close button. */
-  firstFieldRef?: React.Ref<HTMLInputElement>;
+  firstFieldRef?: React.RefObject<HTMLInputElement | null>;
 }
 
 export const ShotForm: React.FC<ShotFormProps> = ({
@@ -224,7 +224,14 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     setDoseMg(doseMg);
     setTestosteroneEster(testosteroneEster);
     setCarrierOil(carrierOil);
-  }, []);
+    // "Clear form" is the only caller that is a control, and clearing makes it
+    // vanish (there is nothing left to clear), so without this focus drops to
+    // <body> — inside an OPEN dialog, where the Tab trap then cannot re-engage
+    // because it only wraps from the first or last focusable. The form is now in
+    // exactly the state a freshly opened sheet is in, so focus goes where a fresh
+    // sheet puts it: the first field.
+    firstFieldRef?.current?.focus();
+  }, [firstFieldRef]);
 
   // NOTE: there is deliberately no "sync the form to editingShot" effect. The
   // state above is seeded once at mount, and the parent gives this component a

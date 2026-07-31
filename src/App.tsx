@@ -110,6 +110,7 @@ const App: React.FC = () => {
     closingRef.current = true;
     setClosing(true);
     closeTimer.current = setTimeout(() => {
+      closeTimer.current = null;
       closingRef.current = false;
       setClosing(false);
       setLoggingNew(false);
@@ -123,6 +124,29 @@ const App: React.FC = () => {
     },
     []
   );
+
+  // Every route to an open sheet goes through here, so none of them can inherit a
+  // half-finished exit.
+  //
+  // The sheet can vanish WITHOUT its timer: if the shot being edited disappears
+  // mid-exit-animation (a cross-tab delete or a backup import — the storage
+  // listener fires for either), the render-phase release above unmounts it at
+  // once and leaves the timer pending with `closing` still true. The next sheet
+  // would then mount already marked closing — off-screen, transparent and
+  // pointer-events: none — so tapping "Log a shot" appears to do nothing, and the
+  // stale timer tears the ghost down a moment later. Retiring the exit state at
+  // the point of opening keeps it in an event handler, where clearing a timer and
+  // setting state both belong.
+  const openSheet = (shot?: ShotEntry) => {
+    if (closeTimer.current) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+    closingRef.current = false;
+    setClosing(false);
+    if (shot) setEditingShot(shot);
+    else setLoggingNew(true);
+  };
 
   // Dismissing the sheet (Escape, the Android Back gesture, ✕) keeps whatever was
   // typed and restores it next time — chosen over a "discard?" confirm so an
@@ -245,7 +269,7 @@ const App: React.FC = () => {
           <button
             type="button"
             className="primary-button log-cta"
-            onClick={() => setLoggingNew(true)}
+            onClick={() => openSheet()}
           >
             + Log a shot
           </button>
@@ -259,7 +283,7 @@ const App: React.FC = () => {
             shots={shots}
             query={historyQuery}
             onQueryChange={setHistoryQuery}
-            onEditShot={setEditingShot}
+            onEditShot={openSheet}
             onDeleteShot={deleteShot}
           />
         </main>
