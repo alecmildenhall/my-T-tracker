@@ -84,6 +84,20 @@ describe("App — navigation", () => {
     expect(screen.getByPlaceholderText(/Search notes/)).toBeInTheDocument();
   });
 
+  it("skip link moves focus without leaving a fragment in the URL", () => {
+    // Following the fragment for real poisons focus restoration for the whole
+    // session: a Modal pushes a throwaway history entry, and closing it pops back
+    // to a URL still carrying "#main-nav", so the browser re-applies the fragment
+    // and focus lands on the nav rather than the control that opened the dialog.
+    renderApp();
+    const before = window.location.hash;
+
+    fireEvent.click(screen.getByRole("link", { name: /Skip to navigation/ }));
+
+    expect(screen.getByRole("navigation")).toHaveFocus();
+    expect(window.location.hash).toBe(before);
+  });
+
   it("starts every destination at its own top, however you got there", () => {
     // The tabs reset scroll; "See all" is the other way into History and used to
     // skip it, opening the list at whatever offset Home was scrolled to.

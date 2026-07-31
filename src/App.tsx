@@ -205,7 +205,28 @@ const App: React.FC = () => {
           (as it should be) — but that leaves a keyboard user tabbing through a
           whole page of History rows to reach Settings. A skip link jumps
           straight there without disturbing the visual order. */}
-      <a className="skip-link" href="#main-nav">
+      {/* The href stays, so this still works if the handler never runs, but the
+          click moves focus itself rather than letting the browser resolve the
+          fragment. Following it for real leaves "#main-nav" in the URL, and every
+          dialog then restores focus to the WRONG place for the rest of the
+          session: a Modal pushes a throwaway history entry, and closing it pops
+          back to a URL that still carries the fragment, so the browser re-applies
+          it and focus lands on the nav instead of the control that opened the
+          dialog. That penalty falls precisely on keyboard and screen-reader
+          users — the people who use skip links, and the people focus restoration
+          exists for. Moving focus directly is also the better behaviour on its
+          own terms: no stray fragment in the address bar, and no history entry
+          for what is an in-page focus move. */}
+      <a
+        className="skip-link"
+        href="#main-nav"
+        onClick={(e) => {
+          const nav = document.getElementById("main-nav");
+          if (!nav) return; // let the browser do its default thing
+          e.preventDefault();
+          nav.focus();
+        }}
+      >
         Skip to navigation
       </a>
 
