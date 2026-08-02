@@ -41,88 +41,39 @@ body {
 .app-root {
   max-width: 960px;
   margin: 0 auto;
-  padding: 2.5rem 1.25rem 3rem;
+  /* Bottom padding clears the fixed tab bar (plus the iOS home indicator) so the
+     last row of content is never trapped underneath it. */
+  padding: 1.5rem 1.25rem calc(5.5rem + env(safe-area-inset-bottom, 0px));
 }
 
 .app-header {
   position: relative;
-  margin-bottom: 2rem;
+  margin-bottom: 1.25rem;
   text-align: left;
 }
 
-.settings-button {
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 44px;
-  height: 44px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.35rem;
-  line-height: 1;
-  background: transparent;
-  border: 1px solid var(--border-subtle);
-  border-radius: 999px;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease,
-    background-color 0.15s ease, transform 0.08s ease;
-}
-
-@media (hover: hover) {
-  .settings-button:hover {
-    color: var(--text);
-    border-color: var(--accent);
-    background: var(--surface-subtle);
-  }
-}
-.settings-button:active {
-  color: var(--text);
-  border-color: var(--accent);
-  background: var(--surface-subtle);
-  transform: scale(0.97);
-}
-
-.settings-button:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.app-header h1 {
-  font-size: 2.1rem;
-  letter-spacing: 0.02em;
-  margin: 0 0 0.4rem;
-}
-
-.app-tagline {
-  margin: 0 0 0.35rem;
-  font-size: 0.95rem;
-  color: var(--text-muted);
-}
-
-.app-privacy-note {
+/* Slim, per-view title. The tagline and privacy note used to sit here on every
+   screen, costing ~100px of phone viewport; the privacy promise now lives once
+   in the footer, where it stays visible without repeating a marketing block
+   above every view. */
+.app-title {
+  font-size: 1.5rem;
+  letter-spacing: 0.01em;
   margin: 0;
-  font-size: 0.8rem;
-  color: var(--text-muted);
 }
 
+/* One column by default: the log form now lives in a sheet, so the main area is
+   a single readable stack (greeting → primary action → teaser, or the History
+   list) rather than the old side-by-side form/list grid. */
 .app-main {
-  display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
-  gap: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
 }
 
-@media (max-width: 800px) {
-  .app-main {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-/* Warm greeting at the top of the log view. Spans the full width above the
-   form/list grid, gentle emphasis, one source of high-contrast text. */
+/* Warm greeting at the top of the log view. Gentle emphasis, one source of
+   high-contrast text. */
 .greeting {
-  grid-column: 1 / -1;
   margin: 0;
   font-size: 1.15rem;
   font-weight: 600;
@@ -139,28 +90,21 @@ body {
 
 /* Cards */
 
-.shot-form,
-.shot-list {
+.shot-form {
   background: radial-gradient(circle at top left, #111827, #020617 60%);
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-subtle);
   padding: 1.25rem 1.25rem 1.5rem;
   box-shadow: var(--shadow-soft);
-}
-
-.shot-form h2,
-.shot-list h2 {
-  margin-top: 0;
-  margin-bottom: 1rem;
-  font-size: 1.1rem;
-}
-
-/* Form */
-
-.shot-form {
   display: flex;
   flex-direction: column;
   gap: 0.8rem;
+}
+
+.shot-form h2 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  font-size: 1.1rem;
 }
 
 .shot-form .secondary-button {
@@ -384,20 +328,39 @@ textarea {
 
 /* Shot list */
 
-.shot-list ul {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.7rem;
-}
-
 .shot-list-item {
   padding: 0.75rem 0.85rem;
   border-radius: var(--radius-md);
   border: 1px solid rgba(31, 41, 55, 0.9);
   background: radial-gradient(circle at top left, #020617, #020617 60%);
+}
+
+/* Focus rings for the elements the app moves focus to ITSELF, none of which is a
+   widget the user tabbed onto: a row after "Load more" or a delete, the count
+   line when the list empties, the History section when a confirm's row vanished,
+   the saved-values panel when a rename confirm's row went, and the page title
+   when an open sheet's shot disappeared. Without these the hand-off is invisible
+   — focus moves, nothing on screen changes, and a sighted keyboard user's next
+   Tab starts somewhere they cannot see (WCAG 2.4.7).
+
+   `:focus-visible`, NOT `:focus` — the opposite of the .dialog-actions rule
+   below, and deliberately. That rule covers focus applied as a dialog OPENS,
+   where Chrome declines to mark it :focus-visible. These targets are focused in
+   response to an action the user just took, so the browser still knows the input
+   modality and :focus-visible resolves it correctly: verified that a row focused
+   after activating "Load more" by keyboard matches :focus-visible, while the same
+   row focused after a mouse click does not. That distinction matters because the
+   restore path here is not exceptional — Safari does not focus a <button> on tap,
+   so on iOS these fallbacks run on ordinary dialog closes, and `:focus` would
+   leave an outline round the page title (or the whole History panel) after every
+   one. */
+.shot-list-item:focus-visible,
+.history__count:focus-visible,
+.history:focus-visible,
+.manage-values:focus-visible,
+.app-title:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .shot-list-item__header {
@@ -821,6 +784,422 @@ textarea {
   color: var(--danger);
 }
 
+/* Bottom tab bar */
+
+.tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.25rem;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0.4rem 0.5rem calc(0.4rem + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--border-subtle);
+  /* Opaque, not translucent: content scrolls underneath and must not show
+     through and reduce the labels' contrast. */
+  background: #020617;
+}
+
+.tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-height: 52px; /* comfortable thumb target */
+  padding: 0.3rem 0.2rem;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 0.68rem;
+  font-weight: 550;
+  cursor: pointer;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.tab svg {
+  width: 22px;
+  height: 22px;
+}
+
+/* The active tab is marked by aria-current for assistive tech; colour + a soft
+   fill are the visual half of the same signal. */
+.tab[aria-current="page"] {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+@media (hover: hover) {
+  .tab:hover {
+    color: var(--text);
+  }
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Home: primary action + recent teaser */
+
+.log-cta {
+  width: 100%;
+  min-height: 52px;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.recent-shots {
+  background: radial-gradient(circle at top left, #111827, #020617 60%);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  padding: 1.1rem 1.1rem 1.25rem;
+  box-shadow: var(--shadow-soft);
+}
+
+.recent-shots__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.9rem;
+}
+
+.recent-shots__header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.recent-shots ul,
+.shot-list__items {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+/* A text-styled button for in-flow navigation ("See all", "Clear") — visually a
+   link, but a button because it changes app state rather than navigating. */
+.link-button {
+  background: transparent;
+  border: none;
+  padding: 0.35rem 0.15rem;
+  min-height: 36px;
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 550;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+}
+
+@media (hover: hover) {
+  .link-button:hover {
+    text-decoration: underline;
+  }
+}
+
+.link-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* History view */
+
+.history__controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  margin-bottom: 0.25rem;
+}
+
+.history__search input {
+  width: 100%;
+  border-radius: 999px;
+  padding-inline: 0.95rem;
+}
+
+.history__filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* The active-facet count. Filters collapse out of sight, so this badge is what
+   keeps a narrowed list from looking like an empty one. */
+.filter-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  font-weight: 650;
+}
+
+.history__filters {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.9rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-card-soft);
+}
+
+/* The panel stays mounted (so aria-controls always resolves) and is collapsed
+   with the `hidden` attribute. The UA's `[hidden] { display: none }` is
+   origin-weaker than ANY author `display`, so without this the flex rule above
+   silently keeps it open forever. */
+.history__filters[hidden] {
+  display: none;
+}
+
+.history__count {
+  margin: 0.25rem 0 0.85rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.history__load-more {
+  width: 100%;
+  margin-top: 0.9rem;
+}
+
+/* Sheet variant of the modal (long content — the shot form) */
+
+.dialog--sheet {
+  max-width: 560px;
+  /* Bounded to the viewport so the flex column has a height to distribute: it is
+     what makes the middle region scroll and the two bars stay reachable. Without
+     it the sheet grows to the full height of the form, and on any viewport
+     shorter than that — a landscape phone, a short desktop window — the pinned
+     top bar and Save button are clipped off-screen with no way to reach them.
+     `--sheet-h` is the visual viewport (set by Modal while open), so an iOS
+     keyboard shrinks the sheet instead of covering its Save button; it falls back
+     to 100% wherever visualViewport is unavailable. */
+  max-height: var(--sheet-h, 100%);
+  /* The sheet itself never scrolls: its middle region does, so the pinned bars
+     stay put. */
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+
+/* The form brings its own card chrome; inside a sheet that would double the
+   border and shadow. It also becomes the flex column that pins the bars. */
+.dialog--sheet .shot-form {
+  background: none;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  gap: 0;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Pinned bars: Save stays reachable without scrolling past ten fields, and
+   Close sits top-left, out of the thumb's arc so it isn't hit by accident. */
+.shot-form__bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.7rem 0.9rem;
+  background: var(--bg-card);
+}
+
+.shot-form__bar--top {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.shot-form__bar--bottom {
+  border-top: 1px solid var(--border-subtle);
+  /* Clear of the home indicator on a gesture-nav phone, exactly as the tab bar
+     is — the sheet covers the tab bar, so it inherits that responsibility. */
+  padding-bottom: calc(0.7rem + env(safe-area-inset-bottom, 0px));
+}
+
+.shot-form__title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.shot-form__close {
+  flex: none;
+  /* Apple HIG minimum tap target, matching every other control in the app. */
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  font-family: inherit;
+  transition: color 0.15s ease, border-color 0.15s ease,
+    background-color 0.15s ease, transform 0.08s ease;
+}
+
+@media (hover: hover) {
+  .shot-form__close:hover {
+    color: var(--text);
+    border-color: var(--accent);
+    background: var(--surface-subtle);
+  }
+}
+.shot-form__close:active {
+  color: var(--text);
+  border-color: var(--accent);
+  background: var(--surface-subtle);
+  transform: scale(0.97);
+}
+.shot-form__close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The only scrolling region. min-height:0 lets it shrink inside the flex column
+   instead of pushing the bottom bar off-screen. */
+.shot-form__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  /* Keeps a rubber-band scroll from chaining to the page behind the sheet. */
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  padding: 1rem 0.9rem 1.25rem;
+}
+
+.shot-form__save {
+  width: 100%;
+  min-height: 50px;
+  margin-top: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+/* On a phone the sheet fills the screen: a long form inside a small centred box
+   would scroll within a scroll, which is the thing sheets exist to avoid. */
+@media (max-width: 560px) {
+  .dialog-overlay--sheet {
+    padding: 0;
+    align-items: stretch;
+  }
+
+  .dialog--sheet {
+    max-width: none;
+    height: var(--sheet-h, 100%);
+    border-radius: 0;
+  }
+}
+
+/* Sheet presentation: slides up from the bottom edge, which is where dismissing
+   sends it back to — the direction is the whole point of the motion.
+   Durations/curves follow Material's emphasized set:
+     enter  300ms decelerate (fast off the mark, gentle settle — reads as weight
+            arriving rather than stopping dead)
+     exit   200ms accelerate (deliberately quicker: entering teaches you where
+            the sheet lives, leaving you have already decided)
+   Only `transform` and `opacity` animate, so the whole thing is composited and
+   never triggers layout. Transitions are interruptible for free: close mid-open
+   and it reverses from wherever it is. */
+.dialog--sheet {
+  transition: transform 300ms cubic-bezier(0.05, 0.7, 0.1, 1);
+}
+
+.dialog-overlay--sheet {
+  transition: opacity 300ms linear;
+}
+
+/* Pre-entry and exit state, applied by Modal around the open/closing frames. */
+.dialog-overlay--sheet.is-closed {
+  opacity: 0;
+}
+
+.dialog--sheet.is-closed {
+  transform: translateY(100%);
+}
+
+.dialog-overlay--sheet.is-closing {
+  transition-duration: 200ms;
+}
+
+/* A sheet on its way out takes no more input. The handlers also guard on
+   `closing`, but this stops the press landing at all — the sheet is portaled
+   outside the inert app root, so its own Save button would otherwise stay
+   clickable for the whole 200ms slide. */
+.dialog-overlay--sheet.is-closing {
+  pointer-events: none;
+}
+
+/* Longhands, not the `transition` shorthand: the shorthand would reset
+   transition-property back to `transform`, and being more specific it would beat
+   the reduced-motion rule below that switches the property to `opacity` — so the
+   exit would snap instead of fading. */
+.dialog--sheet.is-closing {
+  transition-property: transform;
+  transition-duration: 200ms;
+  transition-timing-function: cubic-bezier(0.3, 0, 0.8, 0.15);
+}
+
+/* Reduced motion: a full-screen surface travelling the viewport is a vestibular
+   trigger, so drop the travel entirely — but keep a short fade rather than an
+   instant snap, which is its own kind of disorienting. */
+@media (prefers-reduced-motion: reduce) {
+  .dialog--sheet,
+  .dialog--sheet.is-closing,
+  .dialog-overlay--sheet,
+  .dialog-overlay--sheet.is-closing {
+    transition-duration: 150ms;
+    transition-timing-function: linear;
+  }
+
+  .dialog--sheet,
+  .dialog--sheet.is-closing {
+    transition-property: opacity;
+  }
+
+  .dialog--sheet.is-closed {
+    transform: none;
+    opacity: 0;
+  }
+}
+
+/* Off-screen until focused, then a normal visible control — the standard skip
+   link. First in tab order, so reaching the bottom tab bar never means tabbing
+   through a full page of list rows. */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 30;
+  padding: 0.6rem 1rem;
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  border: 1px solid var(--accent);
+  color: var(--text);
+  font-size: 0.85rem;
+  text-decoration: none;
+}
+
+.skip-link:focus {
+  left: 1rem;
+  top: 1rem;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -839,7 +1218,6 @@ textarea {
 @media (prefers-reduced-motion: reduce) {
   .primary-button,
   .secondary-button,
-  .settings-button,
   .suggestion-chips .chip,
   .manage-row__action,
   .manage-row__remove,
@@ -850,7 +1228,6 @@ textarea {
 
   .primary-button:active,
   .secondary-button:active,
-  .settings-button:active,
   .suggestion-chips .chip:active,
   .manage-row__action:active,
   .manage-row__remove:active,

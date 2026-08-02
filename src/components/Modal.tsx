@@ -4,7 +4,9 @@
 // callers: labelled dialog role, Escape to close, backdrop-click to close,
 // a focus trap (Tab/Shift+Tab wrap inside), initial focus, and focus restored
 // to the opener on close.
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { useBackToClose } from "../hooks/useBackToClose";
 
 // Elements that can receive keyboard focus. Excludes tabindex="-1" (e.g. the
 // visually-hidden file input) so the trap only cycles real, reachable controls.
@@ -27,8 +29,20 @@ interface ModalProps {
    *  action removed the row that opened the dialog. Per the WAI-ARIA APG, focus
    *  should land on a logical location rather than falling to <body>. */
   fallbackFocusRef?: React.RefObject<HTMLElement | null>;
+  /** Presentation only — the behaviour (focus trap, Escape, restore) is identical.
+   *  "dialog" is the compact centred confirm box; "sheet" fills the phone screen
+   *  for long content like the shot form, where a small centred box would scroll
+   *  awkwardly inside a scrolling page. */
+  variant?: "dialog" | "sheet";
+  /** True while the parent is playing the exit animation before unmounting. Only
+   *  the sheet variant animates; a compact confirm dialog appears at once. */
+  closing?: boolean;
   children: React.ReactNode;
 }
+
+/** How long the sheet's exit transition runs — must match styles.css. Exported
+ *  so the parent can hold the dialog mounted for exactly that long. */
+export const SHEET_EXIT_MS = 200;
 
 export const Modal: React.FC<ModalProps> = ({
   labelledBy,
@@ -36,35 +50,130 @@ export const Modal: React.FC<ModalProps> = ({
   initialFocusRef,
   restoreFocusRef,
   fallbackFocusRef,
+  variant = "dialog",
+  closing = false,
   children,
 }) => {
   const dialogRef = useRef<HTMLDivElement>(null);
 
-  // Move focus into the dialog on open; restore it to the opener on close.
+  // The sheet must paint once in its off-screen state before transitioning in,
+  // or the browser has nothing to animate from. Two frames: the first commits
+  // the pre-entry styles, the second flips them. Focus never waits on this — the
+  // dialog is usable from the first frame; the motion is decoration over it.
+  const [entered, setEntered] = useState(false);
   useEffect(() => {
+    let inner = 0;
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => setEntered(true));
+    });
+    return () => {
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
+    };
+  }, []);
+
+  // Off-screen before entering and again while leaving.
+  const offscreen = !entered || closing;
+
+  // Every dialog, not just the shot sheet: the rename/remove confirms and the
+  // "Replace your data?" import confirm would otherwise let a reflexive Back
+  // exit the app outright — from one tap away from a destructive restore. A
+  // mounted Modal *is* an open overlay, so wiring it here means no caller can
+  // forget. Escape (below) and Back now agree on what dismissal means.
+  useBackToClose(onClose);
+
+  // Focus management and the page lock live in ONE effect, deliberately.
+  //
+  // `aria-modal` is advisory and the Tab trap only intercepts Tab, so without
+  // `inert` a screen-reader or voice-control user can still reach and activate
+  // the tab bar rendered after this dialog — switching views underneath an open
+  // sheet. `inert` blocks focus, clicks, and AT access in one attribute. The
+  // scroll lock stops the list behind a long sheet scrolling away when the
+  // form's own scroll reaches its end, leaving the user somewhere else on close.
+  //
+  // They are combined because the ORDER of the teardown matters: `inert` makes
+  // its whole subtree unfocusable, so restoring focus to the opener before
+  // lifting inert silently fails and focus lands nowhere useful. Splitting these
+  // into two effects made that ordering an accident of declaration order — and
+  // jsdom ignores `inert` entirely, so no unit test would notice.
+  useEffect(() => {
+    const root = document.getElementById("root");
     const previouslyFocused = document.activeElement as HTMLElement | null;
     // The restore target (a persistent opener like the Import button, or else
     // whatever had focus) is captured now, at open, so the cleanup doesn't read
     // a ref that may have changed.
     const restoreTarget = restoreFocusRef?.current ?? previouslyFocused;
     const fallbackTarget = fallbackFocusRef?.current ?? null;
+
+    const { overflow } = document.body.style;
+    document.body.style.overflow = "hidden";
+    root?.setAttribute("inert", "");
+
     const target =
       initialFocusRef?.current ??
       dialogRef.current?.querySelector<HTMLElement>(FOCUSABLE) ??
-      null;
+      // Nothing focusable inside: land on the dialog itself (WAI-ARIA APG's
+      // fallback) rather than nowhere. Leaving focus where it was is not an
+      // option — that element is inside the root just marked inert, so the
+      // browser drops focus to <body> and Escape becomes the only way out.
+      dialogRef.current;
     target?.focus();
+
     return () => {
+      // Lift inert FIRST, or the focus calls below hit an unfocusable subtree.
+      root?.removeAttribute("inert");
+      document.body.style.overflow = overflow;
       // If the opener was removed while the dialog was open (a confirm deleted
       // its row), focusing it is a no-op that drops focus to <body>; fall back to
       // a logical location instead.
-      if (restoreTarget?.isConnected) {
-        restoreTarget.focus();
-      } else {
+      //
+      // <body> is excluded explicitly, and it is the common case rather than an
+      // edge one: `document.activeElement` is <body> whenever nothing holds
+      // focus, and Safari does not focus a <button> when you tap it — so on the
+      // app's primary platform, opening the sheet by tapping "Log a shot"
+      // captures <body> as the opener. It IS connected, so the guard below used
+      // to take the restore branch, `body.focus()` did nothing, and the fallback
+      // never ran — leaving focus nowhere and the next Tab back at the top of
+      // the page, which is precisely what fallbackFocusRef exists to prevent.
+      const restorable =
+        restoreTarget && restoreTarget !== document.body && restoreTarget.isConnected;
+      if (restorable) restoreTarget.focus();
+      // Verify rather than assume: focus() on an element that is not focusable
+      // (no tabindex, disabled, hidden) silently does nothing and leaves focus on
+      // <body>. Checking the result covers both a non-focusable opener and a
+      // non-focusable fallback, instead of trusting either to be focusable.
+      if (!restorable || document.activeElement === document.body) {
         fallbackTarget?.focus();
       }
     };
     // Mount/unmount only — the refs are read at open and close respectively.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Track the *visual* viewport while a dialog is open, exposed as `--sheet-h`.
+  //
+  // iOS Safari does not shrink the layout viewport when the on-screen keyboard
+  // opens, so a `height: 100%` sheet keeps its full height and the keyboard
+  // covers the bottom — which is the pinned Save button, the one thing the
+  // three-region layout exists to keep reachable. `visualViewport.height` is the
+  // space actually visible, so sizing to it lifts the bar above the keyboard.
+  // Android resizes the layout viewport itself, where this is a no-op.
+  //
+  // Height only, deliberately: the overlay is `position: fixed; inset: 0` and
+  // body scroll is locked, so `offsetTop` stays ~0 and reading it would add
+  // jitter for no gain. NOTE: verified in Chrome and by unit test, but not yet on
+  // real iOS hardware — see the mobile checklist in README.
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const apply = () =>
+      document.documentElement.style.setProperty("--sheet-h", `${vv.height}px`);
+    apply();
+    vv.addEventListener("resize", apply);
+    return () => {
+      vv.removeEventListener("resize", apply);
+      document.documentElement.style.removeProperty("--sheet-h");
+    };
   }, []);
 
   // Escape closes. Hold the latest onClose in a ref so the window listener is
@@ -90,33 +199,64 @@ export const Modal: React.FC<ModalProps> = ({
     if (!focusables || focusables.length === 0) return;
     const first = focusables[0];
     const last = focusables[focusables.length - 1];
-    if (e.shiftKey && document.activeElement === first) {
+    // The container itself is focusable (tabIndex -1, as the last-resort target
+    // when nothing inside can take focus) but FOCUSABLE excludes tabindex="-1",
+    // so it is neither `first` nor `last` and would fall through both branches
+    // below. It is genuinely reachable: `.dialog` has padding, and clicking that
+    // dead space focuses it — from there Shift+Tab was not intercepted and, with
+    // #root inert leaving nothing earlier in the document, focus left the page
+    // entirely. Treat the container as sitting before the first control.
+    const onContainer = document.activeElement === dialogRef.current;
+    if (e.shiftKey && (onContainer || document.activeElement === first)) {
       e.preventDefault();
       last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
+    } else if (!e.shiftKey && (onContainer || document.activeElement === last)) {
       e.preventDefault();
       first.focus();
     }
   };
 
-  return (
-    // The backdrop closes on click as a mouse convenience; the keyboard
-    // equivalent is Escape (handled above), so no key handler is needed here.
+  // Portaled to <body> so it sits OUTSIDE the app root — which is what lets the
+  // root be marked inert without disabling the dialog itself.
+  return createPortal(
+    // The backdrop closes on click as a mouse convenience for the compact
+    // confirm dialog; the keyboard equivalent is Escape (handled above), so no
+    // key handler is needed here. Sheets opt OUT: they hold a long form, and on
+    // desktop the backdrop is most of the viewport — one stray click would throw
+    // away everything typed with no warning and no undo. Escape and the system
+    // Back gesture still close a sheet, both being deliberate acts rather than a
+    // mis-aimed click.
     // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/click-events-have-key-events
     <div
-      className="dialog-overlay"
+      className={`dialog-overlay dialog-overlay--${variant}${
+        offscreen ? " is-closed" : ""
+      }${closing ? " is-closing" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-labelledby={labelledBy}
       onClick={(e) => {
+        if (variant === "sheet") return;
         if (e.target === e.currentTarget) onClose();
       }}
     >
       {/* onKeyDown here is the focus trap, not a widget interaction. */}
       {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
-      <div className="dialog" ref={dialogRef} onKeyDown={trapTab}>
+      <div
+        className={`dialog dialog--${variant}${offscreen ? " is-closed" : ""}${
+          closing ? " is-closing" : ""
+        }`}
+        ref={dialogRef}
+        onKeyDown={trapTab}
+        // Focusable only as the last-resort target below — a dialog whose
+        // content holds nothing focusable would otherwise open with focus still
+        // outside it, in a subtree that was just marked inert, stranding it on
+        // <body>. Both dialogs shipped today focus real content, so this is a
+        // guard for the next plain-message dialog, not a live fix.
+        tabIndex={-1}
+      >
         {children}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

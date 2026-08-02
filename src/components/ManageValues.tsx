@@ -127,7 +127,7 @@ export const ManageValues: React.FC<ManageValuesProps> = ({
     <div className="manage-values" ref={containerRef} tabIndex={-1}>
       {groups.map(({ field, title, values }) => (
         <section className="manage-group" key={field}>
-          <h4 className="manage-group__title">{title}</h4>
+          <h3 className="manage-group__title">{title}</h3>
           {values.length === 0 ? (
             <p className="manage-empty">Nothing saved yet.</p>
           ) : (

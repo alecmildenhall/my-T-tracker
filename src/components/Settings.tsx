@@ -7,7 +7,10 @@ import { DataManagement } from "./DataManagement";
 import { JourneySettings } from "./JourneySettings";
 
 interface SettingsProps {
-  onBack: () => void;
+  /** Optional escape hatch. Unused once Settings is a bottom-nav destination —
+   *  the tab bar is always on screen, so a back button would be redundant
+   *  chrome — but kept for any caller that opens Settings as a sub-screen. */
+  onBack?: () => void;
 }
 
 export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
@@ -18,15 +21,18 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
 
   return (
     <section className="settings">
-      <div className="settings-header">
-        <button type="button" className="secondary-button" onClick={onBack}>
-          ← Back
-        </button>
-        <h2>Settings</h2>
-      </div>
+      {/* No "Settings" heading of its own: the app header already titles the
+          view, and repeating it would put two identical headings on the page. */}
+      {onBack && (
+        <div className="settings-header">
+          <button type="button" className="secondary-button" onClick={onBack}>
+            ← Back
+          </button>
+        </div>
+      )}
 
       <div className="settings-section">
-        <h3 className="settings-section__title">Your journey</h3>
+        <h2 className="settings-section__title">Your journey</h2>
         <p className="settings-section__desc">
           Optionally add when you started T and how you&apos;d like to be
           addressed, so the app can celebrate your milestones. Both are optional
@@ -36,7 +42,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
       </div>
 
       <div className="settings-section">
-        <h3 className="settings-section__title">Saved values</h3>
+        <h2 className="settings-section__title">Saved values</h2>
         <p className="settings-section__desc">
           Rename or remove the values suggested while logging. Changes update your
           past entries too.
@@ -49,7 +55,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
       </div>
 
       <div className="settings-section">
-        <h3 className="settings-section__title">Your data</h3>
+        <h2 className="settings-section__title">Your data</h2>
         <p className="settings-section__desc">
           Export a backup to move or restore your entries, or a CSV to share with a
           provider. Importing a backup replaces what&apos;s on this device.
