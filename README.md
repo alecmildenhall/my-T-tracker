@@ -391,6 +391,10 @@ Worth knowing what this rule is suspending, since it stops being free the day so
     - Sparse charts look sparse (visible points, no smoothing that invents a trend); we never draw a confident-looking line through three points.
 
     This follows the data-visualization principle of *showing uncertainty rather than suppressing data* — the failure mode to avoid is a confident-looking claim, not a small one.
+
+    **Known before you start: a single mistyped year can blow out every time axis, and the fix does not belong in the chart.** The date field has no sanity bound on the year, and browsers actively invite the mistake — Chromium auto-fills the segments you have not typed yet, so typing `08` into a cleared field yields `0008-08-05`, reading `08` as the *year*. That particular value happens to be rejected on save, but only by accident: `civilDateParts` round-trips through `Date.UTC`, which maps years 0–99 into the 1900s, so the check fails and the user sees the inline error. **A four-digit year like `0999` passes cleanly** and would sit in storage until a chart tried to plot it, at which point one entry stretches the axis across a millennium and flattens every real trend to a single pixel.
+
+    The tempting fix at this slice is to clamp the axis or drop outliers when drawing. Don't — that hides a wrong date rather than preventing one, and the entry is still wrong in export, in CSV, and in any doctor-facing summary. Add the bound at the parse boundary instead (`toCivilDate`, so every consumer inherits it), with a plausible range for a human HRT log. Cheap to do at any point before D; it is filed here because this is where the consequence finally shows up.
 - [ ] Improve UI layout and styling
 - [ ] Add a **developer data viewer** (raw JSON, export panel)
 - [ ] Strengthen accessibility (labels, keyboard navigation)

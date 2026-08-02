@@ -47,27 +47,24 @@ function carryForward(shots: ShotEntry[]): {
  */
 export interface ShotDraft {
   /**
-   * `null` means **"this was today's date when parked — re-derive it on restore
-   * rather than freezing it"**, so an untouched new form parked on Monday and
-   * reopened on Wednesday logs Wednesday. It does *not* mean "no date": the
-   * field is `required` and always holds a value, defaulting to today.
+   * The date exactly as the field held it — a snapshot, like every other value
+   * here. Never re-derived on restore.
    *
-   * Any string is the field's literal content, restored verbatim — a date the
-   * user picked deliberately (logging yesterday's shot), and equally `""`.
+   * This used to follow today: parked on Monday, reopened Wednesday, logged
+   * Wednesday. That optimised for the wrong case. A draft only exists once the
+   * user has typed something (see `hasUnsavedInput`), so every draft is
+   * deliberate work about a *particular shot* — and you log a shot after taking
+   * it, so the day the draft was started is the better guess at the day it
+   * happened. Someone finishing yesterday's half-filled entry got today's date
+   * slipped underneath them, and today looks plausible enough that nothing
+   * catches the eye.
    *
-   * `""` is reachable despite `required`, which only blocks *submission*, not
-   * the state in between: focusing the field and pressing Delete or Backspace
-   * empties it, and the browser itself then reports `validity.valueMissing`.
-   * Someone who clears the field meaning to retype it, and is interrupted, has
-   * left it empty on purpose.
-   *
-   * Those are two different facts, and `""` used to carry both. Reading it back
-   * with `||` turned a cleared field into today, which silently re-dated a
-   * logged shot — by a day in one form, by months in another. Splitting them
-   * means a future reader cannot conflate them however they test the value.
-   * See CLAUDE.md.
+   * Freezing prefers the visible failure: a stale date sits in the field where
+   * it can be seen and corrected, rather than a wrong one that looks right.
+   * Snapshot-and-restore is also the ordinary draft contract everywhere else
+   * (mail, notes, docs) — nothing silently rewrites a field you left alone.
    */
-  date: string | null;
+  date: string;
   time: string;
   doseMg: string;
   injectionSite: string;
@@ -79,17 +76,9 @@ export interface ShotDraft {
   notes: string;
 }
 
-/**
- * The draft with its date resolved to a concrete field value — what the inputs
- * are actually seeded from and compared against. The intersection collapses
- * `string | null` to `string`, so once a draft has been resolved the "follow
- * today" case cannot leak further into the form.
- */
-type FormValues = ShotDraft & { date: string };
-
 /** A brand-new form: today's date, everything else empty. Carried-forward values
  *  are layered on top by the caller. */
-function freshDraft(): FormValues {
+function freshDraft(): ShotDraft {
   return {
     date: todayLocalISO(),
     time: "",
@@ -120,8 +109,8 @@ interface ShotFormProps {
   headingId?: string;
   /** An interrupted entry to restore, in either mode — the parent keeps new-shot
    *  and per-shot edit drafts separately and hands over whichever applies. Takes
-   *  precedence over `editingShot`'s stored values. A `null` date means "re-derive
-   *  today"; a string, `""` included, is restored verbatim. */
+   *  precedence over `editingShot`'s stored values, and every field of it —
+   *  the date included — is restored exactly as it was left. */
   draft?: ShotDraft | null;
   /** Kept pointed at the in-progress values (or null when there is nothing worth
    *  keeping), so the parent can read them at the moment it decides whether a
@@ -170,7 +159,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   // form. Kept separately from `start` so "has unsaved input" always compares
   // against the underlying record, even when a draft was restored on top — which
   // is what lets a restored draft re-publish itself instead of reading as clean.
-  const opened: FormValues = useMemo(
+  const opened: ShotDraft = useMemo(
     () =>
       initial
         ? {
@@ -192,16 +181,10 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     []
   );
 
-  // A restored draft wins over both. Only a null date means "follow today"; every
-  // string is restored exactly as the user left it, `""` included.
-  //
-  // `??`, never `||` — that single character is the whole fix. `||` also catches
-  // `""`, which is how a field the user had cleared came back filled with today
-  // and re-dated a logged shot. With the two facts now carried separately, the
-  // reader can no longer conflate them, and there is no mode check here to keep
-  // in step with the writer.
-  const start: FormValues = useMemo(
-    () => (draft ? { ...draft, date: draft.date ?? todayLocalISO() } : opened),
+  // A restored draft wins over both, and is restored as-is — no field is
+  // re-derived, the date included. See ShotDraft.date.
+  const start: ShotDraft = useMemo(
+    () => draft ?? opened,
     // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
@@ -359,7 +342,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     }
   };
 
-  const current: FormValues = {
+  const current: ShotDraft = {
     date,
     time,
     doseMg,
@@ -385,21 +368,9 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   // render, so the ref is current well before any click or keypress.
   useEffect(() => {
     if (!liveDraftRef) return;
-    liveDraftRef.current = hasUnsavedInput
-      ? {
-          ...current,
-          // Record "follow today" as null; anything else is kept verbatim.
-          //
-          // Only a NEW shot has an untouched default to follow. An edit's date
-          // already means something — the day that shot was taken — so it is
-          // always stored literally, or parking an edit before midnight and
-          // reopening after would move a logged shot to a day it did not happen.
-          date:
-            !editingShot && current.date === todayLocalISO()
-              ? null
-              : current.date,
-        }
-      : null;
+    // Published verbatim — no field is special-cased on the way out, so there is
+    // no encoding here for the reader above to get wrong.
+    liveDraftRef.current = hasUnsavedInput ? current : null;
   });
 
   return (
