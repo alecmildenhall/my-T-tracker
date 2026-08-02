@@ -46,11 +46,21 @@ function carryForward(shots: ShotEntry[]): {
  * a half-typed number that isn't a valid entry yet.
  */
 export interface ShotDraft {
-  /** `""` means "whatever today is" — the date was never touched, so a restored
-   *  draft should follow today rather than freeze the day it was parked on. A
-   *  real date here was chosen deliberately (logging yesterday's shot) and is
-   *  preserved verbatim. */
-  date: string;
+  /**
+   * `null` means "no date was chosen — follow whatever today is", so parking an
+   * untouched new form on Monday and reopening it on Wednesday logs Wednesday.
+   * Any string is the field's literal content and is restored verbatim: a real
+   * date the user picked deliberately (logging yesterday's shot), and equally
+   * `""` when they cleared the field and meant to retype it.
+   *
+   * `null` rather than `""` for the follow-today case, because those are two
+   * different facts and `""` used to carry both. Reading it back with `||`
+   * turned a cleared field into today, which silently re-dated a logged shot —
+   * by a day in one form, by months in another. One value, one meaning: a
+   * cleared field cannot now be confused with an absent choice, whatever the
+   * reader does. See CLAUDE.md.
+   */
+  date: string | null;
   time: string;
   doseMg: string;
   injectionSite: string;
@@ -62,9 +72,17 @@ export interface ShotDraft {
   notes: string;
 }
 
+/**
+ * The draft with its date resolved to a concrete field value — what the inputs
+ * are actually seeded from and compared against. The intersection collapses
+ * `string | null` to `string`, so once a draft has been resolved the "follow
+ * today" case cannot leak further into the form.
+ */
+type FormValues = ShotDraft & { date: string };
+
 /** A brand-new form: today's date, everything else empty. Carried-forward values
  *  are layered on top by the caller. */
-function freshDraft(): ShotDraft {
+function freshDraft(): FormValues {
   return {
     date: todayLocalISO(),
     time: "",
@@ -95,8 +113,8 @@ interface ShotFormProps {
   headingId?: string;
   /** An interrupted entry to restore, in either mode — the parent keeps new-shot
    *  and per-shot edit drafts separately and hands over whichever applies. Takes
-   *  precedence over `editingShot`'s stored values, and its empty `date` means
-   *  "follow today". */
+   *  precedence over `editingShot`'s stored values. A `null` date means "follow
+   *  today"; a string, `""` included, is restored verbatim. */
   draft?: ShotDraft | null;
   /** Kept pointed at the in-progress values (or null when there is nothing worth
    *  keeping), so the parent can read them at the moment it decides whether a
@@ -145,7 +163,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   // form. Kept separately from `start` so "has unsaved input" always compares
   // against the underlying record, even when a draft was restored on top — which
   // is what lets a restored draft re-publish itself instead of reading as clean.
-  const opened: ShotDraft = useMemo(
+  const opened: FormValues = useMemo(
     () =>
       initial
         ? {
@@ -167,21 +185,16 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     []
   );
 
-  // A restored draft wins over both. Its empty `date` means "follow today" — but
-  // ONLY for a new shot, mirroring the write side below.
+  // A restored draft wins over both. Only a null date means "follow today"; every
+  // string is restored exactly as the user left it, `""` included.
   //
-  // An empty date is two different things depending on mode, and conflating them
-  // corrupts data: on a new shot it is the untouched default, but on an edit it
-  // means the user emptied the field (native date inputs are clearable). Expanding
-  // that to today would silently re-date the shot on reopening — a shot logged in
-  // May came back as today, months out, and Update wrote it. When editing, an
-  // empty date is restored as empty; submitting is blocked until it is filled,
-  // which is the honest outcome.
-  const start: ShotDraft = useMemo(
-    () =>
-      draft
-        ? { ...draft, date: draft.date || (editingShot ? "" : todayLocalISO()) }
-        : opened,
+  // `??`, never `||` — that single character is the whole fix. `||` also catches
+  // `""`, which is how a field the user had cleared came back filled with today
+  // and re-dated a logged shot. With the two facts now carried separately, the
+  // reader can no longer conflate them, and there is no mode check here to keep
+  // in step with the writer.
+  const start: FormValues = useMemo(
+    () => (draft ? { ...draft, date: draft.date ?? todayLocalISO() } : opened),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
@@ -339,7 +352,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     }
   };
 
-  const current: ShotDraft = {
+  const current: FormValues = {
     date,
     time,
     doseMg,
@@ -368,19 +381,16 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     liveDraftRef.current = hasUnsavedInput
       ? {
           ...current,
-          // An untouched date is stored as "follow today" rather than frozen:
-          // parking on Monday and reopening on Wednesday should log Wednesday.
-          // A date the user actually changed is kept verbatim — someone part-way
-          // through logging yesterday's shot meant that date.
+          // Record "follow today" as null; anything else is kept verbatim.
           //
-          // NEW SHOTS ONLY. An edit has a date that already means something: the
-          // day that shot was actually taken. Storing "follow today" for a shot
-          // dated today would silently re-date it on reopening — park an edit
-          // just before midnight, come back after, and `start` re-expands "" to
-          // the new today, moving a logged shot to a day it did not happen. The
-          // sentinel is about an untouched *default*, and an edit has none.
+          // Only a NEW shot has an untouched default to follow. An edit's date
+          // already means something — the day that shot was taken — so it is
+          // always stored literally, or parking an edit before midnight and
+          // reopening after would move a logged shot to a day it did not happen.
           date:
-            !editingShot && current.date === todayLocalISO() ? "" : current.date,
+            !editingShot && current.date === todayLocalISO()
+              ? null
+              : current.date,
         }
       : null;
   });

@@ -354,8 +354,22 @@ describe("ShotForm draft publishing", () => {
     fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "wip" } });
 
     expect(ref.current).not.toBeNull();
-    expect(ref.current!.date).toBe("");
+    expect(ref.current!.date).toBeNull();
     expect(ref.current!.notes).toBe("wip");
+  });
+
+  it("publishes a CLEARED date as an empty string, distinct from follow-today", () => {
+    // The two facts that used to share `""`. Clearing the field is a deliberate
+    // act — the user means to retype it — and must not be recorded as "no date
+    // chosen", or restoring silently fills today back in. This assertion is the
+    // one that separates them: same form, same field, different values.
+    const ref = emptyRef();
+    render(<ShotForm onAddShot={vi.fn()} liveDraftRef={ref} />);
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "" } });
+
+    expect(ref.current).not.toBeNull();
+    expect(ref.current!.date).toBe("");
+    expect(ref.current!.date).not.toBeNull();
   });
 
   it("keeps a date the user actually changed", () => {
@@ -367,23 +381,41 @@ describe("ShotForm draft publishing", () => {
     expect(ref.current!.date).toBe("2026-06-01");
   });
 
+  const draftWith = (date: string | null, notes = "carried over"): ShotDraft => ({
+    date,
+    time: "",
+    doseMg: "",
+    injectionSite: "",
+    injectionSitePosition: "",
+    testosteroneEster: "",
+    carrierOil: "",
+    painScore: "",
+    mood: "",
+    notes,
+  });
+
   it("restores a 'follow today' draft onto today's date", () => {
-    const draft: ShotDraft = {
-      date: "",
-      time: "",
-      doseMg: "",
-      injectionSite: "",
-      injectionSitePosition: "",
-      testosteroneEster: "",
-      carrierOil: "",
-      painScore: "",
-      mood: "",
-      notes: "carried over",
-    };
-    render(<ShotForm onAddShot={vi.fn()} draft={draft} />);
+    render(<ShotForm onAddShot={vi.fn()} draft={draftWith(null)} />);
 
     expect(screen.getByLabelText("Date")).toHaveValue(todayLocalISO());
     expect(screen.getByLabelText("Notes")).toHaveValue("carried over");
+  });
+
+  it("restores a cleared date as cleared, not as today", () => {
+    // The read half of the same distinction, and the half that actually corrupted
+    // data: reading with `||` turned this draft into today's date, and on an edit
+    // that re-dated a logged shot. A reader that cannot tell `""` from `null` is
+    // the bug, so assert the empty case explicitly rather than only the null one.
+    render(<ShotForm onAddShot={vi.fn()} draft={draftWith("")} />);
+
+    expect(screen.getByLabelText("Date")).toHaveValue("");
+    expect(screen.getByLabelText("Date")).not.toHaveValue(todayLocalISO());
+  });
+
+  it("restores a deliberately chosen date verbatim", () => {
+    render(<ShotForm onAddShot={vi.fn()} draft={draftWith("2026-06-01")} />);
+
+    expect(screen.getByLabelText("Date")).toHaveValue("2026-06-01");
   });
 
   it("reports unsaved changes while editing, so an edit can be restored too", () => {
