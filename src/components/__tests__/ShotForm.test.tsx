@@ -431,6 +431,58 @@ describe("ShotForm draft publishing", () => {
     }
   });
 
+  it("lets an emptied draft go clean again after the day has rolled over", () => {
+    // Freezing the date created this: `opened` is built at THIS mount, so its
+    // date is today's, while a restored draft's is the day it was started. Those
+    // can never match again, which left the form permanently dirty — erase the
+    // note to abandon the entry and it re-published a bare stale date, so the
+    // next "Log a shot" opened pre-dated to a day with nothing in it.
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-08-01T21:00:00"));
+      const ref = emptyRef();
+      const first = render(<ShotForm onAddShot={vi.fn()} liveDraftRef={ref} />);
+      fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "note" } });
+      const parked = ref.current!;
+      first.unmount();
+
+      vi.setSystemTime(new Date("2026-08-02T09:00:00"));
+      const ref2 = emptyRef();
+      render(<ShotForm onAddShot={vi.fn()} draft={parked} liveDraftRef={ref2} />);
+      // It restores dirty, so dismissing still keeps it...
+      expect(ref2.current).not.toBeNull();
+
+      // ...but emptying it out means there is nothing left worth keeping.
+      fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "" } });
+      expect(ref2.current).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("still keeps a date change parked against an edit", () => {
+    // The other side of that fix: an edit's baseline stays the shot's own stored
+    // date, so a date the user changed and parked is still unsaved input. Letting
+    // the edit branch inherit the draft's date too would read as clean and drop
+    // the change on dismissal.
+    const editing: ShotEntry = { id: "e1", date: "2026-05-05", notes: "original" };
+    const parked: ShotDraft = { ...draftWith("2026-06-10", "original") };
+    const ref = emptyRef();
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        onUpdateShot={vi.fn()}
+        editingShot={editing}
+        draft={parked}
+        liveDraftRef={ref}
+      />
+    );
+
+    expect(screen.getByLabelText("Date")).toHaveValue("2026-06-10");
+    expect(ref.current).not.toBeNull();
+    expect(ref.current!.date).toBe("2026-06-10");
+  });
+
   it("restores a draft's date verbatim even when it is today's", () => {
     render(<ShotForm onAddShot={vi.fn()} draft={draftWith(todayLocalISO())} />);
 
@@ -471,8 +523,7 @@ describe("ShotForm draft publishing", () => {
 
     fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "rewritten" } });
     expect(ref.current!.notes).toBe("rewritten");
-    // The shot's own date was not touched, so it is preserved as-is rather than
-    // being treated as "follow today".
+    // The shot's own date is published as-is, like every other untouched field.
     expect(ref.current!.date).toBe("2026-06-01");
   });
 });

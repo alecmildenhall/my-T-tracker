@@ -174,7 +174,26 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             mood: initial.mood ?? "",
             notes: initial.notes ?? "",
           }
-        : { ...freshDraft(), ...carried },
+        : {
+            ...freshDraft(),
+            ...carried,
+            // For a NEW shot the date's baseline is whatever the form opened
+            // with — a restored draft's date if there is one, not today's.
+            //
+            // The other fields can use "empty" as their baseline, so restored
+            // content reads as input and gets re-published. A date cannot: it is
+            // required and always populated, so "differs from a fresh form"
+            // proves nothing about intent — and `freshDraft()` is evaluated at
+            // THIS mount, so a draft carried across midnight would differ from it
+            // forever. Without this, erasing a restored note to abandon the entry
+            // left it permanently dirty and re-published a bare stale date, so
+            // the next "Log a shot" opened pre-dated to a day with nothing in it.
+            //
+            // Editing needs no such treatment: `initial.date` is the shot's own
+            // stored date, which does not move, and inheriting the draft's date
+            // there would silently discard a date change the user had parked.
+            ...(draft ? { date: draft.date } : {}),
+          },
     // Mount-time seed only; the component is remounted (via `key`) when the shot
     // being edited changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
