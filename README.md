@@ -280,6 +280,16 @@ Milestones should be configurable eventually, but the first version should avoid
 
   Its own small PR rather than riding along with feature work, and worth doing **before** slice B½ starts adding fields, since every new field is another thing that can silently fail to save. Phase-proof too: `useLocalStorage` is the single write boundary, so this survives the PWA, the Capacitor swap to native storage, and encrypted sync — only the call behind it changes.
 
+- [ ] _Engineering:_ **stop overloading `""` in `ShotDraft.date`.** The draft uses `""` to mean "untouched — follow today", but an emptied field is *also* `""`, because native date inputs are clearable. One value, two meanings, written in one place and read in another, and the two have to agree by hand. Twice they didn't: a parked edit re-dated its shot by a day, and then — after the first fix closed only the write side — by **months**, moving a shot logged in May to today. Both are now guarded by explicit mode checks, which is a patch over the representation rather than a repair of it: the ambiguity is still expressible, so a third reader of that field can reintroduce it. Give "follow today" its own carrier (`date: CivilDate | null`, or a separate `followToday` flag) so it cannot be confused with an empty field. Small — one field, two call sites.
+
+  Note this is **not** what the branded `CivilDate` above does or was ever going to do: that brand stops at the trust boundary, and a draft is unparsed by nature.
+
+- [ ] _Engineering:_ **one owner for focus hand-off, plus a test guard.** Focus is currently moved by hand at five separate sites — `Modal`'s restore/fallback, `HistoryView`'s `focusRowAt` and its Clear-all hand-off, `App`'s title fallback, and `ShotForm`'s reset — and that seam produced **nine** defects in slice B: focus dropped to `<body>` from three different controls, the hand-offs were invisible (no CSS rule covered programmatically focused elements, so focus moved with nothing on screen changing), the trap was escapable by clicking the dialog's padding, and the skip link's URL fragment poisoned focus restoration for the entire session.
+
+  The pattern worth recording: **several were introduced by the previous round's fix.** Each fix adds another hand-rolled site, and every new site can collide with the shared machinery — the Tab trap, `inert`, the restore order. That is what turns a fix into the next bug, and it is why consolidating beats another round of patching.
+
+  Pair it with a shared assertion that **focus is never left on `<body>` after an interaction**, applied across flows rather than case by case. That single check would have caught four of the nine before review. Note jsdom can't see `inert` and doesn't process CSS, so the ring visibility half stays a browser check.
+
 - [x] Add optional testosterone start date for HRT milestones — _Settings → Your journey; future start dates allowed (planning ahead reads as "not started yet")_
 - [x] Add optional display name / preferred name for affirming milestone messages
 - [x] Add milestone logic for three-month intervals during year one, then six-month intervals after that — _labels read "1 year 3 months", never months-only_
@@ -291,7 +301,11 @@ Milestones should be configurable eventually, but the first version should avoid
 - [ ] Redesign the UI around a phone-first, warm, readable, non-corporate visual direction
 - [x] Add **CSV export** for clinical conversations — _Settings → Your data, formula-injection-safe, RFC 4180 quoted_
 - [x] Add **JSON backup export/import** so users can move or restore local data — _versioned envelope (shots + optional profile); import validates against a strict schema and downloads a safety backup before replacing_
-- [ ] _Engineering (lands first):_ **branded `CivilDate` type** — its own small, behavior-preserving PR *before* the History & Charts epic below (cheapest to do before more date logic piles on). `YYYY-MM-DD` values are produced only by the shared civil-date parser at each trust boundary (import, form input, storage read) and consumed by all date logic (milestones, greeting, shot-day, filters, charts). Makes invalid dates unrepresentable downstream (no re-validation) and retires string-typed date handling in `ShotEntry.date` / `Profile.startDate`.
+- [x] _Engineering (landed first, PR #25):_ **branded `CivilDate` type** — `YYYY-MM-DD` values are minted only through `toCivilDate` (the smart constructor) and consumed by the date logic (milestones, greeting, shot-day, filters), so an untrusted string is parsed **once**, at the trust boundary, instead of re-checked everywhere downstream.
+
+  **A boundary brand, deliberately not a model brand.** `ShotEntry.date` and `Profile.startDate` stay `string` on purpose: consumers compile unchanged, serialization is untouched, and there's no `{ date: "..." }` construction churn. Worth stating plainly, because this item's original wording promised the opposite ("retires string-typed date handling in `ShotEntry.date` / `Profile.startDate`") and stayed unticked after it shipped — which later got it cited as still-pending work, and as a fix for a bug it does not address.
+
+  **The limit it leaves.** The brand stops at the boundary and never reaches *form* state. `ShotDraft.date` is a raw input string by necessity — a half-typed date isn't a valid date — and that is exactly where both of slice B's date defects lived. Branding the model would not have prevented either. See the draft-sentinel item in Short-Term.
 - [ ] **History & Charts epic** (local-first, phone-first) — progressive-disclosure information architecture: Home shows a *recent-shots teaser* + "See all"; a dedicated **History** tab holds the full, filterable, searchable list **and** the charts; charts summarize trends. The unbounded list is never the main view. Built as thin slices, in order, after the CivilDate PR:
 
   **Shape of the whole epic (decided up front, so each slice builds toward it):**
