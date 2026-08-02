@@ -65,6 +65,20 @@ export interface ShotDraft {
    * (mail, notes, docs) — nothing silently rewrites a field you left alone.
    */
   date: string;
+  /**
+   * Whether the user actually set that date, as opposed to it being the default
+   * the form opened with. Recorded when the field changes — never inferred by
+   * comparing values, which is what went wrong three times running.
+   *
+   * A date cannot use the test every other field uses ("is it non-empty?"),
+   * because it is required and always populated. Every attempt to derive intent
+   * from the value instead broke something: comparing against today's default
+   * left a draft carried past midnight permanently dirty, and comparing against
+   * the restored draft's own date made a backdate-only draft read as clean, so
+   * the second dismissal threw the backdate away. Provenance is a fact about
+   * what the user did, so it is stored rather than reconstructed.
+   */
+  dateTouched: boolean;
   time: string;
   doseMg: string;
   injectionSite: string;
@@ -81,6 +95,7 @@ export interface ShotDraft {
 function freshDraft(): ShotDraft {
   return {
     date: todayLocalISO(),
+    dateTouched: false,
     time: "",
     doseMg: "",
     injectionSite: "",
@@ -164,6 +179,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       initial
         ? {
             date: initial.date,
+            dateTouched: false,
             time: initial.time ?? "",
             doseMg: initial.doseMg?.toString() ?? "",
             injectionSite: initial.injectionSite ?? "",
@@ -174,26 +190,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             mood: initial.mood ?? "",
             notes: initial.notes ?? "",
           }
-        : {
-            ...freshDraft(),
-            ...carried,
-            // For a NEW shot the date's baseline is whatever the form opened
-            // with — a restored draft's date if there is one, not today's.
-            //
-            // The other fields can use "empty" as their baseline, so restored
-            // content reads as input and gets re-published. A date cannot: it is
-            // required and always populated, so "differs from a fresh form"
-            // proves nothing about intent — and `freshDraft()` is evaluated at
-            // THIS mount, so a draft carried across midnight would differ from it
-            // forever. Without this, erasing a restored note to abandon the entry
-            // left it permanently dirty and re-published a bare stale date, so
-            // the next "Log a shot" opened pre-dated to a day with nothing in it.
-            //
-            // Editing needs no such treatment: `initial.date` is the shot's own
-            // stored date, which does not move, and inheriting the draft's date
-            // there would silently discard a date change the user had parked.
-            ...(draft ? { date: draft.date } : {}),
-          },
+        : { ...freshDraft(), ...carried },
     // Mount-time seed only; the component is remounted (via `key`) when the shot
     // being edited changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -209,6 +206,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   );
 
   const [date, setDate] = useState<string>(start.date);
+  const [dateTouched, setDateTouched] = useState<boolean>(start.dateTouched);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const [dateError, setDateError] = useState<string | null>(null);
   const [doseError, setDoseError] = useState<string | null>(null);
@@ -245,6 +243,11 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   // Stable (setters are stable), so it's safe in the effect's dependency list.
   const resetForm = useCallback(() => {
     setDate(todayLocalISO());
+    // Back to a default the user did not choose, so the flag resets with it —
+    // otherwise clearing a backdated draft left the form dirty forever, the
+    // "Clear form" link never went away, and dismissing parked a phantom entry
+    // holding nothing but today's date.
+    setDateTouched(false);
     setDateError(null);
     setDoseError(null);
     setPainError(null);
@@ -363,6 +366,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
 
   const current: ShotDraft = {
     date,
+    dateTouched,
     time,
     doseMg,
     injectionSite,
@@ -378,9 +382,14 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   // measured against `opened` (the shot being edited, or a fresh form), never
   // against a restored draft, so restoring and re-parking doesn't read as clean.
   // Applies in both modes: editing an existing shot has unsaved input too.
-  const hasUnsavedInput = (Object.keys(current) as (keyof ShotDraft)[]).some(
-    (k) => current[k] !== opened[k]
-  );
+  //
+  // `date` itself is excluded and `dateTouched` speaks for it. Comparing the
+  // date VALUE cannot answer "did the user enter this?", because the field is
+  // required and always populated — whatever it is compared against, some real
+  // case comes out wrong. The flag is the answer, so the value is not consulted.
+  const hasUnsavedInput = (Object.keys(current) as (keyof ShotDraft)[])
+    .filter((k) => k !== "date")
+    .some((k) => current[k] !== opened[k]);
 
   // Publish the live values for the parent to read on dismissal. In an effect
   // rather than during render so the render stays pure; effects run after every
@@ -435,6 +444,8 @@ export const ShotForm: React.FC<ShotFormProps> = ({
               value={date}
               onChange={(e) => {
                 setDate(e.target.value);
+                // Provenance, recorded at the moment it happens. See ShotDraft.
+                setDateTouched(true);
                 if (dateError) setDateError(null);
               }}
               required

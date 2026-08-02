@@ -379,8 +379,13 @@ describe("ShotForm draft publishing", () => {
     expect(ref.current!.date).toBe("2026-06-01");
   });
 
-  const draftWith = (date: string, notes = "carried over"): ShotDraft => ({
+  const draftWith = (
+    date: string,
+    notes = "carried over",
+    dateTouched = true
+  ): ShotDraft => ({
     date,
+    dateTouched,
     time: "",
     doseMg: "",
     injectionSite: "",
@@ -458,6 +463,51 @@ describe("ShotForm draft publishing", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("keeps a backdate that is the draft's only content, across repeat dismissals", () => {
+    // Backdating is a whole entry on its own: open the form, set yesterday's
+    // date, get interrupted. Nothing else is filled in, so if the date is not
+    // recognised as input the draft reads as clean the SECOND time it is
+    // restored, and that dismissal throws the chosen date away silently — the
+    // exact class this branch exists to close, one dismissal later.
+    const ref = emptyRef();
+    const first = render(<ShotForm onAddShot={vi.fn()} liveDraftRef={ref} />);
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: "2026-06-01" },
+    });
+    const parked = ref.current!;
+    expect(parked.date).toBe("2026-06-01");
+    first.unmount();
+
+    const ref2 = emptyRef();
+    render(<ShotForm onAddShot={vi.fn()} draft={parked} liveDraftRef={ref2} />);
+
+    expect(screen.getByLabelText("Date")).toHaveValue("2026-06-01");
+    expect(ref2.current).not.toBeNull();
+    expect(ref2.current!.date).toBe("2026-06-01");
+  });
+
+  it("'Clear form' really clears a restored draft whose date was backdated", () => {
+    // Resetting puts today back in the field, so anything that decided dirtiness
+    // by comparing the date against the parked one stayed dirty forever: the
+    // "Clear form" link never went away, tapping it visibly did nothing, and
+    // dismissing parked a phantom entry holding only today's date.
+    const ref = emptyRef();
+    const first = render(<ShotForm onAddShot={vi.fn()} liveDraftRef={ref} />);
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: "2026-06-01" },
+    });
+    const parked = ref.current!;
+    first.unmount();
+
+    const ref2 = emptyRef();
+    render(<ShotForm onAddShot={vi.fn()} draft={parked} liveDraftRef={ref2} />);
+    fireEvent.click(screen.getByRole("button", { name: "Clear form" }));
+
+    expect(screen.getByLabelText("Date")).toHaveValue(todayLocalISO());
+    expect(screen.queryByRole("button", { name: "Clear form" })).toBeNull();
+    expect(ref2.current).toBeNull();
   });
 
   it("still keeps a date change parked against an edit", () => {
