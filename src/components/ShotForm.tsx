@@ -47,18 +47,25 @@ function carryForward(shots: ShotEntry[]): {
  */
 export interface ShotDraft {
   /**
-   * `null` means "no date was chosen — follow whatever today is", so parking an
-   * untouched new form on Monday and reopening it on Wednesday logs Wednesday.
-   * Any string is the field's literal content and is restored verbatim: a real
-   * date the user picked deliberately (logging yesterday's shot), and equally
-   * `""` when they cleared the field and meant to retype it.
+   * `null` means **"this was today's date when parked — re-derive it on restore
+   * rather than freezing it"**, so an untouched new form parked on Monday and
+   * reopened on Wednesday logs Wednesday. It does *not* mean "no date": the
+   * field is `required` and always holds a value, defaulting to today.
    *
-   * `null` rather than `""` for the follow-today case, because those are two
-   * different facts and `""` used to carry both. Reading it back with `||`
-   * turned a cleared field into today, which silently re-dated a logged shot —
-   * by a day in one form, by months in another. One value, one meaning: a
-   * cleared field cannot now be confused with an absent choice, whatever the
-   * reader does. See CLAUDE.md.
+   * Any string is the field's literal content, restored verbatim — a date the
+   * user picked deliberately (logging yesterday's shot), and equally `""`.
+   *
+   * `""` is reachable despite `required`, which only blocks *submission*, not
+   * the state in between: focusing the field and pressing Delete or Backspace
+   * empties it, and the browser itself then reports `validity.valueMissing`.
+   * Someone who clears the field meaning to retype it, and is interrupted, has
+   * left it empty on purpose.
+   *
+   * Those are two different facts, and `""` used to carry both. Reading it back
+   * with `||` turned a cleared field into today, which silently re-dated a
+   * logged shot — by a day in one form, by months in another. Splitting them
+   * means a future reader cannot conflate them however they test the value.
+   * See CLAUDE.md.
    */
   date: string | null;
   time: string;
@@ -113,7 +120,7 @@ interface ShotFormProps {
   headingId?: string;
   /** An interrupted entry to restore, in either mode — the parent keeps new-shot
    *  and per-shot edit drafts separately and hands over whichever applies. Takes
-   *  precedence over `editingShot`'s stored values. A `null` date means "follow
+   *  precedence over `editingShot`'s stored values. A `null` date means "re-derive
    *  today"; a string, `""` included, is restored verbatim. */
   draft?: ShotDraft | null;
   /** Kept pointed at the in-progress values (or null when there is nothing worth

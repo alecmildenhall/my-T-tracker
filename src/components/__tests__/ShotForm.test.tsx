@@ -359,10 +359,11 @@ describe("ShotForm draft publishing", () => {
   });
 
   it("publishes a CLEARED date as an empty string, distinct from follow-today", () => {
-    // The two facts that used to share `""`. Clearing the field is a deliberate
-    // act — the user means to retype it — and must not be recorded as "no date
-    // chosen", or restoring silently fills today back in. This assertion is the
-    // one that separates them: same form, same field, different values.
+    // The two facts that used to share `""`. `required` blocks submission, not the
+    // state in between — Delete or Backspace in the field empties it, verified with
+    // real keys — so clearing is a deliberate act the user can reach, and must not
+    // be recorded as "re-derive today", or restoring silently fills today back in.
+    // This assertion is the one that separates them: same field, different values.
     const ref = emptyRef();
     render(<ShotForm onAddShot={vi.fn()} liveDraftRef={ref} />);
     fireEvent.change(screen.getByLabelText("Date"), { target: { value: "" } });
