@@ -297,9 +297,16 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     const parsedDose = doseMg === "" ? undefined : Number(doseMg);
     const parsedPain = painScore === "" ? undefined : Number(painScore);
 
+    // Blank and malformed are different mistakes and get different words. A
+    // blank date is almost always "meant to fill this in and forgot" — telling
+    // that person their date is not a real calendar date is answering a question
+    // they did not ask. The date is required precisely because a shot always
+    // happened on some day, so the fix is to ask for it, not to let it through.
     const nextDateError = parsedDate
       ? null
-      : "Please enter a real calendar date (YYYY-MM-DD).";
+      : date.trim() === ""
+        ? "Add the date this shot was taken."
+        : "Please enter a real calendar date (YYYY-MM-DD).";
     // Mirrors the storage schema: a finite, non-negative number. Fractional doses
     // are fine (62.5mg while titrating is ordinary).
     const nextDoseError =
@@ -392,6 +399,14 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     (Object.keys(current) as (keyof ShotDraft)[])
       .filter((k) => k !== "date" && k !== "dateBaseline")
       .some((k) => current[k] !== opened[k]);
+
+  // Whether the form currently shows exactly what a brand-new one would, right
+  // now — today's date and nothing beyond the carried-forward values.
+  const looksFresh =
+    date === todayLocalISO() &&
+    (Object.keys(current) as (keyof ShotDraft)[])
+      .filter((k) => k !== "date" && k !== "dateBaseline")
+      .every((k) => current[k] === opened[k]);
 
   // Publish the live values for the parent to read on dismissal. In an effect
   // rather than during render so the render stays pure; effects run after every
@@ -642,8 +657,14 @@ export const ShotForm: React.FC<ShotFormProps> = ({
 
         {/* Closing keeps what you typed, so discarding needs its own control —
             but a quiet one, at the end of the fields rather than competing with
-            Save. Only offered once there is something to clear. */}
-        {hasUnsavedInput && !editingShot && (
+            Save. Only offered once there is something to clear.
+            `looksFresh` covers the case where the form reports unsaved input but
+            shows nothing a fresh form wouldn't: a date chosen yesterday can be
+            today by the time the draft is reopened. Offering "Clear form" there
+            invites a tap that visibly does nothing. This decides only what is
+            RENDERED — never what is parked or saved — so unlike the dirtiness
+            rules it is safe to judge against the live clock. */}
+        {hasUnsavedInput && !editingShot && !looksFresh && (
           <button type="button" className="link-button" onClick={resetForm}>
             Clear form
           </button>

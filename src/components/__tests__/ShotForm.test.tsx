@@ -192,10 +192,14 @@ describe("ShotForm field mapping", () => {
     expect(saved.id).toBeTruthy();
   });
 
-  it("surfaces a message when the date is empty", () => {
+  it("asks for the date when it is missing, rather than calling it invalid", () => {
     // The form carries `noValidate`, so a missing date no longer bounces off the
     // browser's `required` check — it reaches our validation, and must say so
     // rather than leaving Save looking broken.
+    //
+    // Blank and malformed are different mistakes. A blank date is almost always
+    // "meant to fill it in and forgot", and telling that person their date is not
+    // a real calendar date answers a question they did not ask.
     const onAddShot = vi.fn();
     render(<ShotForm onAddShot={onAddShot} />);
     fireEvent.change(screen.getByLabelText("Date"), { target: { value: "" } });
@@ -203,7 +207,7 @@ describe("ShotForm field mapping", () => {
 
     expect(onAddShot).not.toHaveBeenCalled();
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "Please enter a real calendar date"
+      "Add the date this shot was taken."
     );
     expect(screen.getByLabelText("Date")).toHaveAttribute("aria-invalid", "true");
 
@@ -542,6 +546,46 @@ describe("ShotForm draft publishing", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("does not offer 'Clear form' on a form that already looks brand new", () => {
+    // A date chosen yesterday can be today by the time the draft is reopened, so
+    // the form reports unsaved input while showing nothing a fresh form wouldn't.
+    // Offering "Clear form" there invites a tap that visibly does nothing.
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-08-01T10:00:00"));
+      const ref = emptyRef();
+      const first = render(<ShotForm onAddShot={vi.fn()} liveDraftRef={ref} />);
+      // Date set forward to tomorrow, nothing else touched.
+      fireEvent.change(screen.getByLabelText("Date"), {
+        target: { value: "2026-08-02" },
+      });
+      const parked = ref.current!;
+      first.unmount();
+
+      // Tomorrow arrives; the parked date is now simply today.
+      vi.setSystemTime(new Date("2026-08-02T10:00:00"));
+      render(<ShotForm onAddShot={vi.fn()} draft={parked} liveDraftRef={emptyRef()} />);
+
+      expect(screen.getByLabelText("Date")).toHaveValue("2026-08-02");
+      expect(screen.queryByRole("button", { name: "Clear form" })).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("still offers 'Clear form' whenever the form shows something of yours", () => {
+    // The guard above must not swallow the ordinary case.
+    render(<ShotForm onAddShot={vi.fn()} liveDraftRef={emptyRef()} />);
+    expect(screen.queryByRole("button", { name: "Clear form" })).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "wip" } });
+    expect(screen.getByRole("button", { name: "Clear form" })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-06-01" } });
+    expect(screen.getByRole("button", { name: "Clear form" })).toBeInTheDocument();
   });
 
   it("registers a backdate picked after the form was cleared past midnight", () => {
