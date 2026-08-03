@@ -46,11 +46,41 @@ function carryForward(shots: ShotEntry[]): {
  * a half-typed number that isn't a valid entry yet.
  */
 export interface ShotDraft {
-  /** `""` means "whatever today is" — the date was never touched, so a restored
-   *  draft should follow today rather than freeze the day it was parked on. A
-   *  real date here was chosen deliberately (logging yesterday's shot) and is
-   *  preserved verbatim. */
+  /**
+   * The date exactly as the field held it — a snapshot, like every other value
+   * here. Never re-derived on restore.
+   *
+   * This used to follow today: parked on Monday, reopened Wednesday, logged
+   * Wednesday. That optimised for the wrong case. A draft only exists once the
+   * user has typed something (see `hasUnsavedInput`), so every draft is
+   * deliberate work about a *particular shot* — and you log a shot after taking
+   * it, so the day the draft was started is the better guess at the day it
+   * happened. Someone finishing yesterday's half-filled entry got today's date
+   * slipped underneath them, and today looks plausible enough that nothing
+   * catches the eye.
+   *
+   * Freezing prefers the visible failure: a stale date sits in the field where
+   * it can be seen and corrected, rather than a wrong one that looks right.
+   * Snapshot-and-restore is also the ordinary draft contract everywhere else
+   * (mail, notes, docs) — nothing silently rewrites a field you left alone.
+   */
   date: string;
+  /**
+   * The date this form was seeded with — the value the field would still hold if
+   * the user never touched it. The date counts as unsaved input exactly when it
+   * differs from this.
+   *
+   * The reference itself is stored, rather than a boolean answer derived from it,
+   * because every derived form drifted. A flag is computed against some baseline
+   * at the moment it is set and then read much later, against a baseline that may
+   * have moved — the sheet outlives a day, or "Clear form" reseeds the field —
+   * and the two silently disagree. Keeping the reference means there is only one,
+   * it travels with the draft, and whoever asks gets the same answer.
+   *
+   * For a new shot this is the day the form opened; for an edit, the shot's own
+   * stored date; after "Clear form", the day it was cleared.
+   */
+  dateBaseline: string;
   time: string;
   doseMg: string;
   injectionSite: string;
@@ -67,6 +97,7 @@ export interface ShotDraft {
 function freshDraft(): ShotDraft {
   return {
     date: todayLocalISO(),
+    dateBaseline: todayLocalISO(),
     time: "",
     doseMg: "",
     injectionSite: "",
@@ -95,8 +126,8 @@ interface ShotFormProps {
   headingId?: string;
   /** An interrupted entry to restore, in either mode — the parent keeps new-shot
    *  and per-shot edit drafts separately and hands over whichever applies. Takes
-   *  precedence over `editingShot`'s stored values, and its empty `date` means
-   *  "follow today". */
+   *  precedence over `editingShot`'s stored values, and every field of it —
+   *  the date included — is restored exactly as it was left. */
   draft?: ShotDraft | null;
   /** Kept pointed at the in-progress values (or null when there is nothing worth
    *  keeping), so the parent can read them at the moment it decides whether a
@@ -150,6 +181,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       initial
         ? {
             date: initial.date,
+            dateBaseline: initial.date,
             time: initial.time ?? "",
             doseMg: initial.doseMg?.toString() ?? "",
             injectionSite: initial.injectionSite ?? "",
@@ -167,26 +199,16 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     []
   );
 
-  // A restored draft wins over both. Its empty `date` means "follow today" — but
-  // ONLY for a new shot, mirroring the write side below.
-  //
-  // An empty date is two different things depending on mode, and conflating them
-  // corrupts data: on a new shot it is the untouched default, but on an edit it
-  // means the user emptied the field (native date inputs are clearable). Expanding
-  // that to today would silently re-date the shot on reopening — a shot logged in
-  // May came back as today, months out, and Update wrote it. When editing, an
-  // empty date is restored as empty; submitting is blocked until it is filled,
-  // which is the honest outcome.
+  // A restored draft wins over both, and is restored as-is — no field is
+  // re-derived, the date included. See ShotDraft.date.
   const start: ShotDraft = useMemo(
-    () =>
-      draft
-        ? { ...draft, date: draft.date || (editingShot ? "" : todayLocalISO()) }
-        : opened,
+    () => draft ?? opened,
     // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
 
   const [date, setDate] = useState<string>(start.date);
+  const [dateBaseline, setDateBaseline] = useState<string>(start.dateBaseline);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const [dateError, setDateError] = useState<string | null>(null);
   const [doseError, setDoseError] = useState<string | null>(null);
@@ -223,6 +245,10 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   // Stable (setters are stable), so it's safe in the effect's dependency list.
   const resetForm = useCallback(() => {
     setDate(todayLocalISO());
+    // Reseeded, so the baseline moves with it. Leaving the baseline behind is
+    // what let a form cleared after midnight treat a genuine backdate as no
+    // change at all, and discard it on dismissal.
+    setDateBaseline(todayLocalISO());
     setDateError(null);
     setDoseError(null);
     setPainError(null);
@@ -271,9 +297,16 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     const parsedDose = doseMg === "" ? undefined : Number(doseMg);
     const parsedPain = painScore === "" ? undefined : Number(painScore);
 
+    // Blank and malformed are different mistakes and get different words. A
+    // blank date is almost always "meant to fill this in and forgot" — telling
+    // that person their date is not a real calendar date is answering a question
+    // they did not ask. The date is required precisely because a shot always
+    // happened on some day, so the fix is to ask for it, not to let it through.
     const nextDateError = parsedDate
       ? null
-      : "Please enter a real calendar date (YYYY-MM-DD).";
+      : date.trim() === ""
+        ? "Add the date this shot was taken."
+        : "Please enter a real calendar date (YYYY-MM-DD).";
     // Mirrors the storage schema: a finite, non-negative number. Fractional doses
     // are fine (62.5mg while titrating is ordinary).
     const nextDoseError =
@@ -341,6 +374,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
 
   const current: ShotDraft = {
     date,
+    dateBaseline,
     time,
     doseMg,
     injectionSite,
@@ -356,33 +390,32 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   // measured against `opened` (the shot being edited, or a fresh form), never
   // against a restored draft, so restoring and re-parking doesn't read as clean.
   // Applies in both modes: editing an existing shot has unsaved input too.
-  const hasUnsavedInput = (Object.keys(current) as (keyof ShotDraft)[]).some(
-    (k) => current[k] !== opened[k]
-  );
+  //
+  // The date is compared against its own baseline rather than against `opened`,
+  // because a required, always-populated field has no "empty" to mean "nothing
+  // entered". Every other field can use that test directly.
+  const hasUnsavedInput =
+    date !== dateBaseline ||
+    (Object.keys(current) as (keyof ShotDraft)[])
+      .filter((k) => k !== "date" && k !== "dateBaseline")
+      .some((k) => current[k] !== opened[k]);
+
+  // Whether the form currently shows exactly what a brand-new one would, right
+  // now — today's date and nothing beyond the carried-forward values.
+  const looksFresh =
+    date === todayLocalISO() &&
+    (Object.keys(current) as (keyof ShotDraft)[])
+      .filter((k) => k !== "date" && k !== "dateBaseline")
+      .every((k) => current[k] === opened[k]);
 
   // Publish the live values for the parent to read on dismissal. In an effect
   // rather than during render so the render stays pure; effects run after every
   // render, so the ref is current well before any click or keypress.
   useEffect(() => {
     if (!liveDraftRef) return;
-    liveDraftRef.current = hasUnsavedInput
-      ? {
-          ...current,
-          // An untouched date is stored as "follow today" rather than frozen:
-          // parking on Monday and reopening on Wednesday should log Wednesday.
-          // A date the user actually changed is kept verbatim — someone part-way
-          // through logging yesterday's shot meant that date.
-          //
-          // NEW SHOTS ONLY. An edit has a date that already means something: the
-          // day that shot was actually taken. Storing "follow today" for a shot
-          // dated today would silently re-date it on reopening — park an edit
-          // just before midnight, come back after, and `start` re-expands "" to
-          // the new today, moving a logged shot to a day it did not happen. The
-          // sentinel is about an untouched *default*, and an edit has none.
-          date:
-            !editingShot && current.date === todayLocalISO() ? "" : current.date,
-        }
-      : null;
+    // Published verbatim — no field is special-cased on the way out, so there is
+    // no encoding here for the reader above to get wrong.
+    liveDraftRef.current = hasUnsavedInput ? current : null;
   });
 
   return (
@@ -428,6 +461,8 @@ export const ShotForm: React.FC<ShotFormProps> = ({
               value={date}
               onChange={(e) => {
                 setDate(e.target.value);
+// Nothing to record here: the baseline already says what
+                // "untouched" means, so the comparison below answers it.
                 if (dateError) setDateError(null);
               }}
               required
@@ -622,8 +657,14 @@ export const ShotForm: React.FC<ShotFormProps> = ({
 
         {/* Closing keeps what you typed, so discarding needs its own control —
             but a quiet one, at the end of the fields rather than competing with
-            Save. Only offered once there is something to clear. */}
-        {hasUnsavedInput && !editingShot && (
+            Save. Only offered once there is something to clear.
+            `looksFresh` covers the case where the form reports unsaved input but
+            shows nothing a fresh form wouldn't: a date chosen yesterday can be
+            today by the time the draft is reopened. Offering "Clear form" there
+            invites a tap that visibly does nothing. This decides only what is
+            RENDERED — never what is parked or saved — so unlike the dirtiness
+            rules it is safe to judge against the live clock. */}
+        {hasUnsavedInput && !editingShot && !looksFresh && (
           <button type="button" className="link-button" onClick={resetForm}>
             Clear form
           </button>

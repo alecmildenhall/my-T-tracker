@@ -192,10 +192,14 @@ describe("ShotForm field mapping", () => {
     expect(saved.id).toBeTruthy();
   });
 
-  it("surfaces a message when the date is empty", () => {
+  it("asks for the date when it is missing, rather than calling it invalid", () => {
     // The form carries `noValidate`, so a missing date no longer bounces off the
     // browser's `required` check — it reaches our validation, and must say so
     // rather than leaving Save looking broken.
+    //
+    // Blank and malformed are different mistakes. A blank date is almost always
+    // "meant to fill it in and forgot", and telling that person their date is not
+    // a real calendar date answers a question they did not ask.
     const onAddShot = vi.fn();
     render(<ShotForm onAddShot={onAddShot} />);
     fireEvent.change(screen.getByLabelText("Date"), { target: { value: "" } });
@@ -203,7 +207,7 @@ describe("ShotForm field mapping", () => {
 
     expect(onAddShot).not.toHaveBeenCalled();
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "Please enter a real calendar date"
+      "Add the date this shot was taken."
     );
     expect(screen.getByLabelText("Date")).toHaveAttribute("aria-invalid", "true");
 
@@ -346,16 +350,28 @@ describe("ShotForm field mapping", () => {
 describe("ShotForm draft publishing", () => {
   const emptyRef = () => ({ current: null as ShotDraft | null });
 
-  it("publishes an untouched date as \"follow today\", not the parked day", () => {
-    // Parking on Monday and reopening on Wednesday should log Wednesday. Freezing
-    // the day it was parked on would silently log a shot under the wrong date.
+  it("publishes the date exactly as the field held it", () => {
+    // A snapshot, like every other field. Nothing is encoded on the way out, so
+    // there is no encoding for the restoring side to misread.
     const ref = emptyRef();
     render(<ShotForm onAddShot={vi.fn()} liveDraftRef={ref} />);
     fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "wip" } });
 
     expect(ref.current).not.toBeNull();
-    expect(ref.current!.date).toBe("");
+    expect(ref.current!.date).toBe(todayLocalISO());
     expect(ref.current!.notes).toBe("wip");
+  });
+
+  it("publishes a cleared date as empty rather than refilling it", () => {
+    // `required` blocks submission, not the state in between — Delete or Backspace
+    // in the field empties it, verified with real keys — so a user can genuinely
+    // leave this empty, and the draft records that rather than papering over it.
+    const ref = emptyRef();
+    render(<ShotForm onAddShot={vi.fn()} liveDraftRef={ref} />);
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "" } });
+
+    expect(ref.current).not.toBeNull();
+    expect(ref.current!.date).toBe("");
   });
 
   it("keeps a date the user actually changed", () => {
@@ -367,23 +383,400 @@ describe("ShotForm draft publishing", () => {
     expect(ref.current!.date).toBe("2026-06-01");
   });
 
-  it("restores a 'follow today' draft onto today's date", () => {
-    const draft: ShotDraft = {
-      date: "",
-      time: "",
-      doseMg: "",
-      injectionSite: "",
-      injectionSitePosition: "",
-      testosteroneEster: "",
-      carrierOil: "",
-      painScore: "",
-      mood: "",
-      notes: "carried over",
-    };
-    render(<ShotForm onAddShot={vi.fn()} draft={draft} />);
+  const draftWith = (
+    date: string,
+    notes = "carried over",
+    dateBaseline = "1970-01-01" // anything but `date` = "the user chose this"
+  ): ShotDraft => ({
+    date,
+    dateBaseline,
+    time: "",
+    doseMg: "",
+    injectionSite: "",
+    injectionSitePosition: "",
+    testosteroneEster: "",
+    carrierOil: "",
+    painScore: "",
+    mood: "",
+    notes,
+  });
+
+  it("keeps yesterday's date when an unfinished entry is picked up today", () => {
+    // The reason the date is frozen, and the one scenario worth a full round trip
+    // rather than a hand-built draft: you log a shot after taking it, so an entry
+    // started yesterday is about yesterday's shot. Re-deriving slid today's date
+    // under someone finishing an interrupted entry — and today looks right, so
+    // nothing prompts them to check it.
+    //
+    // Both halves have to run for this to mean anything. A draft built by hand
+    // with a literal date is restored verbatim under the old behaviour too; only
+    // parking an UNTOUCHED date and restoring it after the day rolls over tells
+    // the two apart.
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-08-01T21:00:00"));
+      const started = todayLocalISO();
+
+      const ref = emptyRef();
+      const first = render(<ShotForm onAddShot={vi.fn()} liveDraftRef={ref} />);
+      // Types something, never touches the date, walks away.
+      fireEvent.change(screen.getByLabelText("Notes"), {
+        target: { value: "half filled in yesterday" },
+      });
+      const parked = ref.current!;
+      first.unmount();
+
+      // A day passes before they come back to it.
+      vi.setSystemTime(new Date("2026-08-02T09:00:00"));
+      expect(todayLocalISO()).not.toBe(started);
+
+      render(<ShotForm onAddShot={vi.fn()} draft={parked} />);
+
+      expect(screen.getByLabelText("Date")).toHaveValue(started);
+      expect(screen.getByLabelText("Date")).not.toHaveValue(todayLocalISO());
+      expect(screen.getByLabelText("Notes")).toHaveValue("half filled in yesterday");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("lets an emptied draft go clean again after the day has rolled over", () => {
+    // Freezing the date created this: `opened` is built at THIS mount, so its
+    // date is today's, while a restored draft's is the day it was started. Those
+    // can never match again, which left the form permanently dirty — erase the
+    // note to abandon the entry and it re-published a bare stale date, so the
+    // next "Log a shot" opened pre-dated to a day with nothing in it.
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-08-01T21:00:00"));
+      const ref = emptyRef();
+      const first = render(<ShotForm onAddShot={vi.fn()} liveDraftRef={ref} />);
+      fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "note" } });
+      const parked = ref.current!;
+      first.unmount();
+
+      vi.setSystemTime(new Date("2026-08-02T09:00:00"));
+      const ref2 = emptyRef();
+      render(<ShotForm onAddShot={vi.fn()} draft={parked} liveDraftRef={ref2} />);
+      // It restores dirty, so dismissing still keeps it...
+      expect(ref2.current).not.toBeNull();
+
+      // ...but emptying it out means there is nothing left worth keeping.
+      fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "" } });
+      expect(ref2.current).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("treats a date changed and changed back as no change at all", () => {
+    // The flag means "differs from what this form opened with", not "was typed
+    // in". Recording the interaction instead left an otherwise-empty form dirty
+    // forever, parking a draft holding nothing but a date — which, carried across
+    // midnight, reopened pre-dated to yesterday with nothing in it.
+    const ref = emptyRef();
+    render(<ShotForm onAddShot={vi.fn()} liveDraftRef={ref} />);
+
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: "2026-06-01" },
+    });
+    expect(ref.current).not.toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: todayLocalISO() },
+    });
+    expect(ref.current).toBeNull();
+  });
+
+  it("never rewrites the date as a side effect of another field", () => {
+    // An earlier attempt snapped the date back to today the moment the rest of a
+    // restored form went empty, so the next entry typed in that sheet would not
+    // inherit a dead draft's day. That traded one silent re-date for a worse one:
+    // backspacing a note to empty mid-edit rewrote the date under the user, and
+    // retyping the note did not bring it back. Nothing may move this field except
+    // the user or "Clear form" — which is the whole premise of freezing it.
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-08-01T21:00:00"));
+      const ref = emptyRef();
+      const first = render(<ShotForm onAddShot={vi.fn()} liveDraftRef={ref} />);
+      fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "wip" } });
+      const parked = ref.current!;
+      first.unmount();
+
+      vi.setSystemTime(new Date("2026-08-02T09:00:00"));
+      render(<ShotForm onAddShot={vi.fn()} draft={parked} liveDraftRef={emptyRef()} />);
+      expect(screen.getByLabelText("Date")).toHaveValue("2026-08-01");
+
+      fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "" } });
+      fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "still going" } });
+
+      expect(screen.getByLabelText("Date")).toHaveValue("2026-08-01");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps a date picked after the form has outlived the day it opened on", () => {
+    // A sheet left open overnight, then given a date. Nothing may overwrite it,
+    // and it must be kept — the earlier version of this file overwrote it with
+    // today, because "touched" was judged against the day the form opened while
+    // the reset was judged against today, and those disagree once a form outlives
+    // the day.
+    //
+    // NOTE: this used to also assert that re-picking the date already displayed
+    // parked a draft. That assertion went with the move to a single `opened.date`
+    // baseline, which was needed to stop edit mode discarding the commonest date
+    // correction there is. Setting a field to the value it already shows is not a
+    // change, and nothing is lost by it: the field is not rewritten, and there is
+    // no other content to keep. The protection that matters — a genuinely chosen
+    // date surviving — is asserted below.
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-08-01T21:00:00"));
+      const ref = emptyRef();
+      render(<ShotForm onAddShot={vi.fn()} liveDraftRef={ref} />);
+
+      vi.setSystemTime(new Date("2026-08-02T09:00:00"));
+      fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-07-20" } });
+
+      expect(screen.getByLabelText("Date")).toHaveValue("2026-07-20");
+      expect(ref.current).not.toBeNull();
+      expect(ref.current!.date).toBe("2026-07-20");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not offer 'Clear form' on a form that already looks brand new", () => {
+    // A date chosen yesterday can be today by the time the draft is reopened, so
+    // the form reports unsaved input while showing nothing a fresh form wouldn't.
+    // Offering "Clear form" there invites a tap that visibly does nothing.
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-08-01T10:00:00"));
+      const ref = emptyRef();
+      const first = render(<ShotForm onAddShot={vi.fn()} liveDraftRef={ref} />);
+      // Date set forward to tomorrow, nothing else touched.
+      fireEvent.change(screen.getByLabelText("Date"), {
+        target: { value: "2026-08-02" },
+      });
+      const parked = ref.current!;
+      first.unmount();
+
+      // Tomorrow arrives; the parked date is now simply today.
+      vi.setSystemTime(new Date("2026-08-02T10:00:00"));
+      render(<ShotForm onAddShot={vi.fn()} draft={parked} liveDraftRef={emptyRef()} />);
+
+      expect(screen.getByLabelText("Date")).toHaveValue("2026-08-02");
+      expect(screen.queryByRole("button", { name: "Clear form" })).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("still offers 'Clear form' whenever the form shows something of yours", () => {
+    // The guard above must not swallow the ordinary case.
+    render(<ShotForm onAddShot={vi.fn()} liveDraftRef={emptyRef()} />);
+    expect(screen.queryByRole("button", { name: "Clear form" })).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "wip" } });
+    expect(screen.getByRole("button", { name: "Clear form" })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-06-01" } });
+    expect(screen.getByRole("button", { name: "Clear form" })).toBeInTheDocument();
+  });
+
+  it("registers a backdate picked after the form was cleared past midnight", () => {
+    // "Clear form" reseeds the date, so the baseline must move with it. While it
+    // was a boolean judged against the day the form OPENED, a form cleared after
+    // midnight showed today but still measured against yesterday — so picking
+    // yesterday read as "no change" and dismissal discarded a real backdate.
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-08-01T23:58:00"));
+      const ref = emptyRef();
+      render(<ShotForm onAddShot={vi.fn()} liveDraftRef={ref} />);
+      fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "x" } });
+
+      vi.setSystemTime(new Date("2026-08-02T00:05:00"));
+      fireEvent.click(screen.getByRole("button", { name: "Clear form" }));
+      expect(ref.current).toBeNull();
+      expect(screen.getByLabelText("Date")).toHaveValue("2026-08-02");
+
+      fireEvent.change(screen.getByLabelText("Date"), {
+        target: { value: "2026-08-01" },
+      });
+
+      expect(ref.current).not.toBeNull();
+      expect(ref.current!.date).toBe("2026-08-01");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps an edit re-dated TO today, the commonest correction there is", () => {
+    // A shot logged under the wrong day, fixed to today. Judging "touched"
+    // against today made this read as no change at all, so dismissing threw the
+    // correction away — and because App keys parked edits by shot id and deletes
+    // the entry when the live draft is null, it also destroyed any work already
+    // parked against that shot. An edit's baseline is the shot's own stored date.
+    const editing: ShotEntry = { id: "e1", date: "2026-05-01", notes: "orig" };
+    const ref = emptyRef();
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        onUpdateShot={vi.fn()}
+        editingShot={editing}
+        liveDraftRef={ref}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: todayLocalISO() },
+    });
+
+    expect(ref.current).not.toBeNull();
+    expect(ref.current!.date).toBe(todayLocalISO());
+  });
+
+  it("lets an edit's date be put back without leaving the form dirty", () => {
+    // The inverse: change a shot's date and change it back, and there is nothing
+    // unsaved. Judging against today left the flag stuck true, so the form was
+    // dirty forever and parked a draft byte-identical to the stored shot.
+    const editing: ShotEntry = { id: "e1", date: "2026-05-01", notes: "orig" };
+    const ref = emptyRef();
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        onUpdateShot={vi.fn()}
+        editingShot={editing}
+        liveDraftRef={ref}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-05-02" } });
+    expect(ref.current).not.toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-05-01" } });
+    expect(ref.current).toBeNull();
+  });
+
+  it("lets a restored backdate be taken back, without parking a bare date", () => {
+    // Changing your mind: the backdate was the draft's only content, so setting
+    // it back to today leaves nothing worth keeping. Treating an earlier session's
+    // choice as permanent kept the form dirty forever and parked a draft holding
+    // only a date — which, carried across midnight, reopens pre-dated with nothing
+    // in it.
+    const ref = emptyRef();
+    const first = render(<ShotForm onAddShot={vi.fn()} liveDraftRef={ref} />);
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: "2026-06-01" },
+    });
+    const parked = ref.current!;
+    first.unmount();
+
+    const ref2 = emptyRef();
+    render(<ShotForm onAddShot={vi.fn()} draft={parked} liveDraftRef={ref2} />);
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: todayLocalISO() },
+    });
+
+    expect(ref2.current).toBeNull();
+    expect(screen.queryByRole("button", { name: "Clear form" })).toBeNull();
+  });
+
+  it("keeps a backdate that is the draft's only content, across repeat dismissals", () => {
+    // Backdating is a whole entry on its own: open the form, set yesterday's
+    // date, get interrupted. Nothing else is filled in, so if the date is not
+    // recognised as input the draft reads as clean the SECOND time it is
+    // restored, and that dismissal throws the chosen date away silently — the
+    // exact class this branch exists to close, one dismissal later.
+    const ref = emptyRef();
+    const first = render(<ShotForm onAddShot={vi.fn()} liveDraftRef={ref} />);
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: "2026-06-01" },
+    });
+    const parked = ref.current!;
+    expect(parked.date).toBe("2026-06-01");
+    first.unmount();
+
+    const ref2 = emptyRef();
+    render(<ShotForm onAddShot={vi.fn()} draft={parked} liveDraftRef={ref2} />);
+
+    expect(screen.getByLabelText("Date")).toHaveValue("2026-06-01");
+    expect(ref2.current).not.toBeNull();
+    expect(ref2.current!.date).toBe("2026-06-01");
+  });
+
+  it("'Clear form' really clears a restored draft whose date was backdated", () => {
+    // Resetting puts today back in the field, so anything that decided dirtiness
+    // by comparing the date against the parked one stayed dirty forever: the
+    // "Clear form" link never went away, tapping it visibly did nothing, and
+    // dismissing parked a phantom entry holding only today's date.
+    const ref = emptyRef();
+    const first = render(<ShotForm onAddShot={vi.fn()} liveDraftRef={ref} />);
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: "2026-06-01" },
+    });
+    const parked = ref.current!;
+    first.unmount();
+
+    const ref2 = emptyRef();
+    render(<ShotForm onAddShot={vi.fn()} draft={parked} liveDraftRef={ref2} />);
+    fireEvent.click(screen.getByRole("button", { name: "Clear form" }));
+
+    expect(screen.getByLabelText("Date")).toHaveValue(todayLocalISO());
+    expect(screen.queryByRole("button", { name: "Clear form" })).toBeNull();
+    expect(ref2.current).toBeNull();
+  });
+
+  it("still keeps a date change parked against an edit", () => {
+    // The other side of that fix: an edit's baseline stays the shot's own stored
+    // date, so a date the user changed and parked is still unsaved input. Letting
+    // the edit branch inherit the draft's date too would read as clean and drop
+    // the change on dismissal.
+    const editing: ShotEntry = { id: "e1", date: "2026-05-05", notes: "original" };
+    const parked: ShotDraft = { ...draftWith("2026-06-10", "original") };
+    const ref = emptyRef();
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        onUpdateShot={vi.fn()}
+        editingShot={editing}
+        draft={parked}
+        liveDraftRef={ref}
+      />
+    );
+
+    expect(screen.getByLabelText("Date")).toHaveValue("2026-06-10");
+    expect(ref.current).not.toBeNull();
+    expect(ref.current!.date).toBe("2026-06-10");
+  });
+
+  it("restores a draft's date verbatim even when it is today's", () => {
+    render(<ShotForm onAddShot={vi.fn()} draft={draftWith(todayLocalISO())} />);
 
     expect(screen.getByLabelText("Date")).toHaveValue(todayLocalISO());
     expect(screen.getByLabelText("Notes")).toHaveValue("carried over");
+  });
+
+  it("restores a cleared date as cleared, not as today", () => {
+    // The read half of the same distinction, and the half that actually corrupted
+    // data: reading with `||` turned this draft into today's date, and on an edit
+    // that re-dated a logged shot. A reader that cannot tell `""` from `null` is
+    // the bug, so assert the empty case explicitly rather than only the null one.
+    render(<ShotForm onAddShot={vi.fn()} draft={draftWith("")} />);
+
+    expect(screen.getByLabelText("Date")).toHaveValue("");
+    expect(screen.getByLabelText("Date")).not.toHaveValue(todayLocalISO());
+  });
+
+  it("restores a deliberately chosen date verbatim", () => {
+    render(<ShotForm onAddShot={vi.fn()} draft={draftWith("2026-06-01")} />);
+
+    expect(screen.getByLabelText("Date")).toHaveValue("2026-06-01");
   });
 
   it("reports unsaved changes while editing, so an edit can be restored too", () => {
@@ -402,8 +795,7 @@ describe("ShotForm draft publishing", () => {
 
     fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "rewritten" } });
     expect(ref.current!.notes).toBe("rewritten");
-    // The shot's own date was not touched, so it is preserved as-is rather than
-    // being treated as "follow today".
+    // The shot's own date is published as-is, like every other untouched field.
     expect(ref.current!.date).toBe("2026-06-01");
   });
 });

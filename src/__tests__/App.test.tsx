@@ -298,11 +298,12 @@ describe("App — an interrupted entry is not lost", () => {
   });
 
   it("does not re-date an edited shot when a parked edit outlives the day", async () => {
-    // "Untouched date follows today" is right for a NEW shot and wrong for an
-    // edit: an edit's date already means the day that shot was taken. Park an
-    // edit of a shot dated today, cross midnight with the session alive (a phone
-    // left open), reopen — the date must still be the shot's own, not the new
-    // today, and saving must not move a logged shot to a day it did not happen.
+    // A draft's date is frozen, never re-derived. Park an edit of a shot dated
+    // today, cross midnight with the session alive (a phone left open), reopen —
+    // the date must still be the shot's own, not the new today, and saving must
+    // not move a logged shot to a day it did not happen. This case is why the
+    // date is frozen at all; it survives as a regression guard on the parent,
+    // where the draft actually gets parked and handed back.
     vi.useFakeTimers();
     try {
       vi.setSystemTime(new Date("2026-07-13T23:55:00"));
