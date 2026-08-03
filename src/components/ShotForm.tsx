@@ -391,24 +391,6 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     .filter((k) => k !== "date")
     .some((k) => current[k] !== opened[k]);
 
-  // Once a NEW-shot form holds nothing worth keeping, it is a fresh form again —
-  // so its date goes back to today rather than keeping the abandoned draft's.
-  //
-  // Excluding `date` from the check above is what makes this necessary: emptying
-  // a restored draft correctly publishes null, and the parent then drops it, but
-  // the field itself still showed the dead draft's day. Type the next entry into
-  // that same open sheet and it inherited a date nobody chose — and unlike a
-  // restored draft, nothing on screen explains why. Someone who empties the
-  // fields by hand instead of tapping "Clear form" gets no cue at all.
-  //
-  // Adjusted during render (React's documented pattern for state that follows
-  // other state) rather than in an effect, so there is no frame showing the stale
-  // date. Converges immediately: the guard is false once the date is today.
-  // Editing is excluded — an edit's date must never drift to today.
-  if (!editingShot && !hasUnsavedInput && date !== todayLocalISO()) {
-    setDate(todayLocalISO());
-    setDateTouched(false);
-  }
 
   // Publish the live values for the parent to read on dismissal. In an effect
   // rather than during render so the render stays pure; effects run after every
@@ -463,21 +445,20 @@ export const ShotForm: React.FC<ShotFormProps> = ({
               value={date}
               onChange={(e) => {
                 setDate(e.target.value);
-                // Provenance, recorded as it happens. See ShotDraft.
+                // Provenance, decided HERE and stored — see ShotDraft.
                 //
-                // "Differs from what this form opened with", NOT "was typed in":
-                // setting it unconditionally meant changing the date and changing
-                // it straight back left an otherwise-empty form dirty forever,
-                // which parked a draft holding nothing but a date. Carried across
-                // midnight that draft reopened pre-dated to yesterday with nothing
-                // in it — the very thing freezing the date was meant to stop.
+                // The comparison is against today *at the moment of the change*,
+                // which is the default the user is looking at as they act. Storing
+                // the answer is what makes it survive: re-deriving it later, from
+                // a form or a draft that has outlived the day, is what produced
+                // three rounds of re-dating bugs.
                 //
-                // `start.dateTouched` is sticky: a date chosen in an earlier
-                // session stays chosen, so returning it to that value does not
-                // discard the choice.
-                setDateTouched(
-                  start.dateTouched || e.target.value !== start.date
-                );
+                // Not sticky, and not measured against `start.date`. Setting the
+                // date back to today means there is nothing left worth keeping, so
+                // the form must be able to return to clean — otherwise an
+                // otherwise-empty form stays dirty and parks a draft holding
+                // nothing but a date.
+                setDateTouched(e.target.value !== todayLocalISO());
                 if (dateError) setDateError(null);
               }}
               required
