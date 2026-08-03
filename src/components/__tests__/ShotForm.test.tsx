@@ -465,6 +465,58 @@ describe("ShotForm draft publishing", () => {
     }
   });
 
+  it("treats a date changed and changed back as no change at all", () => {
+    // The flag means "differs from what this form opened with", not "was typed
+    // in". Recording the interaction instead left an otherwise-empty form dirty
+    // forever, parking a draft holding nothing but a date — which, carried across
+    // midnight, reopened pre-dated to yesterday with nothing in it.
+    const ref = emptyRef();
+    render(<ShotForm onAddShot={vi.fn()} liveDraftRef={ref} />);
+
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: "2026-06-01" },
+    });
+    expect(ref.current).not.toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: todayLocalISO() },
+    });
+    expect(ref.current).toBeNull();
+  });
+
+  it("does not carry an abandoned draft's date into the next entry", () => {
+    // Emptying a restored draft publishes null and the parent drops it — but the
+    // date field kept showing the dead draft's day, so the next thing typed into
+    // that same open sheet silently inherited a date nobody chose.
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-08-01T21:00:00"));
+      const ref = emptyRef();
+      const first = render(<ShotForm onAddShot={vi.fn()} liveDraftRef={ref} />);
+      fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "wip" } });
+      const parked = ref.current!;
+      first.unmount();
+
+      vi.setSystemTime(new Date("2026-08-02T09:00:00"));
+      const ref2 = emptyRef();
+      render(<ShotForm onAddShot={vi.fn()} draft={parked} liveDraftRef={ref2} />);
+      expect(screen.getByLabelText("Date")).toHaveValue("2026-08-01");
+
+      // Abandoned by hand rather than via "Clear form".
+      fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "" } });
+      expect(ref2.current).toBeNull();
+      expect(screen.getByLabelText("Date")).toHaveValue(todayLocalISO());
+
+      // So the next entry typed here belongs to today.
+      fireEvent.change(screen.getByLabelText("Notes"), {
+        target: { value: "today's shot" },
+      });
+      expect(ref2.current!.date).toBe(todayLocalISO());
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps a backdate that is the draft's only content, across repeat dismissals", () => {
     // Backdating is a whole entry on its own: open the form, set yesterday's
     // date, get interrupted. Nothing else is filled in, so if the date is not
