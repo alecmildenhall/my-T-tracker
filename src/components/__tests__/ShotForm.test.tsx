@@ -514,11 +514,19 @@ describe("ShotForm draft publishing", () => {
   });
 
   it("keeps a date picked after the form has outlived the day it opened on", () => {
-    // A sheet left open overnight. Picking the day the shot was actually taken —
-    // which happens to be the day the form opened on — must stick. Deciding
-    // "touched" against the day the form opened, while resetting against today,
-    // meant these two readers disagreed the moment the form outlived the day, and
-    // the deliberately picked date was overwritten with today.
+    // A sheet left open overnight, then given a date. Nothing may overwrite it,
+    // and it must be kept — the earlier version of this file overwrote it with
+    // today, because "touched" was judged against the day the form opened while
+    // the reset was judged against today, and those disagree once a form outlives
+    // the day.
+    //
+    // NOTE: this used to also assert that re-picking the date already displayed
+    // parked a draft. That assertion went with the move to a single `opened.date`
+    // baseline, which was needed to stop edit mode discarding the commonest date
+    // correction there is. Setting a field to the value it already shows is not a
+    // change, and nothing is lost by it: the field is not rewritten, and there is
+    // no other content to keep. The protection that matters — a genuinely chosen
+    // date surviving — is asserted below.
     vi.useFakeTimers();
     try {
       vi.setSystemTime(new Date("2026-08-01T21:00:00"));
@@ -527,14 +535,60 @@ describe("ShotForm draft publishing", () => {
 
       vi.setSystemTime(new Date("2026-08-02T09:00:00"));
       fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-07-20" } });
-      fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-08-01" } });
 
-      expect(screen.getByLabelText("Date")).toHaveValue("2026-08-01");
+      expect(screen.getByLabelText("Date")).toHaveValue("2026-07-20");
       expect(ref.current).not.toBeNull();
-      expect(ref.current!.date).toBe("2026-08-01");
+      expect(ref.current!.date).toBe("2026-07-20");
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("keeps an edit re-dated TO today, the commonest correction there is", () => {
+    // A shot logged under the wrong day, fixed to today. Judging "touched"
+    // against today made this read as no change at all, so dismissing threw the
+    // correction away — and because App keys parked edits by shot id and deletes
+    // the entry when the live draft is null, it also destroyed any work already
+    // parked against that shot. An edit's baseline is the shot's own stored date.
+    const editing: ShotEntry = { id: "e1", date: "2026-05-01", notes: "orig" };
+    const ref = emptyRef();
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        onUpdateShot={vi.fn()}
+        editingShot={editing}
+        liveDraftRef={ref}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: todayLocalISO() },
+    });
+
+    expect(ref.current).not.toBeNull();
+    expect(ref.current!.date).toBe(todayLocalISO());
+  });
+
+  it("lets an edit's date be put back without leaving the form dirty", () => {
+    // The inverse: change a shot's date and change it back, and there is nothing
+    // unsaved. Judging against today left the flag stuck true, so the form was
+    // dirty forever and parked a draft byte-identical to the stored shot.
+    const editing: ShotEntry = { id: "e1", date: "2026-05-01", notes: "orig" };
+    const ref = emptyRef();
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        onUpdateShot={vi.fn()}
+        editingShot={editing}
+        liveDraftRef={ref}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-05-02" } });
+    expect(ref.current).not.toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-05-01" } });
+    expect(ref.current).toBeNull();
   });
 
   it("lets a restored backdate be taken back, without parking a bare date", () => {

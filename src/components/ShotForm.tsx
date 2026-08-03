@@ -391,7 +391,6 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     .filter((k) => k !== "date")
     .some((k) => current[k] !== opened[k]);
 
-
   // Publish the live values for the parent to read on dismissal. In an effect
   // rather than during render so the render stays pure; effects run after every
   // render, so the ref is current well before any click or keypress.
@@ -447,18 +446,20 @@ export const ShotForm: React.FC<ShotFormProps> = ({
                 setDate(e.target.value);
                 // Provenance, decided HERE and stored — see ShotDraft.
                 //
-                // The comparison is against today *at the moment of the change*,
-                // which is the default the user is looking at as they act. Storing
-                // the answer is what makes it survive: re-deriving it later, from
-                // a form or a draft that has outlived the day, is what produced
-                // three rounds of re-dating bugs.
+                // Measured against `opened.date`: the date this form was seeded
+                // with. ONE baseline, in both modes — for a new shot that is
+                // today, for an edit it is the shot's own stored date. Earlier
+                // rounds used today unconditionally, which silently threw away the
+                // most ordinary edit there is: correcting a mis-dated shot TO
+                // today read as "unchanged" and dismissal discarded it.
                 //
-                // Not sticky, and not measured against `start.date`. Setting the
-                // date back to today means there is nothing left worth keeping, so
-                // the form must be able to return to clean — otherwise an
-                // otherwise-empty form stays dirty and parks a draft holding
-                // nothing but a date.
-                setDateTouched(e.target.value !== todayLocalISO());
+                // Storing the answer is what makes it survive; re-deriving it
+                // later, from a form or draft that has outlived the day, is what
+                // produced every round of this. Not sticky either — putting the
+                // date back to what it opened with means there is nothing left
+                // worth keeping, so the form can return to clean instead of
+                // parking a draft identical to the record.
+                setDateTouched(e.target.value !== opened.date);
                 if (dateError) setDateError(null);
               }}
               required
