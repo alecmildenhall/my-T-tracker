@@ -382,10 +382,10 @@ describe("ShotForm draft publishing", () => {
   const draftWith = (
     date: string,
     notes = "carried over",
-    dateTouched = true
+    dateBaseline = "1970-01-01" // anything but `date` = "the user chose this"
   ): ShotDraft => ({
     date,
-    dateTouched,
+    dateBaseline,
     time: "",
     doseMg: "",
     injectionSite: "",
@@ -539,6 +539,34 @@ describe("ShotForm draft publishing", () => {
       expect(screen.getByLabelText("Date")).toHaveValue("2026-07-20");
       expect(ref.current).not.toBeNull();
       expect(ref.current!.date).toBe("2026-07-20");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("registers a backdate picked after the form was cleared past midnight", () => {
+    // "Clear form" reseeds the date, so the baseline must move with it. While it
+    // was a boolean judged against the day the form OPENED, a form cleared after
+    // midnight showed today but still measured against yesterday — so picking
+    // yesterday read as "no change" and dismissal discarded a real backdate.
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-08-01T23:58:00"));
+      const ref = emptyRef();
+      render(<ShotForm onAddShot={vi.fn()} liveDraftRef={ref} />);
+      fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "x" } });
+
+      vi.setSystemTime(new Date("2026-08-02T00:05:00"));
+      fireEvent.click(screen.getByRole("button", { name: "Clear form" }));
+      expect(ref.current).toBeNull();
+      expect(screen.getByLabelText("Date")).toHaveValue("2026-08-02");
+
+      fireEvent.change(screen.getByLabelText("Date"), {
+        target: { value: "2026-08-01" },
+      });
+
+      expect(ref.current).not.toBeNull();
+      expect(ref.current!.date).toBe("2026-08-01");
     } finally {
       vi.useRealTimers();
     }

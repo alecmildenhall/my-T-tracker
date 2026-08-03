@@ -66,19 +66,21 @@ export interface ShotDraft {
    */
   date: string;
   /**
-   * Whether the user actually set that date, as opposed to it being the default
-   * the form opened with. Recorded when the field changes — never inferred by
-   * comparing values, which is what went wrong three times running.
+   * The date this form was seeded with — the value the field would still hold if
+   * the user never touched it. The date counts as unsaved input exactly when it
+   * differs from this.
    *
-   * A date cannot use the test every other field uses ("is it non-empty?"),
-   * because it is required and always populated. Every attempt to derive intent
-   * from the value instead broke something: comparing against today's default
-   * left a draft carried past midnight permanently dirty, and comparing against
-   * the restored draft's own date made a backdate-only draft read as clean, so
-   * the second dismissal threw the backdate away. Provenance is a fact about
-   * what the user did, so it is stored rather than reconstructed.
+   * The reference itself is stored, rather than a boolean answer derived from it,
+   * because every derived form drifted. A flag is computed against some baseline
+   * at the moment it is set and then read much later, against a baseline that may
+   * have moved — the sheet outlives a day, or "Clear form" reseeds the field —
+   * and the two silently disagree. Keeping the reference means there is only one,
+   * it travels with the draft, and whoever asks gets the same answer.
+   *
+   * For a new shot this is the day the form opened; for an edit, the shot's own
+   * stored date; after "Clear form", the day it was cleared.
    */
-  dateTouched: boolean;
+  dateBaseline: string;
   time: string;
   doseMg: string;
   injectionSite: string;
@@ -95,7 +97,7 @@ export interface ShotDraft {
 function freshDraft(): ShotDraft {
   return {
     date: todayLocalISO(),
-    dateTouched: false,
+    dateBaseline: todayLocalISO(),
     time: "",
     doseMg: "",
     injectionSite: "",
@@ -179,7 +181,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       initial
         ? {
             date: initial.date,
-            dateTouched: false,
+            dateBaseline: initial.date,
             time: initial.time ?? "",
             doseMg: initial.doseMg?.toString() ?? "",
             injectionSite: initial.injectionSite ?? "",
@@ -206,7 +208,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   );
 
   const [date, setDate] = useState<string>(start.date);
-  const [dateTouched, setDateTouched] = useState<boolean>(start.dateTouched);
+  const [dateBaseline, setDateBaseline] = useState<string>(start.dateBaseline);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const [dateError, setDateError] = useState<string | null>(null);
   const [doseError, setDoseError] = useState<string | null>(null);
@@ -243,11 +245,10 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   // Stable (setters are stable), so it's safe in the effect's dependency list.
   const resetForm = useCallback(() => {
     setDate(todayLocalISO());
-    // Back to a default the user did not choose, so the flag resets with it —
-    // otherwise clearing a backdated draft left the form dirty forever, the
-    // "Clear form" link never went away, and dismissing parked a phantom entry
-    // holding nothing but today's date.
-    setDateTouched(false);
+    // Reseeded, so the baseline moves with it. Leaving the baseline behind is
+    // what let a form cleared after midnight treat a genuine backdate as no
+    // change at all, and discard it on dismissal.
+    setDateBaseline(todayLocalISO());
     setDateError(null);
     setDoseError(null);
     setPainError(null);
@@ -366,7 +367,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
 
   const current: ShotDraft = {
     date,
-    dateTouched,
+    dateBaseline,
     time,
     doseMg,
     injectionSite,
@@ -383,13 +384,14 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   // against a restored draft, so restoring and re-parking doesn't read as clean.
   // Applies in both modes: editing an existing shot has unsaved input too.
   //
-  // `date` itself is excluded and `dateTouched` speaks for it. Comparing the
-  // date VALUE cannot answer "did the user enter this?", because the field is
-  // required and always populated — whatever it is compared against, some real
-  // case comes out wrong. The flag is the answer, so the value is not consulted.
-  const hasUnsavedInput = (Object.keys(current) as (keyof ShotDraft)[])
-    .filter((k) => k !== "date")
-    .some((k) => current[k] !== opened[k]);
+  // The date is compared against its own baseline rather than against `opened`,
+  // because a required, always-populated field has no "empty" to mean "nothing
+  // entered". Every other field can use that test directly.
+  const hasUnsavedInput =
+    date !== dateBaseline ||
+    (Object.keys(current) as (keyof ShotDraft)[])
+      .filter((k) => k !== "date" && k !== "dateBaseline")
+      .some((k) => current[k] !== opened[k]);
 
   // Publish the live values for the parent to read on dismissal. In an effect
   // rather than during render so the render stays pure; effects run after every
@@ -444,22 +446,8 @@ export const ShotForm: React.FC<ShotFormProps> = ({
               value={date}
               onChange={(e) => {
                 setDate(e.target.value);
-                // Provenance, decided HERE and stored — see ShotDraft.
-                //
-                // Measured against `opened.date`: the date this form was seeded
-                // with. ONE baseline, in both modes — for a new shot that is
-                // today, for an edit it is the shot's own stored date. Earlier
-                // rounds used today unconditionally, which silently threw away the
-                // most ordinary edit there is: correcting a mis-dated shot TO
-                // today read as "unchanged" and dismissal discarded it.
-                //
-                // Storing the answer is what makes it survive; re-deriving it
-                // later, from a form or draft that has outlived the day, is what
-                // produced every round of this. Not sticky either — putting the
-                // date back to what it opened with means there is nothing left
-                // worth keeping, so the form can return to clean instead of
-                // parking a draft identical to the record.
-                setDateTouched(e.target.value !== opened.date);
+// Nothing to record here: the baseline already says what
+                // "untouched" means, so the comparison below answers it.
                 if (dateError) setDateError(null);
               }}
               required
