@@ -59,18 +59,6 @@ Future phases may add:
 
 ## Privacy & Safety
 
-### What this is for, next to the alternatives
-
-Other HRT trackers exist and several are further along — Transcapsule, Hormone Helper, TRACE — with photo tracking, provider messaging, community features and broader symptom logging. This app will not match them on features for a long time, and that is fine, because the difference is architectural rather than featural.
-
-Those apps ask you to trust a privacy *policy*. Hormone Helper's collects "user account credentials" and describes encryption "in transit and at rest" — an account and a server — and shares with unnamed "service providers". TRACE builds in community sharing, which requires accounts by definition.
-
-This app has **no network layer at all**. Not a promise not to misuse your data — no mechanism to send it anywhere, and adding one is a decision someone has to make deliberately and defend. There is nothing to breach, subpoena, sell, or quietly re-license under new terms. Their policies say "we protect your data"; here there is no "we".
-
-The second difference arrives with the PWA: **no app-store account trail**. Installing from the App Store or Play writes "installed a testosterone tracker" into your Apple or Google account — visible in purchase history and family sharing, restorable across devices, and not something you can take back. A home-screen PWA leaves none of that. For an app that also plans disguise mode and an app lock, that is the same concern followed all the way down.
-
-So: those apps are for someone who wants the fullest transition-tracking experience. This one is for someone who wants their HRT log to exist **nowhere but their own phone**, and will trade features for it.
-
 This project follows strict privacy requirements:
 
 - **No PII collected by default.**  
@@ -85,6 +73,9 @@ This project follows strict privacy requirements:
 
 - **Safety-first for trans users.**  
   Features are designed to avoid exposing sensitive health data.
+
+- **A narrow scope is itself a privacy property.**  
+  The app tracks shots in detail — date, time, dose, site, position, ester, carrier oil, how it felt — rather than trying to manage a whole transition. It cannot leak what it never collected, and some of the things a broader tool would want are far more sensitive than a list of dates: body photos, a location-derived provider directory, anything tied to an identity. Declining those is the same decision as the PII rule above, applied to the product rather than the schema — so "we don't do that" is a deliberate answer, not a gap waiting to be filled.
 
 ### Future Storage Choices
 
