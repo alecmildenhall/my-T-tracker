@@ -11,8 +11,33 @@ A privacy-focused web app for logging testosterone (HRT) injections and how they
 - Track when you take your testosterone shots.
 - Capture context around each shot: pain, mood, notes.
 - Over time, support visualizations (StoryGraph-style) to help you see patterns and talk with your healthcare providers.
+- **Acknowledge each shot as something you did for yourself**, not as a box ticked.
 
 This project is explicitly designed around **trans user safety and privacy**.
+
+### A shot is not a chore
+
+This is the design premise the rest of the tone follows from, so it belongs here rather than buried in the roadmap.
+
+General health apps treat logging as recording something that happened *to* you — a period, a blood-pressure reading — so they say nothing when you save. Medication apps treat it as compliance, so they stay neutral. Habit apps treat it as something you'd skip without a nudge, so they manufacture rewards: coins, streaks, characters.
+
+**None of those is what this is.** Taking T is something you decided, and keep deciding, often in a world that says you shouldn't have. Logging it is worth a moment of warmth — not to make you log more, but because *the thing itself is worth acknowledging* and very little else in a person's day says so.
+
+That gives the app one line, used every time a shot is saved:
+
+> **Logged for you.**
+
+Deliberately the same words every time. Rotating copy is what you do when a phrase is trying to entertain; a constant one becomes the app's voice and reads as sincere rather than performed. It sits in the greeting slot — the app's existing warm register, alongside "Hi, Lou~" and "Happy shot day" — for a few seconds, while the new entry arrives beneath it and its highlight fades back to normal.
+
+Rules it follows, all of which rule out most copy that sounds appealing at first:
+
+- **It has to work on a bad day.** Some shots hurt; some land when you feel dysphoric rather than affirmed. Nothing may assume you feel good, and nothing may exclaim.
+- **It affirms the act, never the schedule.** No streaks, no "on track", no implication you were late. Shots shift and skip and that is normal — the milestone system already tracks *time on T*, not shot count, for the same reason.
+- **Understated reads as sincere.** Trans people get plenty of performative affirmation. "Great job staying on track!", "5 weeks in a row!", and "You must be feeling great 💪" are each rejected by one of the rules above.
+- **Name-optional, like everything else.** It never depends on having set a preferred name.
+- **Turn-off-able.** On by default, because the point is that it should be there — but being affirmed by software is a legitimate thing to dislike, and one neutral switch in Settings covers it.
+
+It does not compete with the milestone messages; it feeds them. A quiet line each week and a real moment at "Congrats on 1 year on T" are different registers, and having the small one is what lets the big one land.
 
 ---
 
@@ -33,6 +58,18 @@ Future phases may add:
 ---
 
 ## Privacy & Safety
+
+### What this is for, next to the alternatives
+
+Other HRT trackers exist and several are further along — Transcapsule, Hormone Helper, TRACE — with photo tracking, provider messaging, community features and broader symptom logging. This app will not match them on features for a long time, and that is fine, because the difference is architectural rather than featural.
+
+Those apps ask you to trust a privacy *policy*. Hormone Helper's collects "user account credentials" and describes encryption "in transit and at rest" — an account and a server — and shares with unnamed "service providers". TRACE builds in community sharing, which requires accounts by definition.
+
+This app has **no network layer at all**. Not a promise not to misuse your data — no mechanism to send it anywhere, and adding one is a decision someone has to make deliberately and defend. There is nothing to breach, subpoena, sell, or quietly re-license under new terms. Their policies say "we protect your data"; here there is no "we".
+
+The second difference arrives with the PWA: **no app-store account trail**. Installing from the App Store or Play writes "installed a testosterone tracker" into your Apple or Google account — visible in purchase history and family sharing, restorable across devices, and not something you can take back. A home-screen PWA leaves none of that. For an app that also plans disguise mode and an app lock, that is the same concern followed all the way down.
+
+So: those apps are for someone who wants the fullest transition-tracking experience. This one is for someone who wants their HRT log to exist **nowhere but their own phone**, and will trade features for it.
 
 This project follows strict privacy requirements:
 
@@ -320,7 +357,13 @@ Worth knowing what this rule is suspending, since it stops being free the day so
 - [x] Add optional testosterone start date for HRT milestones — _Settings → Your journey; future start dates allowed (planning ahead reads as "not started yet")_
 - [x] Add optional display name / preferred name for affirming milestone messages
 - [x] Add milestone logic for three-month intervals during year one, then six-month intervals after that — _labels read "1 year 3 months", never months-only_
-- [ ] Add a gentle post-log celebration, such as confetti or another feel-good animation
+- [ ] Add the post-log acknowledgement — **"Logged for you."** See *A shot is not a chore* at the top for why it exists and the rules the copy follows. Three parts, all cheap: the line appears in the greeting slot for a few seconds; the Save button confirms in green with a ✓ (100–300ms, no spring — anything that overshoots reads as the screen acting on its own); and the new entry arrives with a soft wash of colour that decays back to normal over ~1.4s. That last mechanic is the [Yellow Fade Technique](https://www.oreilly.com/library/view/agile-web-development/9781680502985/f_0070.xhtml), the long-standing way to show what just changed without a jarring appearance.
+
+  **Not confetti.** It is seen ~52 times a year and has to survive every one of them, including the weeks when the shot hurt. Confetti is also the wrong register for a routine act of self-care, and spends the good feeling that belongs to the milestones.
+
+  Sound and haptic wait for the Capacitor build (iOS Safari has no Vibration API), and plenty of people will keep both off — in public, a T tracker making a noise is an outing risk rather than a preference — so the visual and the words must carry it alone. Under `prefers-reduced-motion` the movement goes and the message stays: still green, still ✓, the row still tinted.
+
+- [ ] Fire the **milestone** celebration once, on the crossing — the first launch after passing the date — then let the banner sit quietly for the rest of its two-week window. Tying it to the banner being *visible* would mean celebrating on every launch for a fortnight, which turns the moment into a nuisance. Costs one stored "already celebrated" flag.
 - [x] Add an **everyday greeting** at the top of the log screen using the preferred name ("Hi, Lou"). Name-optional: with no name it falls back warmly ("Welcome back") and never renders a dangling "Hi, ". Local-weekday/civil-date based, log-view only (not Settings or the milestone banner).
 - [x] Add an optional **"shot day"** setting + a celebratory **"Happy shot day, Lou!"** greeting on that day. Weekday-based to start (a one-line local-weekday compare), **pre-filled from the user's most common logged weekday** so most users never touch it. Genuinely optional: a "No shot day" choice means **no shot-day greeting at all** — no fallback guessing. Seeds the later "shot due soon" reminder; interval/every-N-day scheduling is deferred to that feature. Lives in Settings → "Your journey" for now.
 - [x] Ensure greetings and milestones are **name-optional** end to end: with only a shot day set, still show "Happy shot day!"; with only a start date set, still show "Congrats on 1 year on T!" — the preferred name only personalizes the message, it's never required to receive one.
