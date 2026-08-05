@@ -8,6 +8,7 @@ import type { ShotEntry } from "../types/shot";
 import { STORAGE_KEYS } from "../storageKeys";
 import { SHEET_EXIT_MS } from "../components/Modal";
 import { todayLocalISO } from "../utils/datetime";
+import * as dl from "../utils/download";
 
 // App reads both stores via context (Settings uses the profile store), so mount
 // it under the same providers main.tsx does.
@@ -804,6 +805,38 @@ describe("App — a failed save is never silent", () => {
     expect(within(sheet).getByRole("alert")).toHaveTextContent(
       "Couldn’t save this shot"
     );
+  });
+
+  it("offers a working Export inside the sheet, where Settings is unreachable", async () => {
+    // Retry is the only other move, and on a genuinely full device it keeps
+    // failing — so "go to Settings and export" is advice the user cannot take
+    // from a sheet that covers Settings.
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const download = vi
+      .spyOn(dl, "downloadTextFile")
+      .mockImplementation(() => {});
+    seedShots([{ id: "old", date: "2026-06-01", notes: "already logged" }]);
+    breakWrites();
+    renderApp();
+
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    const sheet = screen.getByRole("dialog");
+    fireEvent.click(within(sheet).getByRole("button", { name: "Save shot" }));
+
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Export a backup",
+      })
+    );
+
+    expect(download).toHaveBeenCalledTimes(1);
+    const [text, name, mime] = download.mock.calls[0];
+    expect(name).toMatch(/\.json$/);
+    expect(mime).toBe("application/json");
+    // It rescues the history, which is what it claims to do...
+    expect(text).toContain("already logged");
+    // ...and the sheet stays open, because the shot on screen is NOT in the file.
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
   it("does not put the unsaved shot in the list, so retrying can't duplicate it", () => {

@@ -13,18 +13,14 @@
 // in-sheet message would leave three of them silent.
 import React, { useEffect, useRef } from "react";
 import { useStorageHealth } from "../context/StorageHealthContext";
-import { useShotsContext } from "../context/ShotsContext";
-import { useProfileContext } from "../context/ProfileContext";
-import { toJson } from "../utils/exportData";
-import { backupFilename, downloadTextFile } from "../utils/download";
+import { useBackupExport } from "../hooks/useBackupExport";
 
 export const StorageBanner: React.FC<{
   /** Where focus goes when the banner removes itself. */
   returnFocusRef?: React.RefObject<HTMLElement | null>;
 }> = ({ returnFocusRef }) => {
   const { failingKeys, dismissed, dismiss, retry } = useStorageHealth();
-  const { shots } = useShotsContext();
-  const { profile } = useProfileContext();
+  const handleExport = useBackupExport();
 
   const shown = failingKeys.size > 0 && !dismissed;
 
@@ -51,14 +47,6 @@ export const StorageBanner: React.FC<{
   }, [shown, returnFocusRef]);
 
   if (!shown) return null;
-
-  const handleExport = () => {
-    downloadTextFile(
-      toJson(shots, profile),
-      backupFilename("t-shot-backup", "json"),
-      "application/json"
-    );
-  };
 
   return (
     // `alert`, not `status`: this is not incidental progress information, it is

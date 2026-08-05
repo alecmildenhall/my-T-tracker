@@ -115,6 +115,12 @@ interface ShotFormProps {
    *  field, so a failed write does not also erase what was typed. */
   onAddShot: (shot: ShotEntry) => void | boolean;
   onUpdateShot?: (shot: ShotEntry) => void | boolean;
+  /**
+   * Download a backup. Offered inside the sheet when a save fails, because from
+   * there Settings is unreachable. Optional only so the form stays renderable on
+   * its own in tests; App always supplies it, and an App test proves it.
+   */
+  onExportBackup?: () => void;
   editingShot?: ShotEntry | null;
   /** Close the sheet. Never destructive: the parent keeps whatever was entered
    *  and restores it next time this same form is opened, for a new shot or an
@@ -144,6 +150,7 @@ interface ShotFormProps {
 export const ShotForm: React.FC<ShotFormProps> = ({
   onAddShot,
   onUpdateShot,
+  onExportBackup,
   editingShot,
   onDismiss,
   shots = [],
@@ -692,12 +699,33 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             pressed it, and inside the dialog so the focus trap can reach it and
             a screen reader announces it. */}
         {saveFailed && (
-          <p className="shot-form__save-error" role="alert">
-            <strong>Couldn’t save this shot.</strong> Storage may be full, or
-            private browsing may be blocking it. Nothing you typed has been
-            lost — try Save again, or close this and export a backup from
-            Settings.
-          </p>
+          <div className="shot-form__save-error" role="alert">
+            <p className="shot-form__save-error-text">
+              <strong>Couldn’t save this shot.</strong> Storage may be full, or
+              private browsing may be blocking it. Nothing you typed has been
+              lost — press Save to try again.
+            </p>
+            {/* The button is HERE rather than a sentence pointing at Settings.
+                Retrying is the only other move, and on a genuinely full device
+                it will keep failing — so telling someone to go and export, from
+                a sheet that covers Settings and cannot be left without closing
+                the form, is advice they cannot take at the moment they need it. */}
+            <button
+              type="button"
+              className="shot-form__save-error-export"
+              onClick={() => onExportBackup?.()}
+            >
+              Export a backup
+            </button>
+            {/* Said plainly, because the reassuring reading is the wrong one: the
+                file is built from what has been saved, and this shot deliberately
+                has not been. It protects the history, not the entry on screen —
+                that is what holding the form open is for. */}
+            <p className="shot-form__save-error-fine">
+              Saves your logged shots to a file. This one isn’t in it yet — it
+              stays on screen until it saves.
+            </p>
+          </div>
         )}
         <button type="submit" className="primary-button shot-form__save">
           {editingShot ? "Update shot" : "Save shot"}

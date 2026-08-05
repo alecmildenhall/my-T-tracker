@@ -9,6 +9,7 @@ import { HistoryView } from "./components/HistoryView";
 import { emptyHistoryQuery, type HistoryQuery } from "./utils/historyQuery";
 import { Modal, SHEET_EXIT_MS } from "./components/Modal";
 import { StorageBanner } from "./components/StorageBanner";
+import { useBackupExport } from "./hooks/useBackupExport";
 import { useShotsContext } from "./context/ShotsContext";
 import type { ShotEntry } from "./types/shot";
 import type { View } from "./types/view";
@@ -23,6 +24,7 @@ const VIEW_TITLES: Record<View, string> = {
 
 const App: React.FC = () => {
   const { shots, addShot, updateShot, deleteShot } = useShotsContext();
+  const exportBackup = useBackupExport();
   const [editingShot, setEditingShot] = useState<ShotEntry | null>(null);
   // The log form is a sheet rather than an always-open panel on Home, so the
   // greeting, the primary action, and the recent teaser all fit above the fold.
@@ -330,6 +332,7 @@ const App: React.FC = () => {
             headingId={SHEET_HEADING_ID}
             onAddShot={handleAddShot}
             onUpdateShot={handleUpdateShot}
+            onExportBackup={exportBackup}
             editingShot={activeEditingShot}
             onDismiss={dismissSheet}
             shots={shots}
