@@ -323,6 +323,16 @@ Worth knowing what this rule is suspending, since it stops being free the day so
 
   Its own small PR rather than riding along with feature work, and worth doing **before** slice B½ starts adding fields, since every new field is another thing that can silently fail to save. Phase-proof too: `useLocalStorage` is the single write boundary, so this survives the PWA, the Capacitor swap to native storage, and encrypted sync — only the call behind it changes.
 
+  Decided from a prototype:
+
+  - **A persistent banner**, below the header, as the single surface for every failed write. Writes fail from at least four places — logging, editing, deleting, Settings — and an in-sheet message would leave three of them silent.
+  - **Dismissible, and it re-raises on every new failure.** A device that is genuinely full will never succeed on retry, and a banner that cannot be dismissed leaves the app permanently degraded with no way to say "I know". Acknowledging one failure must not silence the next.
+  - **It counts**: "2 shots couldn't be saved" rather than one banner standing in for several.
+  - **It clears only on a real success** — never on a timer.
+  - **The sheet does not close when a save fails.** It closes on save today, so a failed write loses the typed entry as well as saying nothing. Holding it open leaves the data on screen and one tap from saved, which matters more than any wording.
+  - **"Export a backup" sits beside "Try again."** A failing device is exactly when a copy off it is worth most, and export is the only recovery that survives eviction, quota and a cleared browser.
+  - **Not a snackbar** — transient, and Material is explicit that snackbars are not for critical or persistent errors; timing out is precisely wrong when nothing else recorded the failure. **Not a dialog** — nothing here is a decision, retry is the only move, and a repeating failure becomes a modal you cannot escape mid-log.
+
 - [x] _Engineering:_ **stop overloading `""` in `ShotDraft.date`** — _done, but not the way this item proposed._ The draft used `""` for both "untouched, follow today" and "the user cleared the field", written in one place and read in another, with only a hand-kept mode check holding the two readers in step. Twice they fell out of step and silently re-dated a logged shot: once by a day, and then — after a first fix closed only the write side — by **months**, moving a shot logged in May to today.
 
   This item proposed giving "follow today" its own carrier (`CivilDate | null`, or a `followToday` flag). That was built, and then **deleted**, because the better question turned out to be whether follow-today should exist at all. It shouldn't: a draft only exists once something has been typed, so every draft is deliberate work about a particular shot — and you log a shot *after* taking it, so an entry started yesterday is about yesterday. Re-deriving slid today's date under anyone finishing an interrupted entry, and today looks plausible enough that nothing catches the eye.
@@ -351,7 +361,7 @@ Worth knowing what this rule is suspending, since it stops being free the day so
 - [ ] Add the post-log acknowledgement — **"Logged for you."** See *A shot is not a chore* at the top for why it exists and the rules the copy follows. Values below are settled, from a prototype rather than from taste:
 
   - **The line** appears in the greeting slot, in the success green, and **stays until the log form is opened again** (or the app is reopened — it is in-memory only). No timer: nothing snatches it away mid-read, and going to log again is the moment it has done its job.
-  - **The same words whether or not a name is set.** "Logged for you, Lou." is not better than "Logged for you." — the greeting said the name two seconds earlier, and the shorter line is the stronger one. No name branch to build or test.
+  - **The same words whether or not a name is set** — never "Logged for you, Lou."
   - **Save confirms in green with a ✓** for 100–300ms, then the sheet leaves. **No spring, no overshoot** — anything that bounces reads as the screen acting under its own power rather than answering you.
   - **The new entry arrives with a wash of colour that holds at full tint for the first fifth, then decays over 2.2s.** The hold is what makes it read as a flash rather than a brief tint; fading from the first frame does not land. This is the [Yellow Fade Technique](https://www.oreilly.com/library/view/agile-web-development/9781680502985/f_0070.xhtml).
   - **Drive the wash off the entry's identity, not a render.** A class reapplied by a re-render restarts the animation — in the prototype, merely opening the form replayed the wash on the previous entry.
