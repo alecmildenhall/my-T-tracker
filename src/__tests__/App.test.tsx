@@ -792,11 +792,52 @@ describe("App — a failed save is never silent", () => {
       within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
     );
 
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    const sheet = screen.getByRole("dialog");
+    expect(sheet).toBeInTheDocument();
     expect(
-      within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i)
+      within(sheet).getByPlaceholderText(/remember for later/i)
     ).toHaveValue("still here");
-    expect(screen.getByRole("alert")).toHaveTextContent("aren’t being saved");
+    // The message must be INSIDE the sheet. The storage banner lives in `#root`,
+    // which the sheet marks inert and covers completely on a phone, so on the one
+    // failure the user is watching for it is unreadable and its buttons are
+    // unclickable. Held-open-and-silent is the same silent failure one layer up.
+    expect(within(sheet).getByRole("alert")).toHaveTextContent(
+      "Couldn’t save this shot"
+    );
+  });
+
+  it("does not put the unsaved shot in the list, so retrying can't duplicate it", () => {
+    // The first build added the shot to in-memory state on failure "so nothing
+    // typed disappears". The form already holds it — and because ShotForm mints a
+    // fresh id per submit, pressing Save again (the obvious reaction to nothing
+    // happening, and the right one once storage recovers) appended a SECOND
+    // entry. With no undo until slice C that writes real duplicate history.
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const spy = breakWrites();
+    renderApp();
+
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    fireEvent.change(
+      within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i),
+      { target: { value: "only once" } }
+    );
+    const save = () =>
+      fireEvent.click(
+        within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+      );
+    save();
+    // Nothing entered the list: the form is the only copy, which is the point.
+    expect(localStorage.getItem("hrt-shot-tracker:v1:shots")).toBeNull();
+
+    // Storage comes back and the user presses Save again on the held-open sheet.
+    spy.mockRestore();
+    save();
+
+    const stored = JSON.parse(
+      localStorage.getItem("hrt-shot-tracker:v1:shots") ?? "[]"
+    );
+    expect(stored).toHaveLength(1);
+    expect(stored[0].notes).toBe("only once");
   });
 
   it("closes and clears as normal when the write lands", async () => {
@@ -831,10 +872,17 @@ describe("App — a failed EDIT is held open too", () => {
       within(screen.getByRole("dialog")).getByRole("button", { name: "Update shot" })
     );
 
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    const sheet = screen.getByRole("dialog");
+    expect(sheet).toBeInTheDocument();
     expect(
-      within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i)
+      within(sheet).getByPlaceholderText(/remember for later/i)
     ).toHaveValue("after");
-    expect(screen.getByRole("alert")).toHaveTextContent("aren’t being saved");
+    expect(within(sheet).getByRole("alert")).toHaveTextContent(
+      "Couldn’t save this shot"
+    );
+    // The list still shows the OLD value: refusing to commit an unwritable change
+    // is what keeps the screen and storage telling the same story.
+    expect(JSON.parse(localStorage.getItem("hrt-shot-tracker:v1:shots") ?? "[]")[0].notes)
+      .toBe("before");
   });
 });

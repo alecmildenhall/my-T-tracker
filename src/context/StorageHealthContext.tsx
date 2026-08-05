@@ -24,8 +24,17 @@ import React, {
 } from "react";
 
 export interface StorageHealth {
-  /** How many writes have failed since the last successful one. */
-  failures: number;
+  /**
+   * The keys whose most recent write attempt failed; empty means healthy.
+   *
+   * Per key, not a single counter, because a counter conflates stores that fail
+   * independently. Quota fires on the SIZE of the value being written, so the
+   * big shots array can be rejected while the small profile object still fits —
+   * and with one counter, saving a display name reported success and cleared a
+   * banner that was reporting an unsaved shot. Telling someone their data is
+   * safe while it isn't is the exact failure this whole feature exists to end.
+   */
+  failingKeys: ReadonlySet<string>;
   /** True once the user has acknowledged the current run of failures. */
   dismissed: boolean;
   /**
@@ -35,8 +44,8 @@ export interface StorageHealth {
    * failed, because they share one device.
    */
   retryToken: number;
-  /** Called by each store after every write attempt. */
-  reportWrite: (ok: boolean) => void;
+  /** Called by each store after every write attempt, naming the key it wrote. */
+  reportWrite: (key: string, ok: boolean) => void;
   dismiss: () => void;
   retry: () => void;
 }
@@ -46,8 +55,10 @@ export interface StorageHealth {
  * that renders a hook alone, or anywhere the banner isn't mounted. Reporting
  * into the void is the old behaviour, minus the console noise.
  */
+const NO_FAILING_KEYS: ReadonlySet<string> = new Set();
+
 const INERT: StorageHealth = {
-  failures: 0,
+  failingKeys: NO_FAILING_KEYS,
   dismissed: false,
   retryToken: 0,
   reportWrite: () => {},
@@ -60,30 +71,32 @@ const StorageHealthContext = createContext<StorageHealth>(INERT);
 export const StorageHealthProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const [failures, setFailures] = useState(0);
+  const [failingKeys, setFailingKeys] =
+    useState<ReadonlySet<string>>(NO_FAILING_KEYS);
   const [dismissed, setDismissed] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
 
-  const reportWrite = useCallback((ok: boolean) => {
-    if (ok) {
-      // Only a real success clears it — never a timer, and never the dismiss
+  const reportWrite = useCallback((key: string, ok: boolean) => {
+    setFailingKeys((prev) => {
+      // Only a real success clears a key — never a timer, and never the dismiss
       // button, which just hides what is still true.
-      setFailures((n) => (n === 0 ? n : 0));
-      setDismissed((d) => (d ? false : d));
-      return;
-    }
-    setFailures((n) => n + 1);
+      if (ok === !prev.has(key)) return prev; // no change for this key
+      const next = new Set(prev);
+      if (ok) next.delete(key);
+      else next.add(key);
+      return next;
+    });
     // A new failure is new information, so it re-raises even if the last run was
     // dismissed. Acknowledging one failure must not silence the next.
-    setDismissed(false);
+    if (!ok) setDismissed(false);
   }, []);
 
   const dismiss = useCallback(() => setDismissed(true), []);
   const retry = useCallback(() => setRetryToken((n) => n + 1), []);
 
   const value = useMemo(
-    () => ({ failures, dismissed, retryToken, reportWrite, dismiss, retry }),
-    [failures, dismissed, retryToken, reportWrite, dismiss, retry]
+    () => ({ failingKeys, dismissed, retryToken, reportWrite, dismiss, retry }),
+    [failingKeys, dismissed, retryToken, reportWrite, dismiss, retry]
   );
 
   return (

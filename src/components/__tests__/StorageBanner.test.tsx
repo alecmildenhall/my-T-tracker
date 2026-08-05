@@ -5,6 +5,7 @@ import { StorageHealthProvider } from "../../context/StorageHealthContext";
 import { ShotsProvider } from "../../context/ShotsContext";
 import { ProfileProvider } from "../../context/ProfileContext";
 import { useShotsContext } from "../../context/ShotsContext";
+import { useProfileContext } from "../../context/ProfileContext";
 import { newId } from "../../utils/id";
 import * as dl from "../../utils/download";
 
@@ -20,17 +21,40 @@ function breakWrites() {
     });
 }
 
-/** A log button so a test can cause a real write through the real store. */
-const Harness: React.FC = () => {
+/**
+ * Reject writes to one key only. Quota fires on the SIZE of the value, so the
+ * big shots array can be refused while the small profile object still fits.
+ */
+function breakWritesTo(keyPart: string) {
+  const real = Storage.prototype.setItem;
+  return vi
+    .spyOn(Storage.prototype, "setItem")
+    .mockImplementation(function (this: Storage, k: string, v: string) {
+      if (k.includes(keyPart)) throw new DOMException("QuotaExceededError");
+      return real.call(this, k, v);
+    });
+}
+
+/** Buttons that cause real writes, to two DIFFERENT stores, through the real hooks. */
+const StorageBannerHarness: React.FC<{
+  returnFocusRef?: React.RefObject<HTMLElement | null>;
+}> = ({ returnFocusRef }) => {
   const { addShot } = useShotsContext();
+  const { setPreferredName } = useProfileContext();
   return (
     <>
-      <StorageBanner />
+      <StorageBanner returnFocusRef={returnFocusRef} />
       <button
         type="button"
         onClick={() => addShot({ id: newId(), date: "2026-08-04" })}
       >
         log
+      </button>
+      <button
+        type="button"
+        onClick={() => setPreferredName("Lou")}
+      >
+        save profile
       </button>
     </>
   );
@@ -41,7 +65,7 @@ const mount = () =>
     <StorageHealthProvider>
       <ShotsProvider>
         <ProfileProvider>
-          <Harness />
+          <StorageBannerHarness />
         </ProfileProvider>
       </ShotsProvider>
     </StorageHealthProvider>
@@ -107,8 +131,12 @@ describe("StorageBanner", () => {
 
   it("clears only on a real success, and 'Try again' re-attempts the write", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
-    const spy = breakWrites();
     mount();
+    // One shot that DID save, so the retry has real content to re-persist.
+    logAShot();
+    // Then storage goes, and the next save is refused.
+    const spy = breakWrites();
+    localStorage.clear();
     logAShot();
     expect(screen.getByRole("alert")).toBeInTheDocument();
 
@@ -125,6 +153,55 @@ describe("StorageBanner", () => {
     expect(localStorage.getItem("hrt-shot-tracker:v1:shots")).toContain("2026-08-04");
   });
 
+  it("is not cleared by a DIFFERENT store's write succeeding", () => {
+    // Health was a single counter, but writes are per key: saving a display name
+    // reported success and wiped a banner that was reporting an unsaved shot.
+    // Telling someone their data is safe while it isn\u2019t is the exact failure
+    // this feature exists to end.
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    breakWritesTo("shots");
+    mount();
+    logAShot();
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+
+    // The profile store writes fine and reports its success.
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: "save profile" }));
+    });
+
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(localStorage.getItem("hrt-shot-tracker:v1:profile")).toContain("Lou");
+    expect(localStorage.getItem("hrt-shot-tracker:v1:shots")).toBeNull();
+  });
+
+  it("hands focus on rather than dropping it on <body> when it removes itself", () => {
+    // Every control in the banner removes the element that contains it. CLAUDE.md:
+    // focus is never left on <body> \u2014 the defect class behind nine slice-B bugs.
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    breakWrites();
+    const target = document.createElement("h1");
+    target.tabIndex = -1;
+    document.body.appendChild(target);
+    render(
+      <StorageHealthProvider>
+        <ShotsProvider>
+          <ProfileProvider>
+            <StorageBannerHarness returnFocusRef={{ current: target }} />
+          </ProfileProvider>
+        </ShotsProvider>
+      </StorageHealthProvider>
+    );
+    logAShot();
+
+    const dismissBtn = screen.getByRole("button", { name: "Dismiss" });
+    dismissBtn.focus();
+    fireEvent.click(dismissBtn);
+
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement).toBe(target);
+    target.remove();
+  });
+
   it("actually exports, which is the only recovery that survives a dead device", () => {
     // A button that is present but does nothing would be worse than no button:
     // this is the escape hatch for a device that will never save again.
@@ -132,9 +209,10 @@ describe("StorageBanner", () => {
     const download = vi
       .spyOn(dl, "downloadTextFile")
       .mockImplementation(() => {});
-    breakWrites();
     mount();
-    logAShot();
+    logAShot(); // lands
+    breakWrites();
+    logAShot(); // refused, and raises the banner
 
     fireEvent.click(screen.getByRole("button", { name: "Export a backup" }));
 
@@ -142,8 +220,7 @@ describe("StorageBanner", () => {
     const [text, name, mime] = download.mock.calls[0];
     expect(name).toMatch(/\.json$/);
     expect(mime).toBe("application/json");
-    // The shot that could not be written is still in the file, because the
-    // export reads in-memory state rather than storage.
+    // Everything the app currently holds, whether or not storage accepted it.
     expect(text).toContain("2026-08-04");
   });
 });

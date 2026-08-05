@@ -213,6 +213,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   const [dateBaseline, setDateBaseline] = useState<string>(start.dateBaseline);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const [dateError, setDateError] = useState<string | null>(null);
+  const [saveFailed, setSaveFailed] = useState(false);
   const [doseError, setDoseError] = useState<string | null>(null);
   const [painError, setPainError] = useState<string | null>(null);
   const [time, setTime] = useState<string>(start.time);
@@ -359,7 +360,18 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // A save that did not reach storage must leave the form exactly as it is.
     // Otherwise the sheet stays open (the parent holds it) showing empty fields,
     // which is worse than closing: the entry is neither on screen nor stored.
-    if (persisted === false) return;
+    //
+    // It must also SAY so, here, inside the sheet. The storage banner is the
+    // app's single surface for failed writes, but it lives in `#root`, which the
+    // sheet marks `inert` and covers completely on a phone — so for the one
+    // failure the user is actually watching for, the banner is unreadable,
+    // unannounced, and its buttons unclickable until the sheet is gone. Without
+    // this line the whole flow is: tap Save, nothing happens, no explanation.
+    if (persisted === false) {
+      setSaveFailed(true);
+      return;
+    }
+    setSaveFailed(false);
 
     // Clear the per-shot fields. The carried-forward ones (dose, type of T,
     // carrier oil) are deliberately left alone: they re-derive from the shot just
@@ -676,6 +688,17 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       </div>
 
       <div className="shot-form__bar shot-form__bar--bottom">
+        {/* Above the button, so it is between what you pressed and where you
+            pressed it, and inside the dialog so the focus trap can reach it and
+            a screen reader announces it. */}
+        {saveFailed && (
+          <p className="shot-form__save-error" role="alert">
+            <strong>Couldn’t save this shot.</strong> Storage may be full, or
+            private browsing may be blocking it. Nothing you typed has been
+            lost — try Save again, or close this and export a backup from
+            Settings.
+          </p>
+        )}
         <button type="submit" className="primary-button shot-form__save">
           {editingShot ? "Update shot" : "Save shot"}
         </button>

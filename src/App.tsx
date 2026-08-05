@@ -9,7 +9,6 @@ import { HistoryView } from "./components/HistoryView";
 import { emptyHistoryQuery, type HistoryQuery } from "./utils/historyQuery";
 import { Modal, SHEET_EXIT_MS } from "./components/Modal";
 import { StorageBanner } from "./components/StorageBanner";
-import { storageWritable } from "./utils/storageWritable";
 import { useShotsContext } from "./context/ShotsContext";
 import type { ShotEntry } from "./types/shot";
 import type { View } from "./types/view";
@@ -209,18 +208,14 @@ const App: React.FC = () => {
   // and the draft is cleared, so without this a write that throws left the user
   // with nothing on screen and nothing in storage — the worst of both.
   //
-  // A probe, not a prediction: it answers "does writing throw right now", which
-  // is what Safari private browsing does unconditionally. It is deliberately not
-  // a quota check, since a one-byte probe can pass on a device that then rejects
-  // the real payload — the banner is what catches that, and the entry is in the
-  // list by then rather than lost.
+  // `addShot` reports what the write actually did rather than what a probe
+  // predicted it would do, and it commits nothing when the write is refused. So
+  // the sheet holding open is not just a courtesy: the form is now the only copy
+  // of that entry, and pressing Save again retries it instead of appending a
+  // second one.
   const handleAddShot = (shot: ShotEntry) => {
     if (closingRef.current) return;
-    if (!storageWritable()) {
-      addShot(shot); // still shown, so nothing typed disappears
-      return false; // ...sheet stays put, fields kept, and the banner speaks
-    }
-    addShot(shot);
+    if (!addShot(shot)) return false; // sheet stays put, fields kept, and it says why
     clearDraft();
     closeSheet();
     return true;
@@ -228,11 +223,7 @@ const App: React.FC = () => {
 
   const handleUpdateShot = (shot: ShotEntry) => {
     if (closingRef.current) return;
-    if (!storageWritable()) {
-      updateShot(shot.id, shot);
-      return false; // sheet holds; see handleAddShot
-    }
-    updateShot(shot.id, shot);
+    if (!updateShot(shot.id, shot)) return false; // sheet holds; see handleAddShot
     // Saved, so there is nothing in progress left to restore for this shot.
     liveDraft.current = null;
     setEditDrafts((prev) => {
@@ -286,7 +277,7 @@ const App: React.FC = () => {
       {/* Above every view, not inside the log sheet: writes fail from logging,
           editing, deleting and Settings alike, and an in-sheet message would
           leave three of those silent. */}
-      <StorageBanner />
+      <StorageBanner returnFocusRef={titleRef} />
 
       {view === "home" && (
         <main className="app-main">

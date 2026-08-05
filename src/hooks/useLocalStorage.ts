@@ -1,5 +1,5 @@
 // src/hooks/useLocalStorage.ts
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useStorageHealth } from "../context/StorageHealthContext";
 
 type InitialValue<T> = T | (() => T);
@@ -21,6 +21,33 @@ const resolveInitial = <T,>(initialValue: InitialValue<T>): T =>
   typeof initialValue === "function"
     ? (initialValue as () => T)()
     : initialValue;
+
+/** Serialize and store one key, reporting the outcome. Returns whether it landed. */
+function writeThrough<T>(
+  key: string,
+  value: T,
+  reportWrite: (key: string, ok: boolean) => void
+): boolean {
+  let ok = true;
+  try {
+    const serialized = JSON.stringify(value);
+    // Skip a redundant write when storage already holds this exact value. This
+    // avoids a needless write on mount AND breaks the cross-tab echo loop: a
+    // value applied *from* another tab's storage event is already persisted,
+    // so we don't re-write it and fire the event back. Storage already holding
+    // it counts as persisted, so this still reports success.
+    if (window.localStorage.getItem(key) !== serialized) {
+      window.localStorage.setItem(key, serialized);
+    }
+  } catch (error) {
+    ok = false;
+    // Kept for a developer at a desk; the user is told by the banner, because
+    // a console message is a report to someone who will never read it.
+    console.warn("[useLocalStorage] Failed to write to localStorage:", error);
+  }
+  reportWrite(key, ok);
+  return ok;
+}
 
 export function useLocalStorage<T>(
   key: string,
@@ -57,29 +84,60 @@ export function useLocalStorage<T>(
     return resolveInitial(initialValue);
   });
 
+  // The latest value, as a functional updater passed to `persist` should see it.
+  // `persist` advances this SYNCHRONOUSLY on a successful write, because
+  // `setValue` does not: two calls in one tick would otherwise both read the
+  // pre-render snapshot and the second would silently discard the first (adding
+  // two shots in one handler kept only the last). The effect covers changes that
+  // arrive by other routes — the initial read, cross-tab sync, `setValue`.
+  const valueRef = useRef(value);
+  useEffect(() => {
+    valueRef.current = value;
+  });
+
+  /**
+   * Write `next` to storage and report the real result, synchronously.
+   *
+   * This exists because the caller's question — "did my shot actually save?" —
+   * cannot be answered by anything other than the write itself. The first
+   * version of this feature answered it with a *probe*: a one-byte write to a
+   * throwaway key just before the real one. That is a different write, and a
+   * quota rejection depends on the size of the value, so the probe sailed
+   * through while the shot was rejected: the sheet closed, the draft cleared,
+   * and the app reported success for something it had not saved.
+   *
+   * State is committed only on success, so a rejected write leaves the caller's
+   * form holding the single copy — which is what lets it stay open and retry
+   * without the half-saved entry also sitting in the list, waiting to be
+   * duplicated by the next attempt.
+   */
+  const persist = useCallback(
+    (next: T | ((prev: T) => T)): boolean => {
+      const resolved =
+        typeof next === "function"
+          ? (next as (prev: T) => T)(valueRef.current)
+          : next;
+      const ok = writeThrough(key, resolved, reportWrite);
+      if (ok) {
+        valueRef.current = resolved;
+        setValue(resolved);
+      }
+      return ok;
+    },
+    [key, reportWrite]
+  );
+
   // The single write boundary for the whole app, which is why the failure has to
   // be reported from here: every store, and every future one, passes through it.
   // `retryToken` is a dependency so that "Try again" in the banner simply bumps a
-  // number and every store re-attempts — no per-key bookkeeping.
+  // number and every store re-attempts.
+  //
+  // Still an effect as well as `persist`, because most state changes don't go
+  // through `persist` (cross-tab sync, the mount write, "Try again"). When
+  // `persist` has already written, the value-matches check below makes this a
+  // no-op that reports the success it just had.
   useEffect(() => {
-    let ok = true;
-    try {
-      const serialized = JSON.stringify(value);
-      // Skip a redundant write when storage already holds this exact value. This
-      // avoids a needless write on mount AND breaks the cross-tab echo loop: a
-      // value applied *from* another tab's storage event is already persisted,
-      // so we don't re-write it and fire the event back. Storage already holding
-      // it counts as persisted, so this still reports success.
-      if (window.localStorage.getItem(key) !== serialized) {
-        window.localStorage.setItem(key, serialized);
-      }
-    } catch (error) {
-      ok = false;
-      // Kept for a developer at a desk; the user is told by the banner, because
-      // a console message is a report to someone who will never read it.
-      console.warn("[useLocalStorage] Failed to write to localStorage:", error);
-    }
-    reportWrite(ok);
+    writeThrough(key, value, reportWrite);
   }, [key, value, retryToken, reportWrite]);
 
   // Stay in sync when another tab changes the same key.
@@ -103,5 +161,5 @@ export function useLocalStorage<T>(
     return () => window.removeEventListener("storage", onStorage);
   }, [key]);
 
-  return [value, setValue] as const;
+  return [value, setValue, persist] as const;
 }

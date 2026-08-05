@@ -11,19 +11,46 @@
 // It sits above the view rather than inside the log sheet because writes fail
 // from at least four places — logging, editing, deleting, and Settings — and an
 // in-sheet message would leave three of them silent.
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { useStorageHealth } from "../context/StorageHealthContext";
 import { useShotsContext } from "../context/ShotsContext";
 import { useProfileContext } from "../context/ProfileContext";
 import { toJson } from "../utils/exportData";
 import { backupFilename, downloadTextFile } from "../utils/download";
 
-export const StorageBanner: React.FC = () => {
-  const { failures, dismissed, dismiss, retry } = useStorageHealth();
+export const StorageBanner: React.FC<{
+  /** Where focus goes when the banner removes itself. */
+  returnFocusRef?: React.RefObject<HTMLElement | null>;
+}> = ({ returnFocusRef }) => {
+  const { failingKeys, dismissed, dismiss, retry } = useStorageHealth();
   const { shots } = useShotsContext();
   const { profile } = useProfileContext();
 
-  if (failures === 0 || dismissed) return null;
+  const shown = failingKeys.size > 0 && !dismissed;
+
+  // Every control in here removes the element that contains it: ✕ hides the
+  // banner, and a successful "Try again" clears the failure that renders it. The
+  // browser's response to losing the focused element is to drop focus on <body>,
+  // which strands a keyboard user at the top of the document and silences the
+  // next screen-reader announcement. See CLAUDE.md — this is the defect class
+  // that produced nine bugs in slice B, so the hand-off lives with the thing
+  // that removes itself rather than being left to the caller.
+  const wasShown = useRef(false);
+  useEffect(() => {
+    if (shown) {
+      wasShown.current = true;
+      return;
+    }
+    if (!wasShown.current) return;
+    wasShown.current = false;
+    // Only rescue focus that was actually dropped — if something else has since
+    // claimed it, moving it again would be the more surprising behaviour.
+    if (document.activeElement === document.body) {
+      returnFocusRef?.current?.focus();
+    }
+  }, [shown, returnFocusRef]);
+
+  if (!shown) return null;
 
   const handleExport = () => {
     downloadTextFile(
