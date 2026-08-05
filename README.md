@@ -319,16 +319,16 @@ Worth knowing what this rule is suspending, since it stops being free the day so
 
 ### Short-Term (MVP → v0.2)
 
-- [ ] **NEXT PR — surface storage write failures.** `useLocalStorage` catches a failed `setItem` and drops it into `console.warn`, so the in-memory state updates, the UI shows the shot saved, and nothing persists. This is not hypothetical: Safari private browsing throws on `setItem`, and a full device hits quota. With no server copy the entry is simply gone, and the only report of it went to a console the user will never open — the exact silent-failure class that every severe bug in slice B turned out to be. The platform guidance says the same thing ([web.dev](https://web.dev/articles/persistent-storage)): wrap storage writes and handle the failure.
+- [x] **Surface storage write failures.** `useLocalStorage` catches a failed `setItem` and drops it into `console.warn`, so the in-memory state updates, the UI shows the shot saved, and nothing persists. This is not hypothetical: Safari private browsing throws on `setItem`, and a full device hits quota. With no server copy the entry is simply gone, and the only report of it went to a console the user will never open — the exact silent-failure class that every severe bug in slice B turned out to be. The platform guidance says the same thing ([web.dev](https://web.dev/articles/persistent-storage)): wrap storage writes and handle the failure.
 
   Its own small PR rather than riding along with feature work, and worth doing **before** slice B½ starts adding fields, since every new field is another thing that can silently fail to save. Phase-proof too: `useLocalStorage` is the single write boundary, so this survives the PWA, the Capacitor swap to native storage, and encrypted sync — only the call behind it changes.
 
-  Decided from a prototype:
+  Decided from a prototype, then corrected by building it:
 
   - **A persistent banner**, below the header, as the single surface for every failed write. Writes fail from at least four places — logging, editing, deleting, Settings — and an in-sheet message would leave three of them silent.
   - **Dismissible, and it re-raises on every new failure.** A device that is genuinely full will never succeed on retry, and a banner that cannot be dismissed leaves the app permanently degraded with no way to say "I know". Acknowledging one failure must not silence the next.
-  - **It counts**: "2 shots couldn't be saved" rather than one banner standing in for several.
   - **It clears only on a real success** — never on a timer.
+  - **No count**, despite the prototype specifying one. Writes fire per store and on mount, so a single failed save reported *five*; and they are not five losses, since the in-memory state holds everything and a run of failures is one unsaved state. “Your changes aren’t being saved” is the fact we actually have.
   - **The sheet does not close when a save fails.** It closes on save today, so a failed write loses the typed entry as well as saying nothing. Holding it open leaves the data on screen and one tap from saved, which matters more than any wording.
   - **"Export a backup" sits beside "Try again."** A failing device is exactly when a copy off it is worth most, and export is the only recovery that survives eviction, quota and a cleared browser.
   - **Not a snackbar** — transient, and Material is explicit that snackbars are not for critical or persistent errors; timing out is precisely wrong when nothing else recorded the failure. **Not a dialog** — nothing here is a decision, retry is the only move, and a repeating failure becomes a modal you cannot escape mid-log.

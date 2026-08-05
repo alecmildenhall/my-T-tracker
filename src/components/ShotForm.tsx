@@ -111,8 +111,10 @@ function freshDraft(): ShotDraft {
 }
 
 interface ShotFormProps {
-  onAddShot: (shot: ShotEntry) => void;
-  onUpdateShot?: (shot: ShotEntry) => void;
+  /** Return `false` when the shot did not persist — the form then keeps every
+   *  field, so a failed write does not also erase what was typed. */
+  onAddShot: (shot: ShotEntry) => void | boolean;
+  onUpdateShot?: (shot: ShotEntry) => void | boolean;
   editingShot?: ShotEntry | null;
   /** Close the sheet. Never destructive: the parent keeps whatever was entered
    *  and restores it next time this same form is opened, for a new shot or an
@@ -351,11 +353,13 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       notes: notes || undefined,
     };
 
-    if (editingShot && onUpdateShot) {
-      onUpdateShot(newShot);
-    } else {
-      onAddShot(newShot);
-    }
+    const persisted =
+      editingShot && onUpdateShot ? onUpdateShot(newShot) : onAddShot(newShot);
+
+    // A save that did not reach storage must leave the form exactly as it is.
+    // Otherwise the sheet stays open (the parent holds it) showing empty fields,
+    // which is worse than closing: the entry is neither on screen nor stored.
+    if (persisted === false) return;
 
     // Clear the per-shot fields. The carried-forward ones (dose, type of T,
     // carrier oil) are deliberately left alone: they re-derive from the shot just

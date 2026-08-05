@@ -1236,3 +1236,82 @@ textarea {
     transform: none;
   }
 }
+
+/* ── Storage write failures ─────────────────────────────────────────────
+   Sits below the header, above whichever view is showing, so a failed write
+   from any of the four write sites lands in one place. Danger-coloured but not
+   alarming: the entry is still on screen, so this is "not stored yet", not
+   "lost". */
+.storage-banner {
+  position: relative;
+  margin-bottom: 1rem;
+  padding: 0.7rem 2.1rem 0.75rem 0.8rem;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-md);
+  background: rgba(248, 113, 113, 0.13);
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.storage-banner__title {
+  display: block;
+  color: var(--danger);
+  font-size: 0.9rem;
+  margin-bottom: 0.15rem;
+}
+
+.storage-banner__actions {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  margin-top: 0.6rem;
+}
+
+.storage-banner__go,
+.storage-banner__alt {
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--danger);
+  cursor: pointer;
+}
+
+.storage-banner__go {
+  background: var(--danger);
+  color: #2a0b0b;
+}
+
+.storage-banner__alt {
+  background: transparent;
+  color: var(--danger);
+}
+
+.storage-banner__dismiss {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.35rem;
+  padding: 0.25rem 0.4rem;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.storage-banner__go:hover,
+.storage-banner__alt:hover,
+.storage-banner__dismiss:hover {
+  background: var(--danger-engaged-bg);
+}
+
+.storage-banner__go:focus-visible,
+.storage-banner__alt:focus-visible,
+.storage-banner__dismiss:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

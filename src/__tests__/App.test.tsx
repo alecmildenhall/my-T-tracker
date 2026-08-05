@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, within, act, waitFor } from "@testing-library/react";
 import App from "../App";
 import { ShotsProvider } from "../context/ShotsContext";
 import { ProfileProvider } from "../context/ProfileContext";
+import { StorageHealthProvider } from "../context/StorageHealthContext";
 import type { ShotEntry } from "../types/shot";
 import { STORAGE_KEYS } from "../storageKeys";
 import { SHEET_EXIT_MS } from "../components/Modal";
@@ -12,11 +13,13 @@ import { todayLocalISO } from "../utils/datetime";
 // it under the same providers main.tsx does.
 const renderApp = () =>
   render(
-    <ShotsProvider>
-      <ProfileProvider>
-        <App />
-      </ProfileProvider>
-    </ShotsProvider>
+    <StorageHealthProvider>
+      <ShotsProvider>
+        <ProfileProvider>
+          <App />
+        </ProfileProvider>
+      </ShotsProvider>
+    </StorageHealthProvider>
   );
 
 const seedShots = (shots: ShotEntry[]) =>
@@ -762,5 +765,76 @@ describe("App — the sheet protects in-progress input", () => {
     expect(
       within(screen.getByRole("dialog")).getByLabelText("Dose (mg)")
     ).toHaveValue(99);
+  });
+});
+
+describe("App — a failed save is never silent", () => {
+  const breakWrites = () =>
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("QuotaExceededError");
+    });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it("keeps the sheet open when the write fails, so the entry is not lost too", async () => {
+    // Saving closes the sheet and clears the draft. Without this the user is
+    // left with nothing on screen AND nothing in storage — the worst of both.
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    breakWrites();
+    renderApp();
+
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    fireEvent.change(
+      within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i),
+      { target: { value: "still here" } }
+    );
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+    );
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i)
+    ).toHaveValue("still here");
+    expect(screen.getByRole("alert")).toHaveTextContent("aren’t being saved");
+  });
+
+  it("closes and clears as normal when the write lands", async () => {
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+    );
+    await sheetGone();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});
+
+describe("App — a failed EDIT is held open too", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("keeps the edit sheet and its changes when the write fails", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    seedShots([{ id: "a", date: "2026-06-01", notes: "before" }]);
+    renderApp();
+    goTo("History");
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.change(
+      within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i),
+      { target: { value: "after" } }
+    );
+
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("QuotaExceededError");
+    });
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Update shot" })
+    );
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i)
+    ).toHaveValue("after");
+    expect(screen.getByRole("alert")).toHaveTextContent("aren’t being saved");
   });
 });

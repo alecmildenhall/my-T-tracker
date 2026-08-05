@@ -1,5 +1,6 @@
 // src/hooks/useLocalStorage.ts
 import { useEffect, useRef, useState } from "react";
+import { useStorageHealth } from "../context/StorageHealthContext";
 
 type InitialValue<T> = T | (() => T);
 
@@ -30,6 +31,7 @@ export function useLocalStorage<T>(
   // render (callers commonly pass a fresh literal like `[]` or inline function).
   // Updated in an effect, not during render, so we never mutate a ref while
   // rendering.
+  const { reportWrite, retryToken } = useStorageHealth();
   const initialRef = useRef(initialValue);
   const sanitizeRef = useRef(options?.sanitize);
   useEffect(() => {
@@ -55,19 +57,30 @@ export function useLocalStorage<T>(
     return resolveInitial(initialValue);
   });
 
+  // The single write boundary for the whole app, which is why the failure has to
+  // be reported from here: every store, and every future one, passes through it.
+  // `retryToken` is a dependency so that "Try again" in the banner simply bumps a
+  // number and every store re-attempts — no per-key bookkeeping.
   useEffect(() => {
+    let ok = true;
     try {
       const serialized = JSON.stringify(value);
       // Skip a redundant write when storage already holds this exact value. This
       // avoids a needless write on mount AND breaks the cross-tab echo loop: a
       // value applied *from* another tab's storage event is already persisted,
-      // so we don't re-write it and fire the event back.
-      if (window.localStorage.getItem(key) === serialized) return;
-      window.localStorage.setItem(key, serialized);
+      // so we don't re-write it and fire the event back. Storage already holding
+      // it counts as persisted, so this still reports success.
+      if (window.localStorage.getItem(key) !== serialized) {
+        window.localStorage.setItem(key, serialized);
+      }
     } catch (error) {
+      ok = false;
+      // Kept for a developer at a desk; the user is told by the banner, because
+      // a console message is a report to someone who will never read it.
       console.warn("[useLocalStorage] Failed to write to localStorage:", error);
     }
-  }, [key, value]);
+    reportWrite(ok);
+  }, [key, value, retryToken, reportWrite]);
 
   // Stay in sync when another tab changes the same key.
   useEffect(() => {

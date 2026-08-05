@@ -8,6 +8,8 @@ import { RecentShots } from "./components/RecentShots";
 import { HistoryView } from "./components/HistoryView";
 import { emptyHistoryQuery, type HistoryQuery } from "./utils/historyQuery";
 import { Modal, SHEET_EXIT_MS } from "./components/Modal";
+import { StorageBanner } from "./components/StorageBanner";
+import { storageWritable } from "./utils/storageWritable";
 import { useShotsContext } from "./context/ShotsContext";
 import type { ShotEntry } from "./types/shot";
 import type { View } from "./types/view";
@@ -203,15 +205,33 @@ const App: React.FC = () => {
   // duplicate, since the post-save reset had already cleared the fields — and a
   // Save landing just after ✕/Escape saved a shot the user had just dismissed.
   // 200ms is precisely a double-tap, and there is no undo until slice C.
+  // A failed save must not ALSO lose what was typed. The sheet closes on save
+  // and the draft is cleared, so without this a write that throws left the user
+  // with nothing on screen and nothing in storage — the worst of both.
+  //
+  // A probe, not a prediction: it answers "does writing throw right now", which
+  // is what Safari private browsing does unconditionally. It is deliberately not
+  // a quota check, since a one-byte probe can pass on a device that then rejects
+  // the real payload — the banner is what catches that, and the entry is in the
+  // list by then rather than lost.
   const handleAddShot = (shot: ShotEntry) => {
     if (closingRef.current) return;
+    if (!storageWritable()) {
+      addShot(shot); // still shown, so nothing typed disappears
+      return false; // ...sheet stays put, fields kept, and the banner speaks
+    }
     addShot(shot);
     clearDraft();
     closeSheet();
+    return true;
   };
 
   const handleUpdateShot = (shot: ShotEntry) => {
     if (closingRef.current) return;
+    if (!storageWritable()) {
+      updateShot(shot.id, shot);
+      return false; // sheet holds; see handleAddShot
+    }
     updateShot(shot.id, shot);
     // Saved, so there is nothing in progress left to restore for this shot.
     liveDraft.current = null;
@@ -262,6 +282,11 @@ const App: React.FC = () => {
           {VIEW_TITLES[view]}
         </h1>
       </header>
+
+      {/* Above every view, not inside the log sheet: writes fail from logging,
+          editing, deleting and Settings alike, and an in-sheet message would
+          leave three of those silent. */}
+      <StorageBanner />
 
       {view === "home" && (
         <main className="app-main">
