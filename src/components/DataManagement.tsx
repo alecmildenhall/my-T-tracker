@@ -15,14 +15,15 @@ import { Modal } from "./Modal";
 
 interface DataManagementProps {
   shots: ShotEntry[];
-  onReplaceAll: (next: ShotEntry[]) => void;
+  /** Returns whether the restore reached storage. */
+  onReplaceAll: (next: ShotEntry[]) => boolean;
   // Profile export/import is all-or-nothing: both props are required so a caller
   // can't wire the shot restore without the matching profile restore (which would
   // leave a stale name attached to freshly imported shots).
   /** Current profile, included in exports so a backup is a complete snapshot. */
   profile: Profile;
   /** Replace the profile on import (part of the same destructive restore). */
-  onReplaceProfile: (next: Profile) => void;
+  onReplaceProfile: (next: Profile) => boolean;
 }
 
 type Status =
@@ -39,6 +40,10 @@ interface PendingImport {
 
 const EXPORT_ERROR =
   "Couldn’t save the file. Your browser may be blocking downloads — try again, or check its settings.";
+
+const IMPORT_WRITE_ERROR =
+  "Couldn’t finish restoring the backup — this device isn’t accepting writes. " +
+  "Try again when there’s more space; the safety copy just downloaded is unaffected.";
 
 const IMPORT_BACKUP_ERROR =
   "Couldn’t back up your current data, so nothing was changed. Try again, or check your browser’s download settings.";
@@ -166,8 +171,18 @@ export const DataManagement: React.FC<DataManagementProps> = ({
       setPending(null);
       return;
     }
-    onReplaceAll(pending.incoming);
-    onReplaceProfile(pending.incomingProfile);
+    // Shots first, and the profile only if they landed. A device that refuses
+    // writes would otherwise leave the restore half-applied — the imported name
+    // in memory, the imported shots nowhere — under a green "Restored 12 entries
+    // from backup." The count was the one thing it could not honestly claim.
+    if (
+      !onReplaceAll(pending.incoming) ||
+      !onReplaceProfile(pending.incomingProfile)
+    ) {
+      setStatus({ kind: "error", message: IMPORT_WRITE_ERROR });
+      setPending(null);
+      return;
+    }
 
     // Tell the user what actually changed. The profile is part of this restore,
     // so a name that was overwritten or cleared shouldn't happen silently — but

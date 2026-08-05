@@ -216,7 +216,11 @@ const App: React.FC = () => {
   // of that entry, and pressing Save again retries it instead of appending a
   // second one.
   const handleAddShot = (shot: ShotEntry) => {
-    if (closingRef.current) return;
+    // `false`, not a bare return: the form reads anything else as "saved" and
+    // clears its fields, so a Save landing inside the 200ms exit window (where
+    // the button is still live) blanked the form and hid the failure message as
+    // though the shot had been written. Nothing was.
+    if (closingRef.current) return false;
     if (!addShot(shot)) return false; // sheet stays put, fields kept, and it says why
     clearDraft();
     closeSheet();
@@ -224,7 +228,7 @@ const App: React.FC = () => {
   };
 
   const handleUpdateShot = (shot: ShotEntry) => {
-    if (closingRef.current) return;
+    if (closingRef.current) return false; // see handleAddShot
     if (!updateShot(shot.id, shot)) return false; // sheet holds; see handleAddShot
     // Saved, so there is nothing in progress left to restore for this shot.
     liveDraft.current = null;

@@ -153,6 +153,26 @@ describe("StorageBanner", () => {
     expect(localStorage.getItem("hrt-shot-tracker:v1:shots")).toContain("2026-08-04");
   });
 
+  it("'Try again' actually writes, instead of re-affirming what storage already holds", () => {
+    // The retry path skipped the write whenever storage already matched state —
+    // and a refused write commits nothing, so for the shots store they ALWAYS
+    // match after a failure. Retry therefore reported success without touching
+    // storage: the app's one anti-silent-failure surface giving a false all-clear
+    // on a device still refusing every write.
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    mount();
+    logAShot(); // lands, so state and storage agree
+    const spy = breakWrites();
+    logAShot(); // refused, commits nothing — state and storage STILL agree
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    });
+    expect(spy).toHaveBeenCalled(); // it tried
+    expect(screen.getByRole("alert")).toBeInTheDocument(); // and did not lie
+  });
+
   it("is not cleared by a DIFFERENT store's write succeeding", () => {
     // Health was a single counter, but writes are per key: saving a display name
     // reported success and wiped a banner that was reporting an unsaved shot.

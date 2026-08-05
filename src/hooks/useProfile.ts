@@ -17,8 +17,12 @@ export interface UseProfile {
   setShotDay: (day: Weekday | undefined) => void;
   /** Merge a partial patch into the profile. */
   updateProfile: (patch: Partial<Profile>) => void;
-  /** Replace the whole profile (used when restoring a backup). Passing {} clears it. */
-  replaceProfile: (next: Profile) => void;
+  /**
+   * Replace the whole profile (used when restoring a backup). Passing {} clears
+   * it. Returns whether it reached storage, so a restore can be reported as the
+   * failure it was rather than announcing entries it never wrote.
+   */
+  replaceProfile: (next: Profile) => boolean;
 }
 
 const EMPTY: Profile = {};
@@ -51,7 +55,7 @@ function sanitizeProfile(raw: unknown): Profile {
 }
 
 export function useProfile(): UseProfile {
-  const [profile, setProfile] = useLocalStorage<Profile>(
+  const [profile, setProfile, persistProfile] = useLocalStorage<Profile>(
     STORAGE_KEYS.profile,
     EMPTY,
     { sanitize: sanitizeProfile }
@@ -77,13 +81,14 @@ export function useProfile(): UseProfile {
       // Full replace, not a merge: drop any now-blank known field so a restored
       // profile is normalized the same way a typed one is. Discards the previous
       // profile entirely (including unknown fields) — the backup is the snapshot.
-      setProfile(() => {
+      // Writes through, so an import can be all-or-nothing with the shots half.
+      return persistProfile(() => {
         const clean: Record<string, unknown> = { ...next };
         normalizeKnownFields(clean);
         return clean as Profile;
       });
     },
-    [setProfile]
+    [persistProfile]
   );
 
   const setStartDate = useCallback(

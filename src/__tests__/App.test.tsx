@@ -839,6 +839,38 @@ describe("App — a failed save is never silent", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
+  it("does not fake a save when Save lands during the sheet's exit animation", () => {
+    // The sheet stays mounted through its exit, and only `#root` is inert, so its
+    // own Save button is still live for those ~200ms. The closing guard returned
+    // nothing, and the form reads anything but `false` as saved — so a Save in
+    // that window blanked every field and cleared the failure message as though
+    // the shot had been written. Nothing had.
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    breakWrites();
+    renderApp();
+
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    const notes = () =>
+      within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i);
+    fireEvent.change(notes(), { target: { value: "still here" } });
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+    );
+    expect(within(screen.getByRole("dialog")).getByRole("alert")).toBeInTheDocument();
+
+    // Dismiss, then Save again before the exit animation has finished.
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Close" })
+    );
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+    );
+
+    expect(notes()).toHaveValue("still here");
+    expect(within(screen.getByRole("dialog")).getByRole("alert")).toBeInTheDocument();
+    expect(localStorage.getItem("hrt-shot-tracker:v1:shots")).toBeNull();
+  });
+
   it("does not put the unsaved shot in the list, so retrying can't duplicate it", () => {
     // The first build added the shot to in-memory state on failure "so nothing
     // typed disappears". The form already holds it — and because ShotForm mints a

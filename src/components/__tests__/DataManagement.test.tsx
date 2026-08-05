@@ -38,9 +38,9 @@ describe("DataManagement", () => {
       render(
         <DataManagement
           shots={shots}
-          onReplaceAll={vi.fn()}
+          onReplaceAll={vi.fn(() => true)}
           profile={{}}
-          onReplaceProfile={vi.fn()}
+          onReplaceProfile={vi.fn(() => true)}
         />
       );
       fireEvent.click(
@@ -64,9 +64,9 @@ describe("DataManagement", () => {
       render(
         <DataManagement
           shots={shots}
-          onReplaceAll={vi.fn()}
+          onReplaceAll={vi.fn(() => true)}
           profile={{ startDate: "2025-01-15", preferredName: "Lou" }}
-          onReplaceProfile={vi.fn()}
+          onReplaceProfile={vi.fn(() => true)}
         />
       );
       fireEvent.click(
@@ -84,9 +84,9 @@ describe("DataManagement", () => {
       render(
         <DataManagement
           shots={shots}
-          onReplaceAll={vi.fn()}
+          onReplaceAll={vi.fn(() => true)}
           profile={{}}
-          onReplaceProfile={vi.fn()}
+          onReplaceProfile={vi.fn(() => true)}
         />
       );
       fireEvent.click(screen.getByRole("button", { name: "Export CSV" }));
@@ -105,9 +105,9 @@ describe("DataManagement", () => {
       render(
         <DataManagement
           shots={shots}
-          onReplaceAll={vi.fn()}
+          onReplaceAll={vi.fn(() => true)}
           profile={{}}
-          onReplaceProfile={vi.fn()}
+          onReplaceProfile={vi.fn(() => true)}
         />
       );
 
@@ -123,13 +123,13 @@ describe("DataManagement", () => {
 
   describe("import", () => {
     it("shows a generic error for a malformed file and never replaces", async () => {
-      const onReplaceAll = vi.fn();
+      const onReplaceAll = vi.fn(() => true);
       render(
         <DataManagement
           shots={shots}
           onReplaceAll={onReplaceAll}
           profile={{}}
-          onReplaceProfile={vi.fn()}
+          onReplaceProfile={vi.fn(() => true)}
         />
       );
 
@@ -144,13 +144,13 @@ describe("DataManagement", () => {
     });
 
     it("confirms, backs up current data, then replaces on a valid import", async () => {
-      const onReplaceAll = vi.fn();
+      const onReplaceAll = vi.fn(() => true);
       render(
         <DataManagement
           shots={shots}
           onReplaceAll={onReplaceAll}
           profile={{}}
-          onReplaceProfile={vi.fn()}
+          onReplaceProfile={vi.fn(() => true)}
         />
       );
 
@@ -173,9 +173,37 @@ describe("DataManagement", () => {
       );
     });
 
+    it("says the restore failed, instead of announcing entries it never wrote", async () => {
+      // On a device refusing writes the restore committed nothing, but still
+      // reported "Restored 1 entry from backup." — and the profile half, which
+      // went through a different path, WAS applied in memory. A green success
+      // message beside a red storage banner, over a half-applied restore.
+      const onReplaceAll = vi.fn(() => false);
+      const onReplaceProfile = vi.fn(() => true);
+      render(
+        <DataManagement
+          shots={shots}
+          onReplaceAll={onReplaceAll}
+          profile={{}}
+          onReplaceProfile={onReplaceProfile}
+        />
+      );
+
+      uploadText(toJson([{ id: "imp", date: "2026-05-01", doseMg: 40 }]));
+      const dialog = await screen.findByRole("dialog");
+      fireEvent.click(within(dialog).getByRole("button", { name: "Replace" }));
+
+      expect(screen.getByRole("status")).toHaveTextContent(
+        /Couldn.t finish restoring/
+      );
+      expect(screen.queryByText(/Restored/)).not.toBeInTheDocument();
+      // Nothing half-applied: the profile is never touched once shots refuse.
+      expect(onReplaceProfile).not.toHaveBeenCalled();
+    });
+
     it("replaces the profile too, using the profile from the imported file", async () => {
-      const onReplaceAll = vi.fn();
-      const onReplaceProfile = vi.fn();
+      const onReplaceAll = vi.fn(() => true);
+      const onReplaceProfile = vi.fn(() => true);
       render(
         <DataManagement
           shots={shots}
@@ -207,9 +235,9 @@ describe("DataManagement", () => {
       render(
         <DataManagement
           shots={shots}
-          onReplaceAll={vi.fn()}
+          onReplaceAll={vi.fn(() => true)}
           profile={sameProfile}
-          onReplaceProfile={vi.fn()}
+          onReplaceProfile={vi.fn(() => true)}
         />
       );
 
@@ -224,11 +252,11 @@ describe("DataManagement", () => {
     });
 
     it("reports a shot-day-only change under the generic profile-updated message", async () => {
-      const onReplaceProfile = vi.fn();
+      const onReplaceProfile = vi.fn(() => true);
       render(
         <DataManagement
           shots={shots}
-          onReplaceAll={vi.fn()}
+          onReplaceAll={vi.fn(() => true)}
           profile={{ shotDay: "monday" }}
           onReplaceProfile={onReplaceProfile}
         />
@@ -250,9 +278,9 @@ describe("DataManagement", () => {
       render(
         <DataManagement
           shots={shots}
-          onReplaceAll={vi.fn()}
+          onReplaceAll={vi.fn(() => true)}
           profile={{ preferredName: "Lou", startDate: "2025-01-15" }}
-          onReplaceProfile={vi.fn()}
+          onReplaceProfile={vi.fn(() => true)}
         />
       );
 
@@ -271,11 +299,11 @@ describe("DataManagement", () => {
     });
 
     it("clears the profile when the imported file has none", async () => {
-      const onReplaceProfile = vi.fn();
+      const onReplaceProfile = vi.fn(() => true);
       render(
         <DataManagement
           shots={shots}
-          onReplaceAll={vi.fn()}
+          onReplaceAll={vi.fn(() => true)}
           profile={{ preferredName: "Old" }}
           onReplaceProfile={onReplaceProfile}
         />
@@ -293,13 +321,13 @@ describe("DataManagement", () => {
     });
 
     it("aborts the replace (no data loss) if the safety backup can't download", async () => {
-      const onReplaceAll = vi.fn();
+      const onReplaceAll = vi.fn(() => true);
       render(
         <DataManagement
           shots={shots}
           onReplaceAll={onReplaceAll}
           profile={{}}
-          onReplaceProfile={vi.fn()}
+          onReplaceProfile={vi.fn(() => true)}
         />
       );
 
@@ -324,9 +352,9 @@ describe("DataManagement", () => {
       render(
         <DataManagement
           shots={shots}
-          onReplaceAll={vi.fn()}
+          onReplaceAll={vi.fn(() => true)}
           profile={{}}
-          onReplaceProfile={vi.fn()}
+          onReplaceProfile={vi.fn(() => true)}
         />
       );
 
@@ -353,13 +381,13 @@ describe("DataManagement", () => {
     });
 
     it("cancel on the confirm dialog leaves data untouched", async () => {
-      const onReplaceAll = vi.fn();
+      const onReplaceAll = vi.fn(() => true);
       render(
         <DataManagement
           shots={shots}
           onReplaceAll={onReplaceAll}
           profile={{}}
-          onReplaceProfile={vi.fn()}
+          onReplaceProfile={vi.fn(() => true)}
         />
       );
 

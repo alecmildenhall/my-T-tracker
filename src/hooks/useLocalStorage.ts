@@ -26,7 +26,18 @@ const resolveInitial = <T,>(initialValue: InitialValue<T>): T =>
 function writeThrough<T>(
   key: string,
   value: T,
-  reportWrite: (key: string, ok: boolean) => void
+  reportWrite: (key: string, ok: boolean) => void,
+  /**
+   * Write even if storage already holds this exact value.
+   *
+   * "Try again" must actually try. Without this it was the one button in the app
+   * guaranteed to lie: a refused write commits nothing, so state and storage stay
+   * identical, the equality skip below short-circuits, success is reported, and
+   * the banner clears with storage still refusing every write. For the shots
+   * store — the only one that writes through `persist` — that made retry a
+   * permanent no-op that always claimed to have worked.
+   */
+  force = false
 ): boolean {
   let ok = true;
   try {
@@ -36,7 +47,7 @@ function writeThrough<T>(
     // value applied *from* another tab's storage event is already persisted,
     // so we don't re-write it and fire the event back. Storage already holding
     // it counts as persisted, so this still reports success.
-    if (window.localStorage.getItem(key) !== serialized) {
+    if (force || window.localStorage.getItem(key) !== serialized) {
       window.localStorage.setItem(key, serialized);
     }
   } catch (error) {
@@ -136,8 +147,13 @@ export function useLocalStorage<T>(
   // through `persist` (cross-tab sync, the mount write, "Try again"). When
   // `persist` has already written, the value-matches check below makes this a
   // no-op that reports the success it just had.
+  const lastRetry = useRef(retryToken);
   useEffect(() => {
-    writeThrough(key, value, reportWrite);
+    // A bump in `retryToken` is the user pressing "Try again", which has to be a
+    // real attempt rather than a re-affirmation of what storage already holds.
+    const forced = lastRetry.current !== retryToken;
+    lastRetry.current = retryToken;
+    writeThrough(key, value, reportWrite, forced);
   }, [key, value, retryToken, reportWrite]);
 
   // Stay in sync when another tab changes the same key.
