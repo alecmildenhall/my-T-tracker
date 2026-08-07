@@ -745,7 +745,10 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             <button
               type="button"
               className="shot-form__save-error-export"
-              onClick={() => setExportFailed(onExportBackup?.() === false)}
+              // `?? false` so an unwired handler counts as a failure rather than
+              // a success. `=== false` read `undefined` as fine, which made the
+              // button silently dead — the exact thing this panel exists to stop.
+              onClick={() => setExportFailed(!(onExportBackup?.() ?? false))}
             >
               Export a backup
             </button>

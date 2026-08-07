@@ -155,6 +155,36 @@ describe('useLocalStorage', () => {
     })
   })
 
+  describe('storage that cannot even be read', () => {
+    // Safari with "Block all cookies", Firefox with dom.storage disabled, or a
+    // partitioned iframe: touching localStorage THROWS rather than returning
+    // null. An unguarded probe in the write effect throws from a passive effect
+    // on first render, which the ErrorBoundary answers by replacing the whole
+    // app — where this used to degrade quietly to in-memory-only.
+    it('degrades to in-memory instead of throwing out of the effect', () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const getSpy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+        throw new DOMException('SecurityError')
+      })
+      const setSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new DOMException('SecurityError')
+      })
+
+      const { result } = renderHook(() => useLocalStorage('test-key', 'initial'))
+
+      expect(result.current[0]).toBe('initial')
+      act(() => {
+        result.current[1]('updated')
+      })
+      expect(result.current[0]).toBe('updated')
+
+      // This file clears mocks between tests but does not RESTORE them, so a
+      // leaked Storage spy would break every later test in the suite.
+      getSpy.mockRestore()
+      setSpy.mockRestore()
+    })
+  })
+
   describe('updating value', () => {
     // Tests that setter function updates state correctly
     it('should update value using setter function', () => {

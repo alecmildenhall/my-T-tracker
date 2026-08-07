@@ -26,7 +26,7 @@ const resolveInitial = <T,>(initialValue: InitialValue<T>): T =>
 function writeThrough<T>(
   key: string,
   value: T,
-  reportWrite: (key: string, ok: boolean) => void,
+  reportWrite: (key: string, ok: boolean, deliberate?: boolean) => void,
   /**
    * Write even if storage already holds this exact value.
    *
@@ -37,7 +37,9 @@ function writeThrough<T>(
    * store — the only one that writes through `persist` — that made retry a
    * permanent no-op that always claimed to have worked.
    */
-  force = false
+  force = false,
+  /** True when the user asked for this write, rather than the app making it. */
+  deliberate = false
 ): boolean {
   let ok = true;
   try {
@@ -56,8 +58,26 @@ function writeThrough<T>(
     // a console message is a report to someone who will never read it.
     console.warn("[useLocalStorage] Failed to write to localStorage:", error);
   }
-  reportWrite(key, ok);
+  reportWrite(key, ok, deliberate);
   return ok;
+}
+
+/** Nothing stored yet AND still the initial value, so there is nothing to save. */
+function isUntouched<T>(
+  key: string,
+  value: T,
+  initialValue: InitialValue<T>
+): boolean {
+  try {
+    return (
+      window.localStorage.getItem(key) === null &&
+      JSON.stringify(value) === JSON.stringify(resolveInitial(initialValue))
+    );
+  } catch {
+    // Storage is unreadable. Don't claim the store is untouched — let the write
+    // proceed so the failure is reported through the one path that expects it.
+    return false;
+  }
 }
 
 export function useLocalStorage<T>(
@@ -128,7 +148,7 @@ export function useLocalStorage<T>(
         typeof next === "function"
           ? (next as (prev: T) => T)(valueRef.current)
           : next;
-      const ok = writeThrough(key, resolved, reportWrite);
+      const ok = writeThrough(key, resolved, reportWrite, false, true);
       if (ok) {
         valueRef.current = resolved;
         setValue(resolved);
@@ -161,13 +181,14 @@ export function useLocalStorage<T>(
     // failure when something real needed saving, not when it decided to tidy up.
     // Nothing is lost by waiting: an absent key already reads back as the initial
     // value.
-    if (
-      !forced &&
-      window.localStorage.getItem(key) === null &&
-      JSON.stringify(value) === JSON.stringify(resolveInitial(initialRef.current))
-    ) {
-      return;
-    }
+    //
+    // Guarded, because READING localStorage can throw too — Safari with "Block
+    // all cookies", Firefox with dom.storage disabled, a partitioned iframe. An
+    // unguarded probe here throws from a passive effect on first render, which
+    // the ErrorBoundary answers by replacing the entire app; the same setup used
+    // to degrade quietly to in-memory-only. When we cannot tell what is stored,
+    // fall through and let `writeThrough` handle it inside its own try.
+    if (!forced && isUntouched(key, value, initialRef.current)) return;
     writeThrough(key, value, reportWrite, forced);
   }, [key, value, retryToken, reportWrite]);
 

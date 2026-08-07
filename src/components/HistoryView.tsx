@@ -38,7 +38,8 @@ interface HistoryViewProps {
   query: HistoryQuery;
   onQueryChange: (next: HistoryQuery) => void;
   onEditShot: (shot: ShotEntry) => void;
-  onDeleteShot: (id: string) => void;
+  /** Returns whether the deletion reached storage. */
+  onDeleteShot: (id: string) => boolean;
 }
 
 export const HistoryView: React.FC<HistoryViewProps> = ({
@@ -55,6 +56,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   // one mis-tap permanently loses a logged entry. A confirm is throwaway work and
   // worth it against that.
   const [pendingDelete, setPendingDelete] = useState<ShotEntry | null>(null);
+  const [deleteFailed, setDeleteFailed] = useState(false);
   const cancelDeleteRef = useRef<HTMLButtonElement>(null);
   const sectionRef = useRef<HTMLElement>(null);
   const filtersToggleRef = useRef<HTMLButtonElement>(null);
@@ -198,9 +200,20 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   // empties) — the same care the sheet and "Load more" already take.
   const handleDelete = (id: string) => {
     // After removal, this index holds what was the next row down.
-    focusRowAt.current = page.items.findIndex((s) => s.id === id);
+    const next = page.items.findIndex((s) => s.id === id);
+    // A refused delete commits nothing, so the shot is still in the list. Closing
+    // the dialog anyway was the worst version of this: it dismissed as though it
+    // had worked, the row stayed put with nothing said, and a later "Try again"
+    // force-wrote the UNCHANGED list, succeeded, and cleared the banner — a green
+    // all-clear over a delete that never happened. Hold the dialog open and say
+    // so, exactly as the log sheet does.
+    if (!onDeleteShot(id)) {
+      setDeleteFailed(true);
+      return;
+    }
+    focusRowAt.current = next;
+    setDeleteFailed(false);
     setPendingDelete(null);
-    onDeleteShot(id);
   };
 
   return (
@@ -401,11 +414,20 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
       {pendingDelete && (
         <Modal
           labelledBy="delete-shot-title"
-          onClose={() => setPendingDelete(null)}
+          onClose={() => {
+            setDeleteFailed(false);
+            setPendingDelete(null);
+          }}
           initialFocusRef={cancelDeleteRef}
           fallbackFocusRef={sectionRef}
         >
           <h3 id="delete-shot-title">Delete this shot?</h3>
+          {deleteFailed && (
+            <p className="dialog-error" role="alert">
+              Couldn’t delete it — this device isn’t accepting changes right now.
+              The shot is still here, and nothing has been altered.
+            </p>
+          )}
           <p className="dialog-text">
             The entry from <b>{pendingDelete.date}</b> will be removed from this
             device. There is no undo, and no copy anywhere else.
@@ -415,7 +437,10 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
               ref={cancelDeleteRef}
               type="button"
               className="secondary-button"
-              onClick={() => setPendingDelete(null)}
+              onClick={() => {
+                setDeleteFailed(false);
+                setPendingDelete(null);
+              }}
             >
               Keep it
             </button>

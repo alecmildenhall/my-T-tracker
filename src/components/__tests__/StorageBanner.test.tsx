@@ -173,6 +173,51 @@ describe("StorageBanner", () => {
     expect(screen.getByRole("alert")).toBeInTheDocument(); // and did not lie
   });
 
+  it("stays dismissed through repeated failures of a write nobody asked for", () => {
+    // The profile store is optimistic and writes per keystroke, so typing a name
+    // on a full device reports a failure per character. Re-raising on each made
+    // the dismiss button impossible to use: it reappeared on the next letter.
+    // Continuing to type is not new information about a failure already
+    // acknowledged.
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    breakWritesTo("profile");
+    mount();
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: "save profile" }));
+    });
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: "save profile" }));
+    });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("does not carry a stale download error into a later, unrelated failure", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(dl, "tryDownloadTextFile").mockImplementation(() => false);
+    const spy = breakWrites();
+    mount();
+    logAShot();
+    fireEvent.click(screen.getByRole("button", { name: "Export a backup" }));
+    expect(screen.getByRole("alert")).toHaveTextContent(/download didn.t start/i);
+
+    // Storage recovers, the banner goes...
+    spy.mockRestore();
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+    // ...and a later failure re-raises it reporting only what just happened.
+    breakWrites();
+    logAShot();
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).not.toHaveTextContent(/download didn.t start/i);
+  });
+
   it("is not cleared by a DIFFERENT store's write succeeding", () => {
     // Health was a single counter, but writes are per key: saving a display name
     // reported success and wiped a banner that was reporting an unsaved shot.

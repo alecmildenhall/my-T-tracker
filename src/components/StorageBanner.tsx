@@ -30,6 +30,15 @@ export const StorageBanner: React.FC<{
 
   const shown = failingKeys.size > 0 && !dismissed;
 
+  // The banner renders null when hidden but stays mounted, so this state would
+  // outlive the message that explained it: a banner re-raised later by an
+  // unrelated failed write would still be reporting a download nothing had just
+  // attempted. Adjusted during render — React's documented pattern for state
+  // that has to follow changing state, and the one App already uses to release a
+  // stale editing target — rather than in an effect, which would render the
+  // stale message once before correcting it.
+  if (!shown && exportFailed) setExportFailed(false);
+
   // Every control in here removes the element that contains it: ✕ hides the
   // banner, and a successful "Try again" clears the failure that renders it. The
   // browser's response to losing the focused element is to drop focus on <body>,

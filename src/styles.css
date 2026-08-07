@@ -1388,3 +1388,17 @@ textarea {
   font-size: 0.74rem;
   line-height: 1.4;
 }
+
+/* Shared failure line inside a confirm dialog: the change did not reach storage,
+   so the dialog stays open rather than dismissing as though it worked. */
+.dialog-error {
+  margin: 0 0 0.7rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--danger-engaged-border);
+  border-left-width: 3px;
+  border-radius: 8px;
+  background: var(--danger-engaged-bg);
+  color: var(--text);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}

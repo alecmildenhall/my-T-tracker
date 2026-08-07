@@ -895,6 +895,47 @@ describe("App — a failed save is never silent", () => {
     expect(stored[0].notes).toBe("saved fine");
   });
 
+  it("holds the delete confirm open when the deletion can't be written", async () => {
+    // A refused delete commits nothing, so the shot is still listed. Closing the
+    // dialog anyway dismissed as though it had worked — and a later "Try again"
+    // then force-wrote the UNCHANGED list, succeeded, and cleared the banner: a
+    // green all-clear over a delete that never happened.
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    seedShots([{ id: "a", date: "2026-06-01", notes: "keep me" }]);
+    renderApp();
+    goTo("History");
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    breakWrites();
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" })
+    );
+
+    const confirm = within(screen.getByRole("dialog"));
+    expect(confirm.getByRole("alert")).toHaveTextContent(/Couldn.t delete it/);
+    expect(confirm.getByText(/still here/)).toBeInTheDocument();
+    // And the shot really is still there, in state and in storage.
+    expect(
+      JSON.parse(localStorage.getItem("hrt-shot-tracker:v1:shots") ?? "[]")
+    ).toHaveLength(1);
+  });
+
+  it("deletes normally, and closes, once the write lands", async () => {
+    seedShots([{ id: "a", date: "2026-06-01" }]);
+    renderApp();
+    goTo("History");
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" })
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    );
+    expect(
+      JSON.parse(localStorage.getItem("hrt-shot-tracker:v1:shots") ?? "[]")
+    ).toHaveLength(0);
+  });
+
   it("says so when the backup download itself is blocked", () => {
     // The export button is the last recovery on a device that has stopped saving.
     // Unguarded, a throw from this handler escapes React entirely (error

@@ -92,7 +92,13 @@ export function useShots(): UseShots {
   const renameValue = useCallback(
     (field: TextField, from: string, to: string) => {
       const target = to.trim();
-      if (!target) return true; // nothing to write, so nothing failed
+      // A blank name would store "" — which ShotEntry forbids — so there is
+      // nothing to write and nothing to report. Callers must reject a blank
+      // before asking (ManageValues does), because `true` here means "storage
+      // matches your request", and for a request we declined that is only true
+      // vacuously. Kept as a guard rather than a promoted result: the one thing
+      // it must never do is let "" reach a shot.
+      if (!target) return true;
       return persistShots((prev) =>
         prev.map((shot) => {
           const current = shot[field];

@@ -44,8 +44,15 @@ export interface StorageHealth {
    * failed, because they share one device.
    */
   retryToken: number;
-  /** Called by each store after every write attempt, naming the key it wrote. */
-  reportWrite: (key: string, ok: boolean) => void;
+  /**
+   * Called by each store after every write attempt, naming the key it wrote.
+   *
+   * `deliberate` separates a save the user performed — logging a shot, deleting
+   * one, restoring a backup — from an incidental write the app made on its own,
+   * chiefly the optimistic profile store persisting per keystroke. Only the
+   * first matters for re-raising a dismissed banner.
+   */
+  reportWrite: (key: string, ok: boolean, deliberate?: boolean) => void;
   dismiss: () => void;
   retry: () => void;
 }
@@ -76,8 +83,11 @@ export const StorageHealthProvider: React.FC<{ children: React.ReactNode }> = ({
   const [dismissed, setDismissed] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
 
-  const reportWrite = useCallback((key: string, ok: boolean) => {
+  const reportWrite = useCallback(
+    (key: string, ok: boolean, deliberate = false) => {
+    let startedFailing = false;
     setFailingKeys((prev) => {
+      startedFailing = !ok && !prev.has(key);
       // Only a real success clears a key — never a timer, and never the dismiss
       // button, which just hides what is still true.
       if (ok === !prev.has(key)) return prev; // no change for this key
@@ -88,8 +98,18 @@ export const StorageHealthProvider: React.FC<{ children: React.ReactNode }> = ({
     });
     // A new failure is new information, so it re-raises even if the last run was
     // dismissed. Acknowledging one failure must not silence the next.
-    if (!ok) setDismissed(false);
-  }, []);
+    //
+    // "New" is a key that has just started failing, OR any deliberate save that
+    // failed. Without that second clause, dismissing once would silence every
+    // later failed save of the same store — and without the first, the profile's
+    // optimistic per-keystroke writes re-raised the banner on every character,
+    // making dismiss impossible to use while typing a name on a full device.
+    // Repeating an already-acknowledged failure by simply continuing to type is
+    // not news; failing to save something the user just asked to save is.
+      if (!ok && (startedFailing || deliberate)) setDismissed(false);
+    },
+    []
+  );
 
   const dismiss = useCallback(() => setDismissed(true), []);
   const retry = useCallback(() => setRetryToken((n) => n + 1), []);
