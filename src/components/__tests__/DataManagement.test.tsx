@@ -7,11 +7,13 @@ import { toJson } from "../../utils/exportData";
 
 // Stub the download layer: no real Blob/anchor, and predictable filenames.
 vi.mock("../../utils/download", () => ({
-  downloadTextFile: vi.fn(),
+  // The guarded wrapper is what every caller uses now; it returns whether the
+  // download started, so `false` is how a test says "the browser blocked it".
+  tryDownloadTextFile: vi.fn(() => true),
   backupFilename: (stem: string, ext: string) => `${stem}.${ext}`,
 }));
 
-const downloadMock = vi.mocked(downloadModule.downloadTextFile);
+const downloadMock = vi.mocked(downloadModule.tryDownloadTextFile);
 
 const shots: ShotEntry[] = [
   { id: "s1", date: "2026-06-01", doseMg: 50, injectionSite: "thigh" },
@@ -99,9 +101,7 @@ describe("DataManagement", () => {
     });
 
     it("shows an error (not a silent failure) when the download is blocked", () => {
-      downloadMock.mockImplementationOnce(() => {
-        throw new Error("blocked by browser");
-      });
+      downloadMock.mockReturnValueOnce(false); // the browser blocked it
       render(
         <DataManagement
           shots={shots}
@@ -194,11 +194,38 @@ describe("DataManagement", () => {
       fireEvent.click(within(dialog).getByRole("button", { name: "Replace" }));
 
       expect(screen.getByRole("status")).toHaveTextContent(
-        /Couldn.t finish restoring/
+        /Couldn.t restore the backup/
       );
+      expect(screen.getByRole("status")).toHaveTextContent(/Nothing has been changed/);
       expect(screen.queryByText(/Restored/)).not.toBeInTheDocument();
       // Nothing half-applied: the profile is never touched once shots refuse.
       expect(onReplaceProfile).not.toHaveBeenCalled();
+    });
+
+    it("does not claim 'nothing changed' when the shots DID land and the profile didn't", async () => {
+      // The likelier half-failure: the big shots write is what exhausts the
+      // remaining quota, so the small profile write fails right behind it. Saying
+      // "nothing has been changed" there would be false — the history has already
+      // been replaced.
+      const onReplaceAll = vi.fn(() => true);
+      const onReplaceProfile = vi.fn(() => false);
+      render(
+        <DataManagement
+          shots={shots}
+          onReplaceAll={onReplaceAll}
+          profile={{}}
+          onReplaceProfile={onReplaceProfile}
+        />
+      );
+
+      uploadText(toJson([{ id: "imp", date: "2026-05-01" }], { preferredName: "Lou" }));
+      const dialog = await screen.findByRole("dialog");
+      fireEvent.click(within(dialog).getByRole("button", { name: "Replace" }));
+
+      const status = screen.getByRole("status");
+      expect(status).toHaveTextContent(/shots were restored/i);
+      expect(status).not.toHaveTextContent(/Nothing has been changed/);
+      expect(status).not.toHaveTextContent(/^Restored/);
     });
 
     it("replaces the profile too, using the profile from the imported file", async () => {
@@ -335,9 +362,7 @@ describe("DataManagement", () => {
       const dialog = await screen.findByRole("dialog");
 
       // The safety-backup download fails (e.g. blocked object URLs).
-      downloadMock.mockImplementationOnce(() => {
-        throw new Error("blocked by browser");
-      });
+      downloadMock.mockReturnValueOnce(false); // the browser blocked it
       fireEvent.click(within(dialog).getByRole("button", { name: "Replace" }));
 
       // Fail-safe: data is NOT replaced, dialog closes, and the user is told why.

@@ -227,8 +227,8 @@ describe("StorageBanner", () => {
     // this is the escape hatch for a device that will never save again.
     vi.spyOn(console, "warn").mockImplementation(() => {});
     const download = vi
-      .spyOn(dl, "downloadTextFile")
-      .mockImplementation(() => {});
+      .spyOn(dl, "tryDownloadTextFile")
+      .mockImplementation(() => true);
     mount();
     logAShot(); // lands
     breakWrites();

@@ -153,6 +153,21 @@ export function useLocalStorage<T>(
     // real attempt rather than a re-affirmation of what storage already holds.
     const forced = lastRetry.current !== retryToken;
     lastRetry.current = retryToken;
+
+    // Don't seed an untouched store. On mount with nothing stored yet this used
+    // to write `"[]"` — a write nobody asked for, which on a brand-new install in
+    // private browsing threw, and greeted a first-time user with "Your changes
+    // aren't being saved" before they had made any. The app should report a
+    // failure when something real needed saving, not when it decided to tidy up.
+    // Nothing is lost by waiting: an absent key already reads back as the initial
+    // value.
+    if (
+      !forced &&
+      window.localStorage.getItem(key) === null &&
+      JSON.stringify(value) === JSON.stringify(resolveInitial(initialRef.current))
+    ) {
+      return;
+    }
     writeThrough(key, value, reportWrite, forced);
   }, [key, value, retryToken, reportWrite]);
 

@@ -1263,6 +1263,13 @@ textarea {
   margin-bottom: 0.15rem;
 }
 
+.storage-banner__export-error {
+  margin: 0.5rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+
 .storage-banner__actions {
   display: flex;
   gap: 0.45rem;

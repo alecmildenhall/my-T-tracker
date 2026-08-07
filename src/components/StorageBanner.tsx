@@ -11,7 +11,7 @@
 // It sits above the view rather than inside the log sheet because writes fail
 // from at least four places — logging, editing, deleting, and Settings — and an
 // in-sheet message would leave three of them silent.
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useStorageHealth } from "../context/StorageHealthContext";
 import { useBackupExport } from "../hooks/useBackupExport";
 
@@ -20,7 +20,13 @@ export const StorageBanner: React.FC<{
   returnFocusRef?: React.RefObject<HTMLElement | null>;
 }> = ({ returnFocusRef }) => {
   const { failingKeys, dismissed, dismiss, retry } = useStorageHealth();
-  const handleExport = useBackupExport();
+  const exportBackup = useBackupExport();
+  // A download can be refused too — by a browser blocking it, or by a device
+  // with nothing left to allocate, which is the device reading this banner. An
+  // export button that silently does nothing is this feature's own bug, inside
+  // its own escape hatch.
+  const [exportFailed, setExportFailed] = useState(false);
+  const handleExport = () => setExportFailed(!exportBackup());
 
   const shown = failingKeys.size > 0 && !dismissed;
 
@@ -65,6 +71,13 @@ export const StorageBanner: React.FC<{
         Anything you add stays on screen but won’t survive a reload. Storage may
         be full, or private browsing may be blocking it.
       </div>
+
+      {exportFailed && (
+        <p className="storage-banner__export-error">
+          The download didn’t start. Try Settings → Your data, or free up space
+          first.
+        </p>
+      )}
 
       <div className="storage-banner__actions">
         <button type="button" className="storage-banner__go" onClick={retry}>

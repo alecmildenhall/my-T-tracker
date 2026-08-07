@@ -10,10 +10,11 @@ import { useCallback } from "react";
 import { useShotsContext } from "../context/ShotsContext";
 import { useProfileContext } from "../context/ProfileContext";
 import { toJson } from "../utils/exportData";
-import { backupFilename, downloadTextFile } from "../utils/download";
+import { backupFilename, tryDownloadTextFile } from "../utils/download";
 
 /**
- * Returns a callback that downloads everything the app currently holds.
+ * Returns a callback that downloads everything the app currently holds, and
+ * reports whether the download actually started.
  *
  * It reads in-memory state, not storage, so it still produces a complete file on
  * a device that has stopped accepting writes — which is the whole point. What it
@@ -21,15 +22,17 @@ import { backupFilename, downloadTextFile } from "../utils/download";
  * the log form has deliberately not been committed anywhere, so anything offering
  * this button beside an unsaved entry has to say so.
  */
-export function useBackupExport(): () => void {
+export function useBackupExport(): () => boolean {
   const { shots } = useShotsContext();
   const { profile } = useProfileContext();
 
-  return useCallback(() => {
-    downloadTextFile(
-      toJson(shots, profile),
-      backupFilename("t-shot-backup", "json"),
-      "application/json"
-    );
-  }, [shots, profile]);
+  return useCallback(
+    () =>
+      tryDownloadTextFile(
+        toJson(shots, profile),
+        backupFilename("t-shot-backup", "json"),
+        "application/json"
+      ),
+    [shots, profile]
+  );
 }

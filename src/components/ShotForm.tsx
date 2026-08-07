@@ -110,17 +110,38 @@ function freshDraft(): ShotDraft {
   };
 }
 
+/**
+ * What a save attempt actually did.
+ *
+ * Three outcomes, three values — deliberately not a boolean. A boolean forced
+ * "storage refused this" and "I ignored you, the sheet is already closing" to
+ * share `false`, and the form can only read that one way: it announced
+ * "Couldn't save this shot" over a shot that had just saved perfectly, purely
+ * because the second tap of a double-tap landed during the exit animation.
+ * See CLAUDE.md — one value, one meaning. `undefined` still reads as `saved`,
+ * so a caller that doesn't care (the form renders fine on its own) is unchanged.
+ */
+export type SaveOutcome =
+  /** It reached storage. Clear the form. */
+  | "saved"
+  /** Storage refused the write. Keep every field and say so. */
+  | "refused"
+  /** Nothing was attempted. Change nothing on screen — least of all claim a failure. */
+  | "ignored";
+
 interface ShotFormProps {
-  /** Return `false` when the shot did not persist — the form then keeps every
+  /** Returns what the save did; see {@link SaveOutcome}. `"refused"` keeps every
    *  field, so a failed write does not also erase what was typed. */
-  onAddShot: (shot: ShotEntry) => void | boolean;
-  onUpdateShot?: (shot: ShotEntry) => void | boolean;
+  onAddShot: (shot: ShotEntry) => void | SaveOutcome;
+  onUpdateShot?: (shot: ShotEntry) => void | SaveOutcome;
   /**
    * Download a backup. Offered inside the sheet when a save fails, because from
-   * there Settings is unreachable. Optional only so the form stays renderable on
-   * its own in tests; App always supplies it, and an App test proves it.
+   * there Settings is unreachable. Returns whether the download actually
+   * started, so a browser that blocks it doesn't leave the button looking dead.
+   * Optional only so the form stays renderable on its own in tests; App always
+   * supplies it, and an App test proves it.
    */
-  onExportBackup?: () => void;
+  onExportBackup?: () => boolean;
   editingShot?: ShotEntry | null;
   /** Close the sheet. Never destructive: the parent keeps whatever was entered
    *  and restores it next time this same form is opened, for a new shot or an
@@ -221,6 +242,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   const headingRef = useRef<HTMLHeadingElement>(null);
   const [dateError, setDateError] = useState<string | null>(null);
   const [saveFailed, setSaveFailed] = useState(false);
+  const [exportFailed, setExportFailed] = useState(false);
   const [doseError, setDoseError] = useState<string | null>(null);
   const [painError, setPainError] = useState<string | null>(null);
   const [time, setTime] = useState<string>(start.time);
@@ -265,6 +287,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // Clearing is starting over, so the failed-save state goes with the values it
     // referred to — including the button's label.
     setSaveFailed(false);
+    setExportFailed(false);
     setTime("");
     setInjectionSite("");
     setInjectionSitePosition("");
@@ -364,8 +387,14 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       notes: notes || undefined,
     };
 
-    const persisted =
+    const outcome =
       editingShot && onUpdateShot ? onUpdateShot(newShot) : onAddShot(newShot);
+
+    // The sheet is already leaving and this submit was dropped. Say nothing: the
+    // shot the user is actually thinking about was saved by the press before
+    // this one, and an assertive alert claiming otherwise sends them to log it
+    // again — a duplicate, with no undo until slice C.
+    if (outcome === "ignored") return;
 
     // A save that did not reach storage must leave the form exactly as it is.
     // Otherwise the sheet stays open (the parent holds it) showing empty fields,
@@ -377,7 +406,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // failure the user is actually watching for, the banner is unreadable,
     // unannounced, and its buttons unclickable until the sheet is gone. Without
     // this line the whole flow is: tap Save, nothing happens, no explanation.
-    if (persisted === false) {
+    if (outcome === "refused") {
       setSaveFailed(true);
       return;
     }
@@ -716,7 +745,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             <button
               type="button"
               className="shot-form__save-error-export"
-              onClick={() => onExportBackup?.()}
+              onClick={() => setExportFailed(onExportBackup?.() === false)}
             >
               Export a backup
             </button>
@@ -725,8 +754,9 @@ export const ShotForm: React.FC<ShotFormProps> = ({
                 has not been. It protects the history, not the entry on screen —
                 that is what holding the form open is for. */}
             <p className="shot-form__save-error-fine">
-              Saves your logged shots to a file. This one isn’t in it yet — it
-              stays on screen until it saves.
+              {exportFailed
+                ? "The download didn’t start — the browser may be blocking it, or there may be no space left."
+                : "Saves your logged shots to a file. This one isn’t in it yet — it stays on screen until it saves."}
             </p>
           </div>
         )}

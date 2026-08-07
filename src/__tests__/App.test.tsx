@@ -813,8 +813,8 @@ describe("App — a failed save is never silent", () => {
     // from a sheet that covers Settings.
     vi.spyOn(console, "warn").mockImplementation(() => {});
     const download = vi
-      .spyOn(dl, "downloadTextFile")
-      .mockImplementation(() => {});
+      .spyOn(dl, "tryDownloadTextFile")
+      .mockImplementation(() => true);
     seedShots([{ id: "old", date: "2026-06-01", notes: "already logged" }]);
     breakWrites();
     renderApp();
@@ -869,6 +869,53 @@ describe("App — a failed save is never silent", () => {
     expect(notes()).toHaveValue("still here");
     expect(within(screen.getByRole("dialog")).getByRole("alert")).toBeInTheDocument();
     expect(localStorage.getItem("hrt-shot-tracker:v1:shots")).toBeNull();
+  });
+
+  it("says nothing when a Save is dropped during the sheet's exit — the shot DID save", () => {
+    // The closing guard and a refused write used to share `false`, and the form
+    // can only read that one way. So a double-tapped Save — the codebase's own
+    // comment notes 200ms is precisely a double-tap — announced "Couldn't save
+    // this shot" over a shot that had just saved perfectly, assertively, as the
+    // sheet slid away. The obvious response is to log it again: a duplicate, with
+    // no undo until slice C.
+    renderApp(); // storage working
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    const sheet = () => within(screen.getByRole("dialog"));
+    fireEvent.change(sheet().getByPlaceholderText(/remember for later/i), {
+      target: { value: "saved fine" },
+    });
+    fireEvent.click(sheet().getByRole("button", { name: "Save shot" }));
+    // Second tap, inside the exit window, while the button is still live.
+    fireEvent.click(sheet().getByRole("button", { name: "Save shot" }));
+
+    expect(sheet().queryByRole("alert")).not.toBeInTheDocument();
+    expect(sheet().queryByRole("button", { name: "Save again" })).not.toBeInTheDocument();
+    const stored = JSON.parse(localStorage.getItem("hrt-shot-tracker:v1:shots") ?? "[]");
+    expect(stored).toHaveLength(1);
+    expect(stored[0].notes).toBe("saved fine");
+  });
+
+  it("says so when the backup download itself is blocked", () => {
+    // The export button is the last recovery on a device that has stopped saving.
+    // Unguarded, a throw from this handler escapes React entirely (error
+    // boundaries don't catch event handlers) and the button just looks dead —
+    // this feature's own bug, inside its own escape hatch.
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(dl, "tryDownloadTextFile").mockImplementation(() => false);
+    breakWrites();
+    renderApp();
+
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+    );
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Export a backup" })
+    );
+
+    expect(within(screen.getByRole("dialog")).getByRole("alert")).toHaveTextContent(
+      /download didn.t start/i
+    );
   });
 
   it("relabels Save to 'Save again' after a refused write, and back on success", () => {

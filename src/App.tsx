@@ -12,6 +12,7 @@ import { StorageBanner } from "./components/StorageBanner";
 import { useBackupExport } from "./hooks/useBackupExport";
 import { useShotsContext } from "./context/ShotsContext";
 import type { ShotEntry } from "./types/shot";
+import type { SaveOutcome } from "./components/ShotForm";
 import type { View } from "./types/view";
 
 const SHEET_HEADING_ID = "shot-sheet-title";
@@ -215,21 +216,21 @@ const App: React.FC = () => {
   // the sheet holding open is not just a courtesy: the form is now the only copy
   // of that entry, and pressing Save again retries it instead of appending a
   // second one.
-  const handleAddShot = (shot: ShotEntry) => {
-    // `false`, not a bare return: the form reads anything else as "saved" and
-    // clears its fields, so a Save landing inside the 200ms exit window (where
-    // the button is still live) blanked the form and hid the failure message as
-    // though the shot had been written. Nothing was.
-    if (closingRef.current) return false;
-    if (!addShot(shot)) return false; // sheet stays put, fields kept, and it says why
+  const handleAddShot = (shot: ShotEntry): SaveOutcome => {
+    // "ignored", not "refused": the sheet is on its way out and this submit is
+    // being dropped, which is not the same event as storage rejecting a write.
+    // Collapsing the two into `false` made a double-tapped Save announce
+    // "Couldn't save this shot" over a shot that had just saved perfectly.
+    if (closingRef.current) return "ignored";
+    if (!addShot(shot)) return "refused"; // sheet stays put, fields kept, and it says why
     clearDraft();
     closeSheet();
-    return true;
+    return "saved";
   };
 
-  const handleUpdateShot = (shot: ShotEntry) => {
-    if (closingRef.current) return false; // see handleAddShot
-    if (!updateShot(shot.id, shot)) return false; // sheet holds; see handleAddShot
+  const handleUpdateShot = (shot: ShotEntry): SaveOutcome => {
+    if (closingRef.current) return "ignored"; // see handleAddShot
+    if (!updateShot(shot.id, shot)) return "refused"; // sheet holds; see handleAddShot
     // Saved, so there is nothing in progress left to restore for this shot.
     liveDraft.current = null;
     setEditDrafts((prev) => {
@@ -238,6 +239,9 @@ const App: React.FC = () => {
       return next;
     });
     closeSheet();
+    // Symmetric with handleAddShot: the premise of this whole path is that a
+    // caller can ask what the save did, so the success case has to answer too.
+    return "saved";
   };
 
   return (

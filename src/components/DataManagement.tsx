@@ -8,7 +8,7 @@ import type { ShotEntry } from "../types/shot";
 import type { Profile } from "../types/profile";
 import { toCsv, toJson } from "../utils/exportData";
 import { parseBackup } from "../utils/importData";
-import { backupFilename, downloadTextFile } from "../utils/download";
+import { backupFilename, tryDownloadTextFile } from "../utils/download";
 import { pluralizeEntries } from "../utils/format";
 import { hasProfileData, pickProfileFields } from "../utils/backupDto";
 import { Modal } from "./Modal";
@@ -42,8 +42,20 @@ const EXPORT_ERROR =
   "Couldn’t save the file. Your browser may be blocking downloads — try again, or check its settings.";
 
 const IMPORT_WRITE_ERROR =
-  "Couldn’t finish restoring the backup — this device isn’t accepting writes. " +
-  "Try again when there’s more space; the safety copy just downloaded is unaffected.";
+  "Couldn’t restore the backup — this device isn’t accepting writes. Nothing has " +
+  "been changed. Try again when there’s more space; the safety copy just " +
+  "downloaded is unaffected.";
+
+/**
+ * Shots landed, the profile didn't. Deliberately its own message: the one above
+ * says "nothing has been changed", and here the history HAS been replaced. This
+ * is also the likelier of the two — the large shots write is what exhausts the
+ * remaining quota, leaving the small profile write to fail right behind it.
+ */
+const IMPORT_PARTIAL_ERROR =
+  "Your shots were restored, but the name and journey settings from the backup " +
+  "weren’t — this device stopped accepting writes part-way. Re-enter them in " +
+  "Settings, or import again when there’s more space.";
 
 const IMPORT_BACKUP_ERROR =
   "Couldn’t back up your current data, so nothing was changed. Try again, or check your browser’s download settings.";
@@ -53,15 +65,6 @@ const IMPORT_BACKUP_ERROR =
  * blocked object URLs in a sandboxed context). Callers decide how to report it —
  * exports show a notice; the destructive import aborts rather than proceed.
  */
-function tryDownload(text: string, name: string, mime: string): boolean {
-  try {
-    downloadTextFile(text, name, mime);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 export const DataManagement: React.FC<DataManagementProps> = ({
   shots,
   onReplaceAll,
@@ -91,7 +94,7 @@ export const DataManagement: React.FC<DataManagementProps> = ({
 
   const handleExportJson = () => {
     if (
-      !tryDownload(
+      !tryDownloadTextFile(
         toJson(shots, profile),
         backupFilename("t-shot-backup", "json"),
         "application/json"
@@ -106,7 +109,7 @@ export const DataManagement: React.FC<DataManagementProps> = ({
 
   const handleExportCsv = () => {
     if (
-      !tryDownload(
+      !tryDownloadTextFile(
         toCsv(shots),
         backupFilename("t-shot-export", "csv"),
         "text/csv"
@@ -161,7 +164,7 @@ export const DataManagement: React.FC<DataManagementProps> = ({
     const hasCurrentData = shots.length > 0 || hasProfileData(profile);
     if (
       hasCurrentData &&
-      !tryDownload(
+      !tryDownloadTextFile(
         toJson(shots, profile),
         backupFilename("t-shot-backup-before-import", "json"),
         "application/json"
@@ -175,11 +178,13 @@ export const DataManagement: React.FC<DataManagementProps> = ({
     // writes would otherwise leave the restore half-applied — the imported name
     // in memory, the imported shots nowhere — under a green "Restored 12 entries
     // from backup." The count was the one thing it could not honestly claim.
-    if (
-      !onReplaceAll(pending.incoming) ||
-      !onReplaceProfile(pending.incomingProfile)
-    ) {
+    if (!onReplaceAll(pending.incoming)) {
       setStatus({ kind: "error", message: IMPORT_WRITE_ERROR });
+      setPending(null);
+      return;
+    }
+    if (!onReplaceProfile(pending.incomingProfile)) {
+      setStatus({ kind: "error", message: IMPORT_PARTIAL_ERROR });
       setPending(null);
       return;
     }
