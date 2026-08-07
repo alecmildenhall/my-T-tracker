@@ -731,11 +731,17 @@ export const ShotForm: React.FC<ShotFormProps> = ({
           </div>
         )}
         {/* Relabels after a refused write, and stays relabelled until the save
-            lands. "Save shot" would be describing an outcome the last press did
-            not produce, and this button IS the retry — the form deliberately has
-            no second one, since two controls submitting the same form only makes
-            you choose between them. It also puts the same word here as on the
-            storage banner, which is the other place a failed write is retried.
+            lands: "Save shot" would be naming an outcome the previous press did
+            not produce. This button IS the retry — the form deliberately has no
+            second one, since two controls submitting the same form only make you
+            choose between them.
+
+            "Save again" rather than the banner's "Try again", which was the first
+            attempt. A button label's one job is to say what pressing it does, and
+            a bare "Try again" drops the verb: read on its own — which is exactly
+            how a screen reader offers it in a list of buttons — it could be
+            retrying anything. Both halves are built from the same verb here so
+            they cannot drift into naming different actions.
 
             The label reverts on its own everywhere the form starts over:
             `saveFailed` is component state, and App keys this form by the shot
@@ -743,11 +749,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             different shot, "Clear form" and a reload each get a fresh one. There
             is nothing to persist and nothing to time out. */}
         <button type="submit" className="primary-button shot-form__save">
-          {saveFailed
-            ? "Try again"
-            : editingShot
-              ? "Update shot"
-              : "Save shot"}
+          {`${editingShot ? "Update" : "Save"} ${saveFailed ? "again" : "shot"}`}
         </button>
       </div>
     </form>

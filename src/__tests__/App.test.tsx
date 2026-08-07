@@ -863,7 +863,7 @@ describe("App — a failed save is never silent", () => {
       within(screen.getByRole("dialog")).getByRole("button", { name: "Close" })
     );
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Try again" })
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Save again" })
     );
 
     expect(notes()).toHaveValue("still here");
@@ -871,10 +871,10 @@ describe("App — a failed save is never silent", () => {
     expect(localStorage.getItem("hrt-shot-tracker:v1:shots")).toBeNull();
   });
 
-  it("relabels Save to 'Try again' after a refused write, and back on success", () => {
+  it("relabels Save to 'Save again' after a refused write, and back on success", () => {
     // "Save shot" would be naming an outcome the last press did not produce. The
-    // button IS the retry, so it should say so — the same word the storage banner
-    // uses for the same job.
+    // button IS the retry, so it says so — while keeping the verb, so it never
+    // stops naming what it acts on.
     vi.spyOn(console, "warn").mockImplementation(() => {});
     const spy = breakWrites();
     renderApp();
@@ -884,22 +884,22 @@ describe("App — a failed save is never silent", () => {
     expect(inSheet().getByRole("button", { name: "Save shot" })).toBeInTheDocument();
 
     fireEvent.click(inSheet().getByRole("button", { name: "Save shot" }));
-    expect(inSheet().getByRole("button", { name: "Try again" })).toBeInTheDocument();
+    expect(inSheet().getByRole("button", { name: "Save again" })).toBeInTheDocument();
     expect(inSheet().queryByRole("button", { name: "Save shot" })).not.toBeInTheDocument();
 
     // It stays relabelled while it keeps failing, rather than flickering back.
-    fireEvent.click(inSheet().getByRole("button", { name: "Try again" }));
-    expect(inSheet().getByRole("button", { name: "Try again" })).toBeInTheDocument();
+    fireEvent.click(inSheet().getByRole("button", { name: "Save again" }));
+    expect(inSheet().getByRole("button", { name: "Save again" })).toBeInTheDocument();
 
     // And the shot lands on the retry.
     spy.mockRestore();
-    fireEvent.click(inSheet().getByRole("button", { name: "Try again" }));
+    fireEvent.click(inSheet().getByRole("button", { name: "Save again" }));
     expect(
       JSON.parse(localStorage.getItem("hrt-shot-tracker:v1:shots") ?? "[]")
     ).toHaveLength(1);
   });
 
-  it("relabels an EDIT's button too, since it failed the same way", () => {
+  it("relabels an EDIT's button with ITS verb, not the new-shot one", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     seedShots([{ id: "a", date: "2026-06-01", notes: "before" }]);
     renderApp();
@@ -921,8 +921,10 @@ describe("App — a failed save is never silent", () => {
       within(screen.getByRole("dialog")).getByRole("button", { name: "Update shot" })
     );
 
+    // "Update again", not "Save again": the retry keeps the verb the action had,
+    // so the button never stops naming what it does.
     expect(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Try again" })
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Update again" })
     ).toBeInTheDocument();
   });
 
@@ -939,7 +941,7 @@ describe("App — a failed save is never silent", () => {
       within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
     );
     expect(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Try again" })
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Save again" })
     ).toBeInTheDocument();
 
     // Dismiss, let the sheet finish leaving, and open a fresh one.
@@ -952,14 +954,39 @@ describe("App — a failed save is never silent", () => {
 
     const sheet = within(screen.getByRole("dialog"));
     expect(sheet.getByRole("button", { name: "Save shot" })).toBeInTheDocument();
-    expect(sheet.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
+    expect(sheet.queryByRole("button", { name: "Save again" })).not.toBeInTheDocument();
     // ...and no stale failure message riding along with it.
     expect(sheet.queryByRole("alert")).not.toBeInTheDocument();
   });
 
+  it("keeps the form's retry distinct from the banner's, so both stay unambiguous", () => {
+    // The banner says "Try again" because it retries every store from a screen
+    // with no other button. The form's button is the save itself, so it keeps the
+    // verb. Both are on screen together after a failed save, and a bare "Try
+    // again" in two places doing two different things is how a screen-reader user
+    // ends up pressing the wrong one.
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    breakWrites();
+    renderApp();
+
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+    );
+
+    const sheet = within(screen.getByRole("dialog"));
+    expect(sheet.getByRole("button", { name: "Save again" })).toBeInTheDocument();
+    // The sheet's own retry is never the banner's word...
+    expect(sheet.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
+    // ...and every label the button can take still names the action.
+    expect(
+      sheet.getByRole("button", { name: "Save again" }).textContent
+    ).toMatch(/^Save /);
+  });
+
   it("takes the label back when 'Clear form' starts the entry over", () => {
     // Clearing is starting over, so the failed-save state has to go with the
-    // values it referred to. Left behind, the button says "Try again" over an
+    // values it referred to. Left behind, the button says "Save again" over an
     // empty form, referring to an attempt whose contents no longer exist.
     vi.spyOn(console, "warn").mockImplementation(() => {});
     breakWrites();
@@ -971,7 +998,7 @@ describe("App — a failed save is never silent", () => {
       target: { value: "something" },
     });
     fireEvent.click(inSheet().getByRole("button", { name: "Save shot" }));
-    expect(inSheet().getByRole("button", { name: "Try again" })).toBeInTheDocument();
+    expect(inSheet().getByRole("button", { name: "Save again" })).toBeInTheDocument();
 
     fireEvent.click(inSheet().getByRole("button", { name: "Clear form" }));
 
@@ -1003,7 +1030,7 @@ describe("App — a failed save is never silent", () => {
     // Storage comes back and the user presses the retry on the held-open sheet.
     spy.mockRestore();
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Try again" })
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Save again" })
     );
 
     const stored = JSON.parse(
