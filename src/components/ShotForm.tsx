@@ -262,6 +262,9 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     setDateError(null);
     setDoseError(null);
     setPainError(null);
+    // Clearing is starting over, so the failed-save state goes with the values it
+    // referred to — including the button's label.
+    setSaveFailed(false);
     setTime("");
     setInjectionSite("");
     setInjectionSitePosition("");
@@ -703,7 +706,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             <p className="shot-form__save-error-text">
               <strong>Couldn’t save this shot.</strong> Storage may be full, or
               private browsing may be blocking it. Nothing you typed has been
-              lost — press Save to try again.
+              lost.
             </p>
             {/* The button is HERE rather than a sentence pointing at Settings.
                 Retrying is the only other move, and on a genuinely full device
@@ -727,8 +730,24 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             </p>
           </div>
         )}
+        {/* Relabels after a refused write, and stays relabelled until the save
+            lands. "Save shot" would be describing an outcome the last press did
+            not produce, and this button IS the retry — the form deliberately has
+            no second one, since two controls submitting the same form only makes
+            you choose between them. It also puts the same word here as on the
+            storage banner, which is the other place a failed write is retried.
+
+            The label reverts on its own everywhere the form starts over:
+            `saveFailed` is component state, and App keys this form by the shot
+            being edited inside a sheet that unmounts on close — so a new entry, a
+            different shot, "Clear form" and a reload each get a fresh one. There
+            is nothing to persist and nothing to time out. */}
         <button type="submit" className="primary-button shot-form__save">
-          {editingShot ? "Update shot" : "Save shot"}
+          {saveFailed
+            ? "Try again"
+            : editingShot
+              ? "Update shot"
+              : "Save shot"}
         </button>
       </div>
     </form>
