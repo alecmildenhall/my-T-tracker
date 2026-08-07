@@ -26,7 +26,7 @@ const Harness = ({ data = shots }: { data?: ShotEntry[] }) => {
       query={query}
       onQueryChange={setQuery}
       onEditShot={vi.fn()}
-      onDeleteShot={vi.fn()}
+      onDeleteShot={vi.fn(() => true)}
     />
   );
 };
@@ -252,7 +252,7 @@ describe("HistoryView", () => {
             query={query}
             onQueryChange={setQuery}
             onEditShot={vi.fn()}
-            onDeleteShot={vi.fn()}
+            onDeleteShot={vi.fn(() => true)}
           />
         </>
       );
@@ -296,7 +296,7 @@ describe("HistoryView", () => {
             query={query}
             onQueryChange={setQuery}
             onEditShot={vi.fn()}
-            onDeleteShot={vi.fn()}
+            onDeleteShot={vi.fn(() => true)}
           />
         </>
       );
@@ -335,7 +335,7 @@ describe("HistoryView", () => {
             query={query}
             onQueryChange={setQuery}
             onEditShot={vi.fn()}
-            onDeleteShot={vi.fn()}
+            onDeleteShot={vi.fn(() => true)}
           />
         </>
       );
@@ -456,7 +456,10 @@ describe("HistoryView", () => {
           query={query}
           onQueryChange={setQuery}
           onEditShot={vi.fn()}
-          onDeleteShot={(id) => setData((cur) => cur.filter((s) => s.id !== id))}
+          onDeleteShot={(id) => {
+            setData((cur) => cur.filter((s) => s.id !== id));
+            return true;
+          }}
         />
       );
     };
@@ -488,7 +491,10 @@ describe("HistoryView", () => {
           query={query}
           onQueryChange={setQuery}
           onEditShot={vi.fn()}
-          onDeleteShot={(id) => setData((cur) => cur.filter((s) => s.id !== id))}
+          onDeleteShot={(id) => {
+            setData((cur) => cur.filter((s) => s.id !== id));
+            return true;
+          }}
         />
       );
     };
@@ -523,7 +529,7 @@ describe("HistoryView", () => {
             query={query}
             onQueryChange={setQuery}
             onEditShot={vi.fn()}
-            onDeleteShot={vi.fn()}
+            onDeleteShot={vi.fn(() => true)}
           />
         </>
       );
@@ -555,7 +561,10 @@ describe("HistoryView", () => {
           query={query}
           onQueryChange={setQuery}
           onEditShot={vi.fn()}
-          onDeleteShot={(id) => setData((cur) => cur.filter((s) => s.id !== id))}
+          onDeleteShot={(id) => {
+            setData((cur) => cur.filter((s) => s.id !== id));
+            return true;
+          }}
         />
       );
     };
@@ -594,7 +603,10 @@ describe("HistoryView", () => {
           query={query}
           onQueryChange={setQuery}
           onEditShot={vi.fn()}
-          onDeleteShot={(id) => setData((cur) => cur.filter((s) => s.id !== id))}
+          onDeleteShot={(id) => {
+            setData((cur) => cur.filter((s) => s.id !== id));
+            return true;
+          }}
         />
       );
     };

@@ -8,8 +8,11 @@ import { RecentShots } from "./components/RecentShots";
 import { HistoryView } from "./components/HistoryView";
 import { emptyHistoryQuery, type HistoryQuery } from "./utils/historyQuery";
 import { Modal, SHEET_EXIT_MS } from "./components/Modal";
+import { StorageBanner } from "./components/StorageBanner";
+import { useBackupExport } from "./hooks/useBackupExport";
 import { useShotsContext } from "./context/ShotsContext";
 import type { ShotEntry } from "./types/shot";
+import type { SaveOutcome } from "./components/ShotForm";
 import type { View } from "./types/view";
 
 const SHEET_HEADING_ID = "shot-sheet-title";
@@ -22,6 +25,7 @@ const VIEW_TITLES: Record<View, string> = {
 
 const App: React.FC = () => {
   const { shots, addShot, updateShot, deleteShot } = useShotsContext();
+  const exportBackup = useBackupExport();
   const [editingShot, setEditingShot] = useState<ShotEntry | null>(null);
   // The log form is a sheet rather than an always-open panel on Home, so the
   // greeting, the primary action, and the recent teaser all fit above the fold.
@@ -203,16 +207,30 @@ const App: React.FC = () => {
   // duplicate, since the post-save reset had already cleared the fields — and a
   // Save landing just after ✕/Escape saved a shot the user had just dismissed.
   // 200ms is precisely a double-tap, and there is no undo until slice C.
-  const handleAddShot = (shot: ShotEntry) => {
-    if (closingRef.current) return;
-    addShot(shot);
+  // A failed save must not ALSO lose what was typed. The sheet closes on save
+  // and the draft is cleared, so without this a write that throws left the user
+  // with nothing on screen and nothing in storage — the worst of both.
+  //
+  // `addShot` reports what the write actually did rather than what a probe
+  // predicted it would do, and it commits nothing when the write is refused. So
+  // the sheet holding open is not just a courtesy: the form is now the only copy
+  // of that entry, and pressing Save again retries it instead of appending a
+  // second one.
+  const handleAddShot = (shot: ShotEntry): SaveOutcome => {
+    // "ignored", not "refused": the sheet is on its way out and this submit is
+    // being dropped, which is not the same event as storage rejecting a write.
+    // Collapsing the two into `false` made a double-tapped Save announce
+    // "Couldn't save this shot" over a shot that had just saved perfectly.
+    if (closingRef.current) return "ignored";
+    if (!addShot(shot)) return "refused"; // sheet stays put, fields kept, and it says why
     clearDraft();
     closeSheet();
+    return "saved";
   };
 
-  const handleUpdateShot = (shot: ShotEntry) => {
-    if (closingRef.current) return;
-    updateShot(shot.id, shot);
+  const handleUpdateShot = (shot: ShotEntry): SaveOutcome => {
+    if (closingRef.current) return "ignored"; // see handleAddShot
+    if (!updateShot(shot.id, shot)) return "refused"; // sheet holds; see handleAddShot
     // Saved, so there is nothing in progress left to restore for this shot.
     liveDraft.current = null;
     setEditDrafts((prev) => {
@@ -221,6 +239,9 @@ const App: React.FC = () => {
       return next;
     });
     closeSheet();
+    // Symmetric with handleAddShot: the premise of this whole path is that a
+    // caller can ask what the save did, so the success case has to answer too.
+    return "saved";
   };
 
   return (
@@ -262,6 +283,11 @@ const App: React.FC = () => {
           {VIEW_TITLES[view]}
         </h1>
       </header>
+
+      {/* Above every view, not inside the log sheet: writes fail from logging,
+          editing, deleting and Settings alike, and an in-sheet message would
+          leave three of those silent. */}
+      <StorageBanner returnFocusRef={titleRef} />
 
       {view === "home" && (
         <main className="app-main">
@@ -314,6 +340,7 @@ const App: React.FC = () => {
             headingId={SHEET_HEADING_ID}
             onAddShot={handleAddShot}
             onUpdateShot={handleUpdateShot}
+            onExportBackup={exportBackup}
             editingShot={activeEditingShot}
             onDismiss={dismissSheet}
             shots={shots}

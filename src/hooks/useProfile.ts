@@ -17,8 +17,12 @@ export interface UseProfile {
   setShotDay: (day: Weekday | undefined) => void;
   /** Merge a partial patch into the profile. */
   updateProfile: (patch: Partial<Profile>) => void;
-  /** Replace the whole profile (used when restoring a backup). Passing {} clears it. */
-  replaceProfile: (next: Profile) => void;
+  /**
+   * Replace the whole profile (used when restoring a backup). Passing {} clears
+   * it. Returns whether it reached storage, so a restore can be reported as the
+   * failure it was rather than announcing entries it never wrote.
+   */
+  replaceProfile: (next: Profile) => boolean;
 }
 
 const EMPTY: Profile = {};
@@ -50,8 +54,30 @@ function sanitizeProfile(raw: unknown): Profile {
   return clean as Profile;
 }
 
+/**
+ * Note the deliberate split below: `replaceProfile` writes through (and reports),
+ * while the per-field setters stay optimistic on plain `setProfile`.
+ *
+ * It is NOT the mix `useShots` warns about, and it must not be "fixed" into
+ * write-through everywhere. These fields are bound to inputs the user types into
+ * a character at a time, and `persist` only commits state when the write lands —
+ * so on a device refusing writes, a write-through name field would refuse to
+ * show the letters being typed into it. Silently discarding keystrokes is a far
+ * worse failure than optimistically showing a name the banner is simultaneously
+ * saying isn't saved.
+ *
+ * A restore is the opposite kind of event: one deliberate, destructive action
+ * whose result the user needs told, and nothing to type into.
+ *
+ * The constraint the two share: never call a write-through and an optimistic
+ * mutation of this store in the same tick. `setProfile` queues its update for
+ * React to apply later, so a `persistProfile` call alongside it would read a
+ * snapshot that predates it and write the stale profile back — the shape that
+ * resurrected a deleted shot in `useShots`. Nothing does this today;
+ * `replaceProfile` ignores `prev` entirely and is only reached from import.
+ */
 export function useProfile(): UseProfile {
-  const [profile, setProfile] = useLocalStorage<Profile>(
+  const [profile, setProfile, persistProfile] = useLocalStorage<Profile>(
     STORAGE_KEYS.profile,
     EMPTY,
     { sanitize: sanitizeProfile }
@@ -77,13 +103,14 @@ export function useProfile(): UseProfile {
       // Full replace, not a merge: drop any now-blank known field so a restored
       // profile is normalized the same way a typed one is. Discards the previous
       // profile entirely (including unknown fields) — the backup is the snapshot.
-      setProfile(() => {
+      // Writes through, so an import can be all-or-nothing with the shots half.
+      return persistProfile(() => {
         const clean: Record<string, unknown> = { ...next };
         normalizeKnownFields(clean);
         return clean as Profile;
       });
     },
-    [setProfile]
+    [persistProfile]
   );
 
   const setStartDate = useCallback(

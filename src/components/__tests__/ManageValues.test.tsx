@@ -12,8 +12,8 @@ const shots: ShotEntry[] = [
 ];
 
 const renderPanel = () => {
-  const onRenameValue = vi.fn();
-  const onClearValue = vi.fn();
+  const onRenameValue = vi.fn(() => true);
+  const onClearValue = vi.fn(() => true);
   render(
     <ManageValues
       shots={shots}
@@ -35,16 +35,18 @@ const StatefulPanel = () => {
   return (
     <ManageValues
       shots={current}
-      onRenameValue={(field: TextField, from: string, to: string) =>
+      onRenameValue={(field: TextField, from: string, to: string) => {
         setCurrent((prev) =>
           prev.map((s) => (s[field] === from ? { ...s, [field]: to } : s))
-        )
-      }
-      onClearValue={(field: TextField, value: string) =>
+        );
+        return true;
+      }}
+      onClearValue={(field: TextField, value: string) => {
         setCurrent((prev) =>
           prev.map((s) => (s[field] === value ? { ...s, [field]: undefined } : s))
-        )
-      }
+        );
+        return true;
+      }}
     />
   );
 };
@@ -65,6 +67,48 @@ describe("ManageValues", () => {
     fireEvent.click(screen.getByRole("button", { name: "Remove test cyp" }));
     fireEvent.click(within(dialog()).getByRole("button", { name: "Remove" }));
     expect(onClearValue).toHaveBeenCalledWith("testosteroneEster", "test cyp");
+  });
+
+  it("holds the remove dialog open when the change can't be written", () => {
+    // Closing regardless dismissed as though it had worked, while the value was
+    // still in the list — the same silent failure the log sheet was fixed for.
+    // Settings is one of the four write sites this is meant to stop being quiet.
+    render(
+      <ManageValues
+        shots={shots}
+        onRenameValue={vi.fn(() => true)}
+        onClearValue={vi.fn(() => false)}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Remove test cyp" }));
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Remove" }));
+
+    expect(dialog()).toBeInTheDocument();
+    expect(within(dialog()).getByRole("alert")).toHaveTextContent(
+      /Couldn.t save that/
+    );
+    expect(screen.getByText("test cyp")).toBeInTheDocument();
+  });
+
+  it("holds the rename dialog open when the change can't be written", () => {
+    render(
+      <ManageValues
+        shots={shots}
+        onRenameValue={vi.fn(() => false)}
+        onClearValue={vi.fn(() => true)}
+      />
+    );
+    const row = screen.getByText("test cyp").closest("li") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: "Rename" }));
+    fireEvent.change(within(dialog()).getByRole("textbox"), {
+      target: { value: "cyp" },
+    });
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Rename" }));
+
+    expect(dialog()).toBeInTheDocument();
+    expect(within(dialog()).getByRole("alert")).toHaveTextContent(
+      /Couldn.t save that/
+    );
   });
 
   it("asks to combine when renaming onto an existing value, then renames", () => {

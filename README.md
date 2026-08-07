@@ -11,8 +11,33 @@ A privacy-focused web app for logging testosterone (HRT) injections and how they
 - Track when you take your testosterone shots.
 - Capture context around each shot: pain, mood, notes.
 - Over time, support visualizations (StoryGraph-style) to help you see patterns and talk with your healthcare providers.
+- **Acknowledge each shot as something you did for yourself**, not as a box ticked.
 
 This project is explicitly designed around **trans user safety and privacy**.
+
+### A shot is not a chore
+
+This is the design premise the rest of the tone follows from, so it belongs here rather than buried in the roadmap.
+
+General health apps treat logging as recording something that happened *to* you — a period, a blood-pressure reading — so they say nothing when you save. Medication apps treat it as compliance, so they stay neutral. Habit apps treat it as something you'd skip without a nudge, so they manufacture rewards: coins, streaks, characters.
+
+**None of those is what this is.** Taking T is something you decided, and keep deciding, often in a world that says you shouldn't have. Logging it is worth a moment of warmth — not to make you log more, but because *the thing itself is worth acknowledging* and very little else in a person's day says so.
+
+That gives the app one line, used every time a shot is saved:
+
+> **Logged for you.**
+
+Deliberately the same words every time. Rotating copy is what you do when a phrase is trying to entertain; a constant one becomes the app's voice and reads as sincere rather than performed. It sits in the greeting slot — the app's existing warm register, alongside "Hi, Lou~" and "Happy shot day" — for a few seconds, while the new entry arrives beneath it and its highlight fades back to normal.
+
+Rules it follows, all of which rule out most copy that sounds appealing at first:
+
+- **It has to work on a bad day.** Some shots hurt; some land when you feel dysphoric rather than affirmed. Nothing may assume you feel good, and nothing may exclaim.
+- **It affirms the act, never the schedule.** No streaks, no "on track", no implication you were late. Shots shift and skip and that is normal — the milestone system already tracks *time on T*, not shot count, for the same reason.
+- **Understated reads as sincere.** Trans people get plenty of performative affirmation. "Great job staying on track!", "5 weeks in a row!", and "You must be feeling great 💪" are each rejected by one of the rules above.
+- **Name-optional, like everything else.** It never depends on having set a preferred name.
+- **Turn-off-able.** On by default, because the point is that it should be there — but being affirmed by software is a legitimate thing to dislike, and one neutral switch in Settings covers it.
+
+It does not compete with the milestone messages; it feeds them. A quiet line each week and a real moment at "Congrats on 1 year on T" are different registers, and having the small one is what lets the big one land.
 
 ---
 
@@ -48,6 +73,9 @@ This project follows strict privacy requirements:
 
 - **Safety-first for trans users.**  
   Features are designed to avoid exposing sensitive health data.
+
+- **A narrow scope is itself a privacy property.**  
+  The app tracks shots in detail — date, time, dose, site, position, ester, carrier oil, how it felt — rather than trying to manage a whole transition. It cannot leak what it never collected, and some of the things a broader tool would want are far more sensitive than a list of dates: body photos, a location-derived provider directory, anything tied to an identity. Declining those is the same decision as the PII rule above, applied to the product rather than the schema — so "we don't do that" is a deliberate answer, not a gap waiting to be filled.
 
 ### Future Storage Choices
 
@@ -291,9 +319,19 @@ Worth knowing what this rule is suspending, since it stops being free the day so
 
 ### Short-Term (MVP → v0.2)
 
-- [ ] **NEXT PR — surface storage write failures.** `useLocalStorage` catches a failed `setItem` and drops it into `console.warn`, so the in-memory state updates, the UI shows the shot saved, and nothing persists. This is not hypothetical: Safari private browsing throws on `setItem`, and a full device hits quota. With no server copy the entry is simply gone, and the only report of it went to a console the user will never open — the exact silent-failure class that every severe bug in slice B turned out to be. The platform guidance says the same thing ([web.dev](https://web.dev/articles/persistent-storage)): wrap storage writes and handle the failure.
+- [x] **Surface storage write failures.** `useLocalStorage` catches a failed `setItem` and drops it into `console.warn`, so the in-memory state updates, the UI shows the shot saved, and nothing persists. This is not hypothetical: Safari private browsing throws on `setItem`, and a full device hits quota. With no server copy the entry is simply gone, and the only report of it went to a console the user will never open — the exact silent-failure class that every severe bug in slice B turned out to be. The platform guidance says the same thing ([web.dev](https://web.dev/articles/persistent-storage)): wrap storage writes and handle the failure.
 
   Its own small PR rather than riding along with feature work, and worth doing **before** slice B½ starts adding fields, since every new field is another thing that can silently fail to save. Phase-proof too: `useLocalStorage` is the single write boundary, so this survives the PWA, the Capacitor swap to native storage, and encrypted sync — only the call behind it changes.
+
+  Decided from a prototype, then corrected by building it:
+
+  - **A persistent banner**, below the header, as the single surface for every failed write. Writes fail from at least four places — logging, editing, deleting, Settings — and an in-sheet message would leave three of them silent.
+  - **Dismissible, and it re-raises on every new failure.** A device that is genuinely full will never succeed on retry, and a banner that cannot be dismissed leaves the app permanently degraded with no way to say "I know". Acknowledging one failure must not silence the next.
+  - **It clears only on a real success** — never on a timer.
+  - **No count**, despite the prototype specifying one. Writes fire per store and on mount, so a single failed save reported *five*; and they are not five losses, since the in-memory state holds everything and a run of failures is one unsaved state. “Your changes aren’t being saved” is the fact we actually have.
+  - **The sheet does not close when a save fails.** It closes on save today, so a failed write loses the typed entry as well as saying nothing. Holding it open leaves the data on screen and one tap from saved, which matters more than any wording.
+  - **"Export a backup" sits beside "Try again."** A failing device is exactly when a copy off it is worth most, and export is the only recovery that survives eviction, quota and a cleared browser.
+  - **Not a snackbar** — transient, and Material is explicit that snackbars are not for critical or persistent errors; timing out is precisely wrong when nothing else recorded the failure. **Not a dialog** — nothing here is a decision, retry is the only move, and a repeating failure becomes a modal you cannot escape mid-log.
 
 - [x] _Engineering:_ **stop overloading `""` in `ShotDraft.date`** — _done, but not the way this item proposed._ The draft used `""` for both "untouched, follow today" and "the user cleared the field", written in one place and read in another, with only a hand-kept mode check holding the two readers in step. Twice they fell out of step and silently re-dated a logged shot: once by a day, and then — after a first fix closed only the write side — by **months**, moving a shot logged in May to today.
 
@@ -320,7 +358,25 @@ Worth knowing what this rule is suspending, since it stops being free the day so
 - [x] Add optional testosterone start date for HRT milestones — _Settings → Your journey; future start dates allowed (planning ahead reads as "not started yet")_
 - [x] Add optional display name / preferred name for affirming milestone messages
 - [x] Add milestone logic for three-month intervals during year one, then six-month intervals after that — _labels read "1 year 3 months", never months-only_
-- [ ] Add a gentle post-log celebration, such as confetti or another feel-good animation
+- [ ] Add the post-log acknowledgement — **"Logged for you."** See *A shot is not a chore* at the top for why it exists and the rules the copy follows. Values below are settled, from a prototype rather than from taste:
+
+  - **The line** appears in the greeting slot, in the success green, and **stays until the log form is opened again** (or the app is reopened — it is in-memory only). No timer: nothing snatches it away mid-read, and going to log again is the moment it has done its job.
+  - **The same words whether or not a name is set** — never "Logged for you, Lou."
+  - **Save confirms in green with a ✓** for 100–300ms, then the sheet leaves. **No spring, no overshoot** — anything that bounces reads as the screen acting under its own power rather than answering you.
+  - **The new entry arrives with a wash of colour that holds at full tint for the first fifth, then decays over 2.2s.** The hold is what makes it read as a flash rather than a brief tint; fading from the first frame does not land. This is the [Yellow Fade Technique](https://www.oreilly.com/library/view/agile-web-development/9781680502985/f_0070.xhtml).
+  - **Drive the wash off the entry's identity, not a render.** A class reapplied by a re-render restarts the animation — in the prototype, merely opening the form replayed the wash on the previous entry.
+  - **Nothing is said when a save fails, or when the sheet is dismissed with ✕.** There is nothing to affirm, and a warm line after an abandoned entry would be false.
+  - **But a save that succeeds on a retry gets the full acknowledgement** — same wash, same words, same duration as one that worked first time. The shot was still taken, and the person who just fought their phone for it has *more* claim on the moment, not less. The natural implementation gets this right by accident (the wash hangs off a successful save, and a retry is one) — it is written down because the natural *mistake* is to treat "this save had an error earlier" as a reason to stay quiet, or to leave the failure message on screen underneath the celebration. Clear the error state, then affirm exactly as normal.
+
+    Worth knowing while building it: the storage banner may still be up at that moment. A failed save leaves the shots key marked failing, and the successful retry clears it — but another store can still be failing, so the banner and the "Logged for you." line can legitimately share the screen. That is correct and should not be special-cased: one says this shot is safe, the other says something else isn't.
+
+- [ ] Slow the sheet exit from **200ms to 240ms** (`SHEET_EXIT_MS` in `Modal.tsx`, plus the two matching `200ms` values in `styles.css` — they are a set and must move together, or the sheet unmounts mid-slide). The easing is already right: emphasized accelerate is correct for something leaving. The problem is that 200ms across a full-screen surface means it is travelling fastest at the instant it vanishes, which reads as dropped rather than dismissed. 240 keeps exits quick — Material's reasoning is that they are "less of a priority for the user's attention than the next task" — while giving the surface enough time to look like it left on purpose.
+
+  **Not confetti.** It is seen ~52 times a year and has to survive every one of them, including the weeks when the shot hurt. Confetti is also the wrong register for a routine act of self-care, and spends the good feeling that belongs to the milestones.
+
+  Sound and haptic wait for the Capacitor build (iOS Safari has no Vibration API), and plenty of people will keep both off — in public, a T tracker making a noise is an outing risk rather than a preference — so the visual and the words must carry it alone. Under `prefers-reduced-motion` the movement goes and the message stays: still green, still ✓, the row still tinted.
+
+- [ ] Fire the **milestone** celebration once, on the crossing — the first launch after passing the date — then let the banner sit quietly for the rest of its two-week window. Tying it to the banner being *visible* would mean celebrating on every launch for a fortnight, which turns the moment into a nuisance. Costs one stored "already celebrated" flag.
 - [x] Add an **everyday greeting** at the top of the log screen using the preferred name ("Hi, Lou"). Name-optional: with no name it falls back warmly ("Welcome back") and never renders a dangling "Hi, ". Local-weekday/civil-date based, log-view only (not Settings or the milestone banner).
 - [x] Add an optional **"shot day"** setting + a celebratory **"Happy shot day, Lou!"** greeting on that day. Weekday-based to start (a one-line local-weekday compare), **pre-filled from the user's most common logged weekday** so most users never touch it. Genuinely optional: a "No shot day" choice means **no shot-day greeting at all** — no fallback guessing. Seeds the later "shot due soon" reminder; interval/every-N-day scheduling is deferred to that feature. Lives in Settings → "Your journey" for now.
 - [x] Ensure greetings and milestones are **name-optional** end to end: with only a shot day set, still show "Happy shot day!"; with only a start date set, still show "Congrats on 1 year on T!" — the preferred name only personalizes the message, it's never required to receive one.

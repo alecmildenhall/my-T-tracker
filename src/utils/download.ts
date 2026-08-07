@@ -28,6 +28,30 @@ export function downloadTextFile(
   setTimeout(() => URL.revokeObjectURL(url), REVOKE_DELAY_MS);
 }
 
+/**
+ * `downloadTextFile`, but reporting failure instead of throwing.
+ *
+ * Building a Blob, minting an object URL and synthesising a click can all throw
+ * — a browser blocking downloads, or a device with nothing left to allocate,
+ * which is exactly the device offering this button. A throw from a React event
+ * handler is not caught by an error boundary, so unguarded it means the one
+ * recovery path silently does nothing: the failure class this whole feature
+ * exists to end, reappearing inside its own escape hatch.
+ */
+export function tryDownloadTextFile(
+  text: string,
+  filename: string,
+  type: string
+): boolean {
+  try {
+    downloadTextFile(text, filename, type);
+    return true;
+  } catch (error) {
+    console.warn("[download] Failed to start the download:", error);
+    return false;
+  }
+}
+
 /** Timestamped filename stem, e.g. `t-shot-backup-2026-07-13`. Uses the local
  *  date so the filename matches the day the user is actually having. */
 export function backupFilename(stem: string, ext: string): string {

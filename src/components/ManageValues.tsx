@@ -7,8 +7,10 @@ import { Modal } from "./Modal";
 
 interface ManageValuesProps {
   shots: ShotEntry[];
-  onRenameValue: (field: TextField, from: string, to: string) => void;
-  onClearValue: (field: TextField, value: string) => void;
+  /** Returns whether the change reached storage. */
+  onRenameValue: (field: TextField, from: string, to: string) => boolean;
+  /** Returns whether the change reached storage. */
+  onClearValue: (field: TextField, value: string) => boolean;
 }
 
 const FIELDS: { field: TextField; title: string }[] = [
@@ -35,6 +37,7 @@ export const ManageValues: React.FC<ManageValuesProps> = ({
 
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [renameInput, setRenameInput] = useState("");
+  const [writeFailed, setWriteFailed] = useState(false);
   const cancelRef = useRef<HTMLButtonElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
   // The row button that opened the dialog, captured explicitly so focus returns
@@ -52,7 +55,10 @@ export const ManageValues: React.FC<ManageValuesProps> = ({
     if (dialog?.mode === "combine") cancelRef.current?.focus();
   }, [dialog?.mode]);
 
-  const close = () => setDialog(null);
+  const close = () => {
+    setDialog(null);
+    setWriteFailed(false);
+  };
 
   const openRemove = (
     opener: HTMLElement,
@@ -86,9 +92,14 @@ export const ManageValues: React.FC<ManageValuesProps> = ({
     return hit ? hit.value : null;
   };
 
+  // Every one of these closes the dialog ONLY when the change reached storage.
+  // Closing regardless was the same silent failure the log sheet was fixed for:
+  // the dialog dismisses as though it worked, the list still shows the old
+  // value, and only a generic banner elsewhere hints why. Settings is one of the
+  // four write sites this feature exists to stop being silent.
   const confirmRemove = () => {
     if (dialog?.mode !== "remove") return;
-    onClearValue(dialog.field, dialog.value);
+    if (!onClearValue(dialog.field, dialog.value)) return setWriteFailed(true);
     close();
   };
 
@@ -101,7 +112,10 @@ export const ManageValues: React.FC<ManageValuesProps> = ({
     }
     // Same value, only re-cased: apply the new capitalisation, no collision.
     if (normalizeValue(to) === normalizeValue(dialog.value)) {
-      onRenameValue(dialog.field, dialog.value, to);
+      if (!onRenameValue(dialog.field, dialog.value, to)) {
+        setWriteFailed(true);
+        return;
+      }
       close();
       return;
     }
@@ -110,13 +124,18 @@ export const ManageValues: React.FC<ManageValuesProps> = ({
       setDialog({ ...dialog, mode: "combine", target });
       return;
     }
-    onRenameValue(dialog.field, dialog.value, to);
+    if (!onRenameValue(dialog.field, dialog.value, to)) {
+      setWriteFailed(true);
+      return;
+    }
     close();
   };
 
   const confirmCombine = () => {
     if (dialog?.mode !== "combine") return;
-    onRenameValue(dialog.field, dialog.value, dialog.target);
+    if (!onRenameValue(dialog.field, dialog.value, dialog.target)) {
+      return setWriteFailed(true);
+    }
     close();
   };
 
@@ -175,6 +194,12 @@ export const ManageValues: React.FC<ManageValuesProps> = ({
                 This removes it from <b>{entries(dialog.count)}</b>. Those entries
                 keep everything else.
               </p>
+              {writeFailed && (
+                <p className="dialog-error" role="alert">
+                  Couldn’t save that — this device isn’t accepting changes right
+                  now. Nothing has been altered.
+                </p>
+              )}
               <div className="dialog-actions">
                 <button ref={cancelRef} type="button" className="secondary-button" onClick={close}>
                   Cancel
@@ -208,6 +233,12 @@ export const ManageValues: React.FC<ManageValuesProps> = ({
                 Updates the name on all <b>{entries(dialog.count)}</b>. If you rename
                 it to something you already use, they’ll be combined.
               </p>
+              {writeFailed && (
+                <p className="dialog-error" role="alert">
+                  Couldn’t save that — this device isn’t accepting changes right
+                  now. Nothing has been altered.
+                </p>
+              )}
               <div className="dialog-actions">
                 <button ref={cancelRef} type="button" className="secondary-button" onClick={close}>
                   Cancel
@@ -226,6 +257,12 @@ export const ManageValues: React.FC<ManageValuesProps> = ({
                 Renaming will combine them — the <b>{entries(dialog.count)}</b> logged
                 as “{dialog.value}” will be relabeled “{dialog.target}”.
               </p>
+              {writeFailed && (
+                <p className="dialog-error" role="alert">
+                  Couldn’t save that — this device isn’t accepting changes right
+                  now. Nothing has been altered.
+                </p>
+              )}
               <div className="dialog-actions">
                 <button ref={cancelRef} type="button" className="secondary-button" onClick={close}>
                   Cancel

@@ -5,6 +5,7 @@ import App from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ShotsProvider } from "./context/ShotsContext";
 import { ProfileProvider } from "./context/ProfileContext";
+import { StorageHealthProvider } from "./context/StorageHealthContext";
 import { clearStaleOverlayEntry } from "./hooks/useBackToClose";
 import "./styles.css";
 
@@ -16,11 +17,14 @@ clearStaleOverlayEntry();
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <ErrorBoundary>
-      <ShotsProvider>
-        <ProfileProvider>
-          <App />
-        </ProfileProvider>
-      </ShotsProvider>
+      {/* Outside the stores: they report their write results into it. */}
+      <StorageHealthProvider>
+        <ShotsProvider>
+          <ProfileProvider>
+            <App />
+          </ProfileProvider>
+        </ShotsProvider>
+      </StorageHealthProvider>
     </ErrorBoundary>
   </React.StrictMode>
 );
