@@ -72,6 +72,51 @@ describe("Modal", () => {
     expect(confirm).toHaveFocus();
   });
 
+  it("re-traps Tab even when focus has already escaped the dialog", () => {
+    // The trap used to be the dialog's own onKeyDown, so it only saw keys pressed
+    // while focus was already inside — missing the one case it most needed to
+    // catch. Clicking a dialog's non-focusable padding drops focus to <body>, and
+    // from there Tab left the page entirely (#root is inert, so there is nothing
+    // earlier to land on). Found in a real browser; jsdom neither lays out
+    // padding nor implements `inert`, so only the consequence is testable here.
+    render(<Harness />);
+    (document.activeElement as HTMLElement)?.blur();
+    expect(document.activeElement).toBe(document.body);
+
+    fireEvent.keyDown(window, { key: "Tab" });
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+
+    // ...and backwards, which is the direction that actually left the page.
+    (document.activeElement as HTMLElement)?.blur();
+    fireEvent.keyDown(window, { key: "Tab", shiftKey: true });
+    expect(screen.getByRole("button", { name: "Confirm" })).toHaveFocus();
+  });
+
+  it("wraps past a DISABLED control instead of making Tab a dead key", () => {
+    // FOCUSABLE matches `button`, disabled included, so a disabled control at
+    // either end used to be the wrap target: focus() silently refused, the
+    // default was already prevented, and Tab did nothing whatsoever. Walking
+    // inward lands on the outermost control that will actually take focus.
+    render(
+      <Modal labelledBy="t" onClose={() => {}}>
+        <h2 id="t">Title</h2>
+        <button type="button">First</button>
+        <button type="button">Middle</button>
+        <button type="button" disabled>
+          Last
+        </button>
+      </Modal>
+    );
+    const first = screen.getByRole("button", { name: "First" });
+    const middle = screen.getByRole("button", { name: "Middle" });
+
+    first.focus();
+    fireEvent.keyDown(first, { key: "Tab", shiftKey: true });
+
+    expect(middle).toHaveFocus();
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
   it("keeps Tab inside even from the dialog container itself", () => {
     // The container carries tabIndex -1 as the last-resort focus target, but
     // FOCUSABLE excludes tabindex="-1", so it is neither the first nor the last

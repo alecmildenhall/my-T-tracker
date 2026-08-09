@@ -29,6 +29,7 @@ import { suggestionsFor, normalizeValue } from "../utils/suggestions";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { ShotListItem } from "./ShotListItem";
 import { Modal } from "./Modal";
+import { handOffFocus } from "../utils/focus";
 
 /** Pause in typing before the search re-runs. Short — the work is in-memory. */
 const SEARCH_DEBOUNCE_MS = 200;
@@ -84,7 +85,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
     const rows = listRef.current?.querySelectorAll<HTMLElement>("li");
     // Deleting the last row leaves nothing at that index; fall back to the
     // previous row, then to the count line, rather than dropping to <body>.
-    (rows?.[at] ?? rows?.[at - 1] ?? countRef.current)?.focus();
+    handOffFocus(rows?.[at], rows?.[at - 1], countRef);
   });
 
   // Facet options come from the user's own logged values, so the dropdowns only
@@ -191,7 +192,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
     // user needs. Same care as the delete and "Load more" hand-offs above; no
     // deferral needed, since this button is removed by its own click rather than
     // by a dialog closing on top of it.
-    filtersToggleRef.current?.focus();
+    handOffFocus(filtersToggleRef, sectionRef);
   };
 
   // Deleting unmounts the row holding the focused button, which would drop focus

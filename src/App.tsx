@@ -10,6 +10,7 @@ import { emptyHistoryQuery, type HistoryQuery } from "./utils/historyQuery";
 import { Modal, SHEET_EXIT_MS } from "./components/Modal";
 import { StorageBanner } from "./components/StorageBanner";
 import { useBackupExport } from "./hooks/useBackupExport";
+import { handOffFocus } from "./utils/focus";
 import { useShotsContext } from "./context/ShotsContext";
 import type { ShotEntry } from "./types/shot";
 import type { SaveOutcome } from "./components/ShotForm";
@@ -269,7 +270,7 @@ const App: React.FC = () => {
           const nav = document.getElementById("main-nav");
           if (!nav) return; // let the browser do its default thing
           e.preventDefault();
-          nav.focus();
+          handOffFocus(nav, titleRef);
         }}
       >
         Skip to navigation

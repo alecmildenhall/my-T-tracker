@@ -4,6 +4,7 @@ import type { ShotEntry } from "../types/shot";
 import { normalizeValue, valueGroupsFor, type TextField } from "../utils/suggestions";
 import { pluralizeEntries as entries } from "../utils/format";
 import { Modal } from "./Modal";
+import { handOffFocus } from "../utils/focus";
 
 interface ManageValuesProps {
   shots: ShotEntry[];
@@ -52,7 +53,7 @@ export const ManageValues: React.FC<ManageValuesProps> = ({
   // When rename collides and switches to the combine step in place (the Modal
   // stays mounted, so its open-time focus doesn't re-run), move focus to Cancel.
   useEffect(() => {
-    if (dialog?.mode === "combine") cancelRef.current?.focus();
+    if (dialog?.mode === "combine") handOffFocus(cancelRef, containerRef);
   }, [dialog?.mode]);
 
   const close = () => {
