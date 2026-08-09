@@ -1020,6 +1020,8 @@ textarea {
 }
 
 .shot-form__bar--bottom {
+  /* So the save-failure message can take a line of its own above Save. */
+  flex-wrap: wrap;
   border-top: 1px solid var(--border-subtle);
   /* Clear of the home indicator on a gesture-nav phone, exactly as the tab bar
      is — the sheet covers the tab bar, so it inherits that responsibility. */
@@ -1235,4 +1237,168 @@ textarea {
   .dialog-go:active {
     transform: none;
   }
+}
+
+/* ── Storage write failures ─────────────────────────────────────────────
+   Sits below the header, above whichever view is showing, so a failed write
+   from any of the four write sites lands in one place. Danger-coloured but not
+   alarming: the entry is still on screen, so this is "not stored yet", not
+   "lost". */
+.storage-banner {
+  position: relative;
+  margin-bottom: 1rem;
+  padding: 0.7rem 2.1rem 0.75rem 0.8rem;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-md);
+  background: rgba(248, 113, 113, 0.13);
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.storage-banner__title {
+  display: block;
+  color: var(--danger);
+  font-size: 0.9rem;
+  margin-bottom: 0.15rem;
+}
+
+.storage-banner__export-error {
+  margin: 0.5rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+
+.storage-banner__actions {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  margin-top: 0.6rem;
+}
+
+.storage-banner__go,
+.storage-banner__alt {
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--danger);
+  cursor: pointer;
+}
+
+.storage-banner__go {
+  background: var(--danger);
+  color: #2a0b0b;
+}
+
+.storage-banner__alt {
+  background: transparent;
+  color: var(--danger);
+}
+
+.storage-banner__dismiss {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.35rem;
+  padding: 0.25rem 0.4rem;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* The ghost buttons tint on hover; the filled one must NOT, because the shared
+   translucent tint would replace its solid fill and leave its near-black label
+   on the banner's near-black ground — the primary recovery action, unreadable
+   exactly when it matters. It lightens instead, keeping the contrast. */
+.storage-banner__alt:hover,
+.storage-banner__dismiss:hover {
+  background: var(--danger-engaged-bg);
+}
+
+.storage-banner__go:hover {
+  background: #fca5a5;
+  border-color: #fca5a5;
+}
+
+.storage-banner__go:focus-visible,
+.storage-banner__alt:focus-visible,
+.storage-banner__dismiss:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Sits inside the sheet, because the storage banner is behind an inert `#root`
+   while the sheet is open and cannot be seen, announced, or clicked. */
+.shot-form__save-error {
+  /* The bottom bar is a flex ROW holding the Save button. Left to itself the
+     message becomes a second column, squeezing Save into a two-line stub and
+     growing the bar upward over the Notes field. It takes the full width and
+     Save keeps its own line beneath. */
+  flex: 1 0 100%;
+  margin: 0 0 0.6rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--danger-engaged-border);
+  border-left-width: 3px;
+  border-radius: 8px;
+  background: var(--danger-engaged-bg);
+  color: var(--text);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.shot-form__save-error strong {
+  color: var(--danger);
+}
+
+.shot-form__save-error-text {
+  margin: 0;
+}
+
+.shot-form__save-error-export {
+  margin-top: 0.55rem;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--danger);
+  background: transparent;
+  color: var(--danger);
+  cursor: pointer;
+}
+
+.shot-form__save-error-export:hover {
+  background: var(--danger-engaged-bg);
+}
+
+.shot-form__save-error-export:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.shot-form__save-error-fine {
+  margin: 0.5rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+
+/* Shared failure line inside a confirm dialog: the change did not reach storage,
+   so the dialog stays open rather than dismissing as though it worked. */
+.dialog-error {
+  margin: 0 0 0.7rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--danger-engaged-border);
+  border-left-width: 3px;
+  border-radius: 8px;
+  background: var(--danger-engaged-bg);
+  color: var(--text);
+  font-size: 0.8rem;
+  line-height: 1.45;
 }

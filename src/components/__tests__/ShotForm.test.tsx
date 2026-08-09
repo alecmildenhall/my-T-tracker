@@ -799,3 +799,28 @@ describe("ShotForm draft publishing", () => {
     expect(ref.current!.date).toBe("2026-06-01");
   });
 });
+
+describe("the in-sheet export button", () => {
+  it("says so rather than looking dead when no handler is wired", () => {
+    // The optional prop exists only so the form renders standalone. Unwired,
+    // `onExportBackup?.() === false` evaluated to `false` — i.e. "it worked" —
+    // so the button did nothing and said nothing: the dead-button failure this
+    // panel exists to remove, reappearing inside its own escape hatch.
+    render(<ShotForm onAddShot={() => "refused"} shots={[]} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+    fireEvent.click(screen.getByRole("button", { name: "Export a backup" }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent(/download didn.t start/i);
+  });
+
+  it("stays quiet when the handler reports the download started", () => {
+    render(
+      <ShotForm onAddShot={() => "refused"} onExportBackup={() => true} shots={[]} />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+    fireEvent.click(screen.getByRole("button", { name: "Export a backup" }));
+
+    expect(screen.getByRole("alert")).not.toHaveTextContent(/download didn.t start/i);
+  });
+});

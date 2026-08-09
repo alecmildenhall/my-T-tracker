@@ -1,22 +1,26 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, within, act, waitFor } from "@testing-library/react";
 import App from "../App";
 import { ShotsProvider } from "../context/ShotsContext";
 import { ProfileProvider } from "../context/ProfileContext";
+import { StorageHealthProvider } from "../context/StorageHealthContext";
 import type { ShotEntry } from "../types/shot";
 import { STORAGE_KEYS } from "../storageKeys";
 import { SHEET_EXIT_MS } from "../components/Modal";
 import { todayLocalISO } from "../utils/datetime";
+import * as dl from "../utils/download";
 
 // App reads both stores via context (Settings uses the profile store), so mount
 // it under the same providers main.tsx does.
 const renderApp = () =>
   render(
-    <ShotsProvider>
-      <ProfileProvider>
-        <App />
-      </ProfileProvider>
-    </ShotsProvider>
+    <StorageHealthProvider>
+      <ShotsProvider>
+        <ProfileProvider>
+          <App />
+        </ProfileProvider>
+      </ShotsProvider>
+    </StorageHealthProvider>
   );
 
 const seedShots = (shots: ShotEntry[]) =>
@@ -762,5 +766,411 @@ describe("App — the sheet protects in-progress input", () => {
     expect(
       within(screen.getByRole("dialog")).getByLabelText("Dose (mg)")
     ).toHaveValue(99);
+  });
+});
+
+describe("App — a failed save is never silent", () => {
+  const breakWrites = () =>
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("QuotaExceededError");
+    });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it("keeps the sheet open when the write fails, so the entry is not lost too", async () => {
+    // Saving closes the sheet and clears the draft. Without this the user is
+    // left with nothing on screen AND nothing in storage — the worst of both.
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    breakWrites();
+    renderApp();
+
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    fireEvent.change(
+      within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i),
+      { target: { value: "still here" } }
+    );
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+    );
+
+    const sheet = screen.getByRole("dialog");
+    expect(sheet).toBeInTheDocument();
+    expect(
+      within(sheet).getByPlaceholderText(/remember for later/i)
+    ).toHaveValue("still here");
+    // The message must be INSIDE the sheet. The storage banner lives in `#root`,
+    // which the sheet marks inert and covers completely on a phone, so on the one
+    // failure the user is watching for it is unreadable and its buttons are
+    // unclickable. Held-open-and-silent is the same silent failure one layer up.
+    expect(within(sheet).getByRole("alert")).toHaveTextContent(
+      "Couldn’t save this shot"
+    );
+  });
+
+  it("offers a working Export inside the sheet, where Settings is unreachable", async () => {
+    // Retry is the only other move, and on a genuinely full device it keeps
+    // failing — so "go to Settings and export" is advice the user cannot take
+    // from a sheet that covers Settings.
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const download = vi
+      .spyOn(dl, "tryDownloadTextFile")
+      .mockImplementation(() => true);
+    seedShots([{ id: "old", date: "2026-06-01", notes: "already logged" }]);
+    breakWrites();
+    renderApp();
+
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    const sheet = screen.getByRole("dialog");
+    fireEvent.click(within(sheet).getByRole("button", { name: "Save shot" }));
+
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Export a backup",
+      })
+    );
+
+    expect(download).toHaveBeenCalledTimes(1);
+    const [text, name, mime] = download.mock.calls[0];
+    expect(name).toMatch(/\.json$/);
+    expect(mime).toBe("application/json");
+    // It rescues the history, which is what it claims to do...
+    expect(text).toContain("already logged");
+    // ...and the sheet stays open, because the shot on screen is NOT in the file.
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("does not fake a save when Save lands during the sheet's exit animation", () => {
+    // The sheet stays mounted through its exit, and only `#root` is inert, so its
+    // own Save button is still live for those ~200ms. The closing guard returned
+    // nothing, and the form reads anything but `false` as saved — so a Save in
+    // that window blanked every field and cleared the failure message as though
+    // the shot had been written. Nothing had.
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    breakWrites();
+    renderApp();
+
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    const notes = () =>
+      within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i);
+    fireEvent.change(notes(), { target: { value: "still here" } });
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+    );
+    expect(within(screen.getByRole("dialog")).getByRole("alert")).toBeInTheDocument();
+
+    // Dismiss, then Save again before the exit animation has finished.
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Close" })
+    );
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Save again" })
+    );
+
+    expect(notes()).toHaveValue("still here");
+    expect(within(screen.getByRole("dialog")).getByRole("alert")).toBeInTheDocument();
+    expect(localStorage.getItem("hrt-shot-tracker:v1:shots")).toBeNull();
+  });
+
+  it("says nothing when a Save is dropped during the sheet's exit — the shot DID save", () => {
+    // The closing guard and a refused write used to share `false`, and the form
+    // can only read that one way. So a double-tapped Save — the codebase's own
+    // comment notes 200ms is precisely a double-tap — announced "Couldn't save
+    // this shot" over a shot that had just saved perfectly, assertively, as the
+    // sheet slid away. The obvious response is to log it again: a duplicate, with
+    // no undo until slice C.
+    renderApp(); // storage working
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    const sheet = () => within(screen.getByRole("dialog"));
+    fireEvent.change(sheet().getByPlaceholderText(/remember for later/i), {
+      target: { value: "saved fine" },
+    });
+    fireEvent.click(sheet().getByRole("button", { name: "Save shot" }));
+    // Second tap, inside the exit window, while the button is still live.
+    fireEvent.click(sheet().getByRole("button", { name: "Save shot" }));
+
+    expect(sheet().queryByRole("alert")).not.toBeInTheDocument();
+    expect(sheet().queryByRole("button", { name: "Save again" })).not.toBeInTheDocument();
+    const stored = JSON.parse(localStorage.getItem("hrt-shot-tracker:v1:shots") ?? "[]");
+    expect(stored).toHaveLength(1);
+    expect(stored[0].notes).toBe("saved fine");
+  });
+
+  it("holds the delete confirm open when the deletion can't be written", async () => {
+    // A refused delete commits nothing, so the shot is still listed. Closing the
+    // dialog anyway dismissed as though it had worked — and a later "Try again"
+    // then force-wrote the UNCHANGED list, succeeded, and cleared the banner: a
+    // green all-clear over a delete that never happened.
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    seedShots([{ id: "a", date: "2026-06-01", notes: "keep me" }]);
+    renderApp();
+    goTo("History");
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    breakWrites();
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" })
+    );
+
+    const confirm = within(screen.getByRole("dialog"));
+    expect(confirm.getByRole("alert")).toHaveTextContent(/Couldn.t delete it/);
+    expect(confirm.getByText(/still here/)).toBeInTheDocument();
+    // And the shot really is still there, in state and in storage.
+    expect(
+      JSON.parse(localStorage.getItem("hrt-shot-tracker:v1:shots") ?? "[]")
+    ).toHaveLength(1);
+  });
+
+  it("deletes normally, and closes, once the write lands", async () => {
+    seedShots([{ id: "a", date: "2026-06-01" }]);
+    renderApp();
+    goTo("History");
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" })
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    );
+    expect(
+      JSON.parse(localStorage.getItem("hrt-shot-tracker:v1:shots") ?? "[]")
+    ).toHaveLength(0);
+  });
+
+  it("says so when the backup download itself is blocked", () => {
+    // The export button is the last recovery on a device that has stopped saving.
+    // Unguarded, a throw from this handler escapes React entirely (error
+    // boundaries don't catch event handlers) and the button just looks dead —
+    // this feature's own bug, inside its own escape hatch.
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(dl, "tryDownloadTextFile").mockImplementation(() => false);
+    breakWrites();
+    renderApp();
+
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+    );
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Export a backup" })
+    );
+
+    expect(within(screen.getByRole("dialog")).getByRole("alert")).toHaveTextContent(
+      /download didn.t start/i
+    );
+  });
+
+  it("relabels Save to 'Save again' after a refused write, and back on success", () => {
+    // "Save shot" would be naming an outcome the last press did not produce. The
+    // button IS the retry, so it says so — while keeping the verb, so it never
+    // stops naming what it acts on.
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const spy = breakWrites();
+    renderApp();
+
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    const inSheet = () => within(screen.getByRole("dialog"));
+    expect(inSheet().getByRole("button", { name: "Save shot" })).toBeInTheDocument();
+
+    fireEvent.click(inSheet().getByRole("button", { name: "Save shot" }));
+    expect(inSheet().getByRole("button", { name: "Save again" })).toBeInTheDocument();
+    expect(inSheet().queryByRole("button", { name: "Save shot" })).not.toBeInTheDocument();
+
+    // It stays relabelled while it keeps failing, rather than flickering back.
+    fireEvent.click(inSheet().getByRole("button", { name: "Save again" }));
+    expect(inSheet().getByRole("button", { name: "Save again" })).toBeInTheDocument();
+
+    // And the shot lands on the retry.
+    spy.mockRestore();
+    fireEvent.click(inSheet().getByRole("button", { name: "Save again" }));
+    expect(
+      JSON.parse(localStorage.getItem("hrt-shot-tracker:v1:shots") ?? "[]")
+    ).toHaveLength(1);
+  });
+
+  it("relabels an EDIT's button with ITS verb, not the new-shot one", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    seedShots([{ id: "a", date: "2026-06-01", notes: "before" }]);
+    renderApp();
+    goTo("History");
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Update shot" })
+    ).toBeInTheDocument();
+
+    // A real change, so there is genuinely something to write. Saving an
+    // untouched edit writes nothing and so cannot fail — correct, but it would
+    // make this test pass without exercising anything.
+    fireEvent.change(
+      within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i),
+      { target: { value: "after" } }
+    );
+    breakWrites();
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Update shot" })
+    );
+
+    // "Update again", not "Save again": the retry keeps the verb the action had,
+    // so the button never stops naming what it does.
+    expect(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Update again" })
+    ).toBeInTheDocument();
+  });
+
+  it("starts a NEW entry with 'Save shot', never inheriting the last one's failure", async () => {
+    // The label has to reset itself, or the next shot opens already looking
+    // broken. It rides on the form's own lifetime — the sheet unmounts on close —
+    // so there is nothing to persist and nothing to time out.
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const spy = breakWrites();
+    renderApp();
+
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+    );
+    expect(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Save again" })
+    ).toBeInTheDocument();
+
+    // Dismiss, let the sheet finish leaving, and open a fresh one.
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Close" })
+    );
+    await sheetGone();
+    spy.mockRestore();
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+
+    const sheet = within(screen.getByRole("dialog"));
+    expect(sheet.getByRole("button", { name: "Save shot" })).toBeInTheDocument();
+    expect(sheet.queryByRole("button", { name: "Save again" })).not.toBeInTheDocument();
+    // ...and no stale failure message riding along with it.
+    expect(sheet.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("keeps the form's retry distinct from the banner's, so both stay unambiguous", () => {
+    // The banner says "Try again" because it retries every store from a screen
+    // with no other button. The form's button is the save itself, so it keeps the
+    // verb. Both are on screen together after a failed save, and a bare "Try
+    // again" in two places doing two different things is how a screen-reader user
+    // ends up pressing the wrong one.
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    breakWrites();
+    renderApp();
+
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+    );
+
+    const sheet = within(screen.getByRole("dialog"));
+    expect(sheet.getByRole("button", { name: "Save again" })).toBeInTheDocument();
+    // The sheet's own retry is never the banner's word...
+    expect(sheet.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
+    // ...and every label the button can take still names the action.
+    expect(
+      sheet.getByRole("button", { name: "Save again" }).textContent
+    ).toMatch(/^Save /);
+  });
+
+  it("takes the label back when 'Clear form' starts the entry over", () => {
+    // Clearing is starting over, so the failed-save state has to go with the
+    // values it referred to. Left behind, the button says "Save again" over an
+    // empty form, referring to an attempt whose contents no longer exist.
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    breakWrites();
+    renderApp();
+
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    const inSheet = () => within(screen.getByRole("dialog"));
+    fireEvent.change(inSheet().getByPlaceholderText(/remember for later/i), {
+      target: { value: "something" },
+    });
+    fireEvent.click(inSheet().getByRole("button", { name: "Save shot" }));
+    expect(inSheet().getByRole("button", { name: "Save again" })).toBeInTheDocument();
+
+    fireEvent.click(inSheet().getByRole("button", { name: "Clear form" }));
+
+    expect(inSheet().getByRole("button", { name: "Save shot" })).toBeInTheDocument();
+    expect(inSheet().queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("does not put the unsaved shot in the list, so retrying can't duplicate it", () => {
+    // The first build added the shot to in-memory state on failure "so nothing
+    // typed disappears". The form already holds it — and because ShotForm mints a
+    // fresh id per submit, pressing Save again (the obvious reaction to nothing
+    // happening, and the right one once storage recovers) appended a SECOND
+    // entry. With no undo until slice C that writes real duplicate history.
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const spy = breakWrites();
+    renderApp();
+
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    fireEvent.change(
+      within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i),
+      { target: { value: "only once" } }
+    );
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+    );
+    // Nothing entered the list: the form is the only copy, which is the point.
+    expect(localStorage.getItem("hrt-shot-tracker:v1:shots")).toBeNull();
+
+    // Storage comes back and the user presses the retry on the held-open sheet.
+    spy.mockRestore();
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Save again" })
+    );
+
+    const stored = JSON.parse(
+      localStorage.getItem("hrt-shot-tracker:v1:shots") ?? "[]"
+    );
+    expect(stored).toHaveLength(1);
+    expect(stored[0].notes).toBe("only once");
+  });
+
+  it("closes and clears as normal when the write lands", async () => {
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+    );
+    await sheetGone();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});
+
+describe("App — a failed EDIT is held open too", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("keeps the edit sheet and its changes when the write fails", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    seedShots([{ id: "a", date: "2026-06-01", notes: "before" }]);
+    renderApp();
+    goTo("History");
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.change(
+      within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i),
+      { target: { value: "after" } }
+    );
+
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("QuotaExceededError");
+    });
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Update shot" })
+    );
+
+    const sheet = screen.getByRole("dialog");
+    expect(sheet).toBeInTheDocument();
+    expect(
+      within(sheet).getByPlaceholderText(/remember for later/i)
+    ).toHaveValue("after");
+    expect(within(sheet).getByRole("alert")).toHaveTextContent(
+      "Couldn’t save this shot"
+    );
+    // The list still shows the OLD value: refusing to commit an unwritable change
+    // is what keeps the screen and storage telling the same story.
+    expect(JSON.parse(localStorage.getItem("hrt-shot-tracker:v1:shots") ?? "[]")[0].notes)
+      .toBe("before");
   });
 });

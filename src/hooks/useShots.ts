@@ -8,15 +8,17 @@ import { isBlank } from "../utils/strings";
 
 export interface UseShots {
   shots: ShotEntry[];
-  addShot: (shot: ShotEntry) => void;
-  updateShot: (id: string, updatedShot: ShotEntry) => void;
-  deleteShot: (id: string) => void;
+  /** Append a shot. Returns whether it actually reached storage. */
+  addShot: (shot: ShotEntry) => boolean;
+  /** Replace a shot. Returns whether it actually reached storage. */
+  updateShot: (id: string, updatedShot: ShotEntry) => boolean;
+  deleteShot: (id: string) => boolean;
   /** Rename every occurrence of a value in a field; merges if the new name already exists. */
-  renameValue: (field: TextField, from: string, to: string) => void;
+  renameValue: (field: TextField, from: string, to: string) => boolean;
   /** Remove a value from a field on every shot that uses it (clears it to undefined). */
-  clearValue: (field: TextField, value: string) => void;
+  clearValue: (field: TextField, value: string) => boolean;
   /** Replace the entire shot list atomically (used when restoring a backup). */
-  replaceAll: (next: ShotEntry[]) => void;
+  replaceAll: (next: ShotEntry[]) => boolean;
 }
 
 /**
@@ -51,40 +53,53 @@ function sanitizeShots(raw: unknown): ShotEntry[] {
 }
 
 export function useShots(): UseShots {
-  const [shots, setShots] = useLocalStorage<ShotEntry[]>(
+  const [shots, , persistShots] = useLocalStorage<ShotEntry[]>(
     STORAGE_KEYS.shots,
     [],
     { sanitize: sanitizeShots }
   );
 
+  // EVERY mutation goes through `persistShots`, which writes to storage and only
+  // then commits to state, returning whether it landed. Two reasons:
+  //
+  // 1. The caller can finally ask "did my shot save?" and get the truth, so the
+  //    log sheet can hold onto what was typed instead of closing on a write that
+  //    threw. Nothing half-saved sits in the list waiting to be duplicated by the
+  //    retry, because a refused write commits nothing at all.
+  // 2. One path, one notion of "current". Mixing `persistShots` with plain
+  //    `setShots` gave the store two: `setShots` queues a functional update React
+  //    applies later, so a `persistShots` call in the same tick read a snapshot
+  //    that predated it and wrote the stale list back — a delete followed by an
+  //    add resurrected the deleted shot.
   const addShot = useCallback(
-    (shot: ShotEntry) => {
-      setShots((prev) => [...prev, shot]);
-    },
-    [setShots]
+    (shot: ShotEntry) => persistShots((prev) => [...prev, shot]),
+    [persistShots]
   );
 
   const updateShot = useCallback(
-    (id: string, updatedShot: ShotEntry) => {
-      setShots((prev) =>
+    (id: string, updatedShot: ShotEntry) =>
+      persistShots((prev) =>
         prev.map((shot) => (shot.id === id ? updatedShot : shot))
-      );
-    },
-    [setShots]
+      ),
+    [persistShots]
   );
 
   const deleteShot = useCallback(
-    (id: string) => {
-      setShots((prev) => prev.filter((shot) => shot.id !== id));
-    },
-    [setShots]
+    (id: string) => persistShots((prev) => prev.filter((shot) => shot.id !== id)),
+    [persistShots]
   );
 
   const renameValue = useCallback(
     (field: TextField, from: string, to: string) => {
       const target = to.trim();
-      if (!target) return;
-      setShots((prev) =>
+      // A blank name would store "" — which ShotEntry forbids — so there is
+      // nothing to write and nothing to report. Callers must reject a blank
+      // before asking (ManageValues does), because `true` here means "storage
+      // matches your request", and for a request we declined that is only true
+      // vacuously. Kept as a guard rather than a promoted result: the one thing
+      // it must never do is let "" reach a shot.
+      if (!target) return true;
+      return persistShots((prev) =>
         prev.map((shot) => {
           const current = shot[field];
           return typeof current === "string" &&
@@ -94,12 +109,12 @@ export function useShots(): UseShots {
         })
       );
     },
-    [setShots]
+    [persistShots]
   );
 
   const clearValue = useCallback(
-    (field: TextField, value: string) => {
-      setShots((prev) =>
+    (field: TextField, value: string) =>
+      persistShots((prev) =>
         prev.map((shot) => {
           const current = shot[field];
           return typeof current === "string" &&
@@ -107,16 +122,13 @@ export function useShots(): UseShots {
             ? { ...shot, [field]: undefined }
             : shot;
         })
-      );
-    },
-    [setShots]
+      ),
+    [persistShots]
   );
 
   const replaceAll = useCallback(
-    (next: ShotEntry[]) => {
-      setShots(next);
-    },
-    [setShots]
+    (next: ShotEntry[]) => persistShots(next),
+    [persistShots]
   );
 
   return {

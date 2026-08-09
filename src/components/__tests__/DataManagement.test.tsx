@@ -7,11 +7,13 @@ import { toJson } from "../../utils/exportData";
 
 // Stub the download layer: no real Blob/anchor, and predictable filenames.
 vi.mock("../../utils/download", () => ({
-  downloadTextFile: vi.fn(),
+  // The guarded wrapper is what every caller uses now; it returns whether the
+  // download started, so `false` is how a test says "the browser blocked it".
+  tryDownloadTextFile: vi.fn(() => true),
   backupFilename: (stem: string, ext: string) => `${stem}.${ext}`,
 }));
 
-const downloadMock = vi.mocked(downloadModule.downloadTextFile);
+const downloadMock = vi.mocked(downloadModule.tryDownloadTextFile);
 
 const shots: ShotEntry[] = [
   { id: "s1", date: "2026-06-01", doseMg: 50, injectionSite: "thigh" },
@@ -38,9 +40,9 @@ describe("DataManagement", () => {
       render(
         <DataManagement
           shots={shots}
-          onReplaceAll={vi.fn()}
+          onReplaceAll={vi.fn(() => true)}
           profile={{}}
-          onReplaceProfile={vi.fn()}
+          onReplaceProfile={vi.fn(() => true)}
         />
       );
       fireEvent.click(
@@ -64,9 +66,9 @@ describe("DataManagement", () => {
       render(
         <DataManagement
           shots={shots}
-          onReplaceAll={vi.fn()}
+          onReplaceAll={vi.fn(() => true)}
           profile={{ startDate: "2025-01-15", preferredName: "Lou" }}
-          onReplaceProfile={vi.fn()}
+          onReplaceProfile={vi.fn(() => true)}
         />
       );
       fireEvent.click(
@@ -84,9 +86,9 @@ describe("DataManagement", () => {
       render(
         <DataManagement
           shots={shots}
-          onReplaceAll={vi.fn()}
+          onReplaceAll={vi.fn(() => true)}
           profile={{}}
-          onReplaceProfile={vi.fn()}
+          onReplaceProfile={vi.fn(() => true)}
         />
       );
       fireEvent.click(screen.getByRole("button", { name: "Export CSV" }));
@@ -99,15 +101,13 @@ describe("DataManagement", () => {
     });
 
     it("shows an error (not a silent failure) when the download is blocked", () => {
-      downloadMock.mockImplementationOnce(() => {
-        throw new Error("blocked by browser");
-      });
+      downloadMock.mockReturnValueOnce(false); // the browser blocked it
       render(
         <DataManagement
           shots={shots}
-          onReplaceAll={vi.fn()}
+          onReplaceAll={vi.fn(() => true)}
           profile={{}}
-          onReplaceProfile={vi.fn()}
+          onReplaceProfile={vi.fn(() => true)}
         />
       );
 
@@ -123,13 +123,13 @@ describe("DataManagement", () => {
 
   describe("import", () => {
     it("shows a generic error for a malformed file and never replaces", async () => {
-      const onReplaceAll = vi.fn();
+      const onReplaceAll = vi.fn(() => true);
       render(
         <DataManagement
           shots={shots}
           onReplaceAll={onReplaceAll}
           profile={{}}
-          onReplaceProfile={vi.fn()}
+          onReplaceProfile={vi.fn(() => true)}
         />
       );
 
@@ -144,13 +144,13 @@ describe("DataManagement", () => {
     });
 
     it("confirms, backs up current data, then replaces on a valid import", async () => {
-      const onReplaceAll = vi.fn();
+      const onReplaceAll = vi.fn(() => true);
       render(
         <DataManagement
           shots={shots}
           onReplaceAll={onReplaceAll}
           profile={{}}
-          onReplaceProfile={vi.fn()}
+          onReplaceProfile={vi.fn(() => true)}
         />
       );
 
@@ -173,9 +173,64 @@ describe("DataManagement", () => {
       );
     });
 
+    it("says the restore failed, instead of announcing entries it never wrote", async () => {
+      // On a device refusing writes the restore committed nothing, but still
+      // reported "Restored 1 entry from backup." — and the profile half, which
+      // went through a different path, WAS applied in memory. A green success
+      // message beside a red storage banner, over a half-applied restore.
+      const onReplaceAll = vi.fn(() => false);
+      const onReplaceProfile = vi.fn(() => true);
+      render(
+        <DataManagement
+          shots={shots}
+          onReplaceAll={onReplaceAll}
+          profile={{}}
+          onReplaceProfile={onReplaceProfile}
+        />
+      );
+
+      uploadText(toJson([{ id: "imp", date: "2026-05-01", doseMg: 40 }]));
+      const dialog = await screen.findByRole("dialog");
+      fireEvent.click(within(dialog).getByRole("button", { name: "Replace" }));
+
+      expect(screen.getByRole("status")).toHaveTextContent(
+        /Couldn.t restore the backup/
+      );
+      expect(screen.getByRole("status")).toHaveTextContent(/Nothing has been changed/);
+      expect(screen.queryByText(/Restored/)).not.toBeInTheDocument();
+      // Nothing half-applied: the profile is never touched once shots refuse.
+      expect(onReplaceProfile).not.toHaveBeenCalled();
+    });
+
+    it("does not claim 'nothing changed' when the shots DID land and the profile didn't", async () => {
+      // The likelier half-failure: the big shots write is what exhausts the
+      // remaining quota, so the small profile write fails right behind it. Saying
+      // "nothing has been changed" there would be false — the history has already
+      // been replaced.
+      const onReplaceAll = vi.fn(() => true);
+      const onReplaceProfile = vi.fn(() => false);
+      render(
+        <DataManagement
+          shots={shots}
+          onReplaceAll={onReplaceAll}
+          profile={{}}
+          onReplaceProfile={onReplaceProfile}
+        />
+      );
+
+      uploadText(toJson([{ id: "imp", date: "2026-05-01" }], { preferredName: "Lou" }));
+      const dialog = await screen.findByRole("dialog");
+      fireEvent.click(within(dialog).getByRole("button", { name: "Replace" }));
+
+      const status = screen.getByRole("status");
+      expect(status).toHaveTextContent(/shots were restored/i);
+      expect(status).not.toHaveTextContent(/Nothing has been changed/);
+      expect(status).not.toHaveTextContent(/^Restored/);
+    });
+
     it("replaces the profile too, using the profile from the imported file", async () => {
-      const onReplaceAll = vi.fn();
-      const onReplaceProfile = vi.fn();
+      const onReplaceAll = vi.fn(() => true);
+      const onReplaceProfile = vi.fn(() => true);
       render(
         <DataManagement
           shots={shots}
@@ -207,9 +262,9 @@ describe("DataManagement", () => {
       render(
         <DataManagement
           shots={shots}
-          onReplaceAll={vi.fn()}
+          onReplaceAll={vi.fn(() => true)}
           profile={sameProfile}
-          onReplaceProfile={vi.fn()}
+          onReplaceProfile={vi.fn(() => true)}
         />
       );
 
@@ -224,11 +279,11 @@ describe("DataManagement", () => {
     });
 
     it("reports a shot-day-only change under the generic profile-updated message", async () => {
-      const onReplaceProfile = vi.fn();
+      const onReplaceProfile = vi.fn(() => true);
       render(
         <DataManagement
           shots={shots}
-          onReplaceAll={vi.fn()}
+          onReplaceAll={vi.fn(() => true)}
           profile={{ shotDay: "monday" }}
           onReplaceProfile={onReplaceProfile}
         />
@@ -250,9 +305,9 @@ describe("DataManagement", () => {
       render(
         <DataManagement
           shots={shots}
-          onReplaceAll={vi.fn()}
+          onReplaceAll={vi.fn(() => true)}
           profile={{ preferredName: "Lou", startDate: "2025-01-15" }}
-          onReplaceProfile={vi.fn()}
+          onReplaceProfile={vi.fn(() => true)}
         />
       );
 
@@ -271,11 +326,11 @@ describe("DataManagement", () => {
     });
 
     it("clears the profile when the imported file has none", async () => {
-      const onReplaceProfile = vi.fn();
+      const onReplaceProfile = vi.fn(() => true);
       render(
         <DataManagement
           shots={shots}
-          onReplaceAll={vi.fn()}
+          onReplaceAll={vi.fn(() => true)}
           profile={{ preferredName: "Old" }}
           onReplaceProfile={onReplaceProfile}
         />
@@ -293,13 +348,13 @@ describe("DataManagement", () => {
     });
 
     it("aborts the replace (no data loss) if the safety backup can't download", async () => {
-      const onReplaceAll = vi.fn();
+      const onReplaceAll = vi.fn(() => true);
       render(
         <DataManagement
           shots={shots}
           onReplaceAll={onReplaceAll}
           profile={{}}
-          onReplaceProfile={vi.fn()}
+          onReplaceProfile={vi.fn(() => true)}
         />
       );
 
@@ -307,9 +362,7 @@ describe("DataManagement", () => {
       const dialog = await screen.findByRole("dialog");
 
       // The safety-backup download fails (e.g. blocked object URLs).
-      downloadMock.mockImplementationOnce(() => {
-        throw new Error("blocked by browser");
-      });
+      downloadMock.mockReturnValueOnce(false); // the browser blocked it
       fireEvent.click(within(dialog).getByRole("button", { name: "Replace" }));
 
       // Fail-safe: data is NOT replaced, dialog closes, and the user is told why.
@@ -324,9 +377,9 @@ describe("DataManagement", () => {
       render(
         <DataManagement
           shots={shots}
-          onReplaceAll={vi.fn()}
+          onReplaceAll={vi.fn(() => true)}
           profile={{}}
-          onReplaceProfile={vi.fn()}
+          onReplaceProfile={vi.fn(() => true)}
         />
       );
 
@@ -353,13 +406,13 @@ describe("DataManagement", () => {
     });
 
     it("cancel on the confirm dialog leaves data untouched", async () => {
-      const onReplaceAll = vi.fn();
+      const onReplaceAll = vi.fn(() => true);
       render(
         <DataManagement
           shots={shots}
           onReplaceAll={onReplaceAll}
           profile={{}}
-          onReplaceProfile={vi.fn()}
+          onReplaceProfile={vi.fn(() => true)}
         />
       );
 

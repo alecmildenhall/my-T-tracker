@@ -87,11 +87,23 @@ describe('useLocalStorage', () => {
 
   describe('writing to localStorage', () => {
     // Tests that hook persists initial value to localStorage on mount
-    it('should write initial value to localStorage', () => {
-      renderHook(() => useLocalStorage('test-key', 'initial-value'))
-      
-      const stored = localStorage.getItem('test-key')
-      expect(stored).toBe(JSON.stringify('initial-value'))
+    it('does not seed an untouched store on mount', () => {
+      // Deliberately no write. Seeding is a write nobody asked for, and on a
+      // brand-new install in private browsing it threw — greeting a first-time
+      // user with "Your changes aren't being saved" before they had made any.
+      // An absent key already reads back as the initial value, so nothing is lost.
+      const { result } = renderHook(() => useLocalStorage('test-key', 'initial-value'))
+
+      expect(localStorage.getItem('test-key')).toBeNull()
+      expect(result.current[0]).toBe('initial-value')
+    })
+
+    it('writes as soon as the value is actually changed', () => {
+      const { result } = renderHook(() => useLocalStorage('test-key', 'initial-value'))
+      act(() => {
+        result.current[1]('initial-value-changed')
+      })
+      expect(localStorage.getItem('test-key')).toBe(JSON.stringify('initial-value-changed'))
     })
 
     // Tests that hook syncs state changes to localStorage
@@ -140,6 +152,36 @@ describe('useLocalStorage', () => {
       
       setItemSpy.mockRestore()
       consoleSpy.mockRestore()
+    })
+  })
+
+  describe('storage that cannot even be read', () => {
+    // Safari with "Block all cookies", Firefox with dom.storage disabled, or a
+    // partitioned iframe: touching localStorage THROWS rather than returning
+    // null. An unguarded probe in the write effect throws from a passive effect
+    // on first render, which the ErrorBoundary answers by replacing the whole
+    // app — where this used to degrade quietly to in-memory-only.
+    it('degrades to in-memory instead of throwing out of the effect', () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const getSpy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+        throw new DOMException('SecurityError')
+      })
+      const setSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new DOMException('SecurityError')
+      })
+
+      const { result } = renderHook(() => useLocalStorage('test-key', 'initial'))
+
+      expect(result.current[0]).toBe('initial')
+      act(() => {
+        result.current[1]('updated')
+      })
+      expect(result.current[0]).toBe('updated')
+
+      // This file clears mocks between tests but does not RESTORE them, so a
+      // leaked Storage spy would break every later test in the suite.
+      getSpy.mockRestore()
+      setSpy.mockRestore()
     })
   })
 
