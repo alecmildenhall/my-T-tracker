@@ -338,8 +338,9 @@ textarea {
 /* Focus rings for the elements the app moves focus to ITSELF, none of which is a
    widget the user tabbed onto: a row after "Load more" or a delete, the count
    line when the list empties, the History section when a confirm's row vanished,
-   the saved-values panel when a rename confirm's row went, and the page title
-   when an open sheet's shot disappeared. Without these the hand-off is invisible
+   the saved-values panel when a rename confirm's row went, the sheet's own
+   heading after "Clear form" removes the link that was clicked, and the page
+   title when an open sheet's shot disappeared. Without these the hand-off is invisible
    — focus moves, nothing on screen changes, and a sighted keyboard user's next
    Tab starts somewhere they cannot see (WCAG 2.4.7).
 
@@ -358,6 +359,7 @@ textarea {
 .history__count:focus-visible,
 .history:focus-visible,
 .manage-values:focus-visible,
+.shot-form__title:focus-visible,
 .app-title:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;

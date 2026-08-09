@@ -97,3 +97,20 @@ describe("handOffFocus", () => {
     expect(document.activeElement).toBe(held);
   });
 });
+
+describe("the ring guard itself", () => {
+  it("parsed real selectors out of styles.css", async () => {
+    // A parser that silently found nothing would make every ring assertion pass
+    // vacuously — which is exactly how the last round of hand-rolled checks let
+    // four defects through.
+    const { __ringSelectorsForTest } = await import("../../test/focusRing");
+
+    expect(__ringSelectorsForTest.length).toBeGreaterThan(10);
+    expect(__ringSelectorsForTest).toContain(".shot-list-item");
+    expect(__ringSelectorsForTest).toContain(".app-title");
+    // Comments are stripped before parsing; without that the first selector of
+    // every list arrives glued to the comment above it and never matches.
+    expect(__ringSelectorsForTest.every((s) => !s.includes("/*"))).toBe(true);
+    expect(__ringSelectorsForTest.every((s) => !s.includes("*/"))).toBe(true);
+  });
+});

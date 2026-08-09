@@ -10,6 +10,7 @@ import { SHEET_EXIT_MS } from "../components/Modal";
 import { todayLocalISO } from "../utils/datetime";
 import * as dl from "../utils/download";
 import { withFocusGuard, expectFocusSomewhereUseful } from "../test/focus";
+import { expectVisibleFocusRing } from "../test/focusRing";
 
 // App reads both stores via context (Settings uses the profile store), so mount
 // it under the same providers main.tsx does.
@@ -1192,6 +1193,7 @@ describe("focus is never left on <body>", () => {
     dismissSheet();
     await sheetGone();
     expectFocusSomewhereUseful("after dismissing the log sheet");
+    expectVisibleFocusRing("after dismissing the log sheet");
   });
 
   it("survives saving a shot", async () => {
@@ -1202,6 +1204,7 @@ describe("focus is never left on <body>", () => {
     );
     await sheetGone();
     expectFocusSomewhereUseful("after saving a shot");
+    expectVisibleFocusRing("after saving a shot");
   });
 
   it("survives 'Clear form', which removes the link that was clicked", () => {
@@ -1214,6 +1217,7 @@ describe("focus is never left on <body>", () => {
     withFocusGuard("after Clear form", () =>
       fireEvent.click(sheet().getByRole("button", { name: "Clear form" }))
     );
+    expectVisibleFocusRing("after Clear form");
   });
 
   it("survives editing a shot from History", async () => {
@@ -1228,6 +1232,7 @@ describe("focus is never left on <body>", () => {
     );
     await sheetGone();
     expectFocusSomewhereUseful("after saving an edit");
+    expectVisibleFocusRing("after saving an edit");
   });
 
   it("survives deleting a shot — the confirm removes the row that opened it", async () => {
@@ -1245,6 +1250,7 @@ describe("focus is never left on <body>", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
     );
     expectFocusSomewhereUseful("after deleting a shot");
+    expectVisibleFocusRing("after deleting a shot");
   });
 
   it("survives deleting the LAST shot, when there is no row left to receive focus", async () => {
@@ -1259,6 +1265,7 @@ describe("focus is never left on <body>", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
     );
     expectFocusSomewhereUseful("after deleting the only shot");
+    expectVisibleFocusRing("after deleting the only shot");
   });
 
   it("survives every tab change", () => {
