@@ -125,6 +125,55 @@ describe("Modal", () => {
     expect(first).toHaveFocus(); // wrapped round to the start, still inside
   });
 
+  it("continues from a tabIndex -1 element inside, rather than restarting", () => {
+    // Where every in-dialog hand-off lands: "Clear form" moves focus to the
+    // sheet's own heading, which FOCUSABLE excludes. Treating that the same as
+    // "focus is outside" restarted Tab at the top of the list — and since the ✕
+    // renders BEFORE the heading, that sent focus BACKWARDS out of the content.
+    render(
+      <Modal labelledBy="t" onClose={() => {}}>
+        <button type="button">Close X</button>
+        <h2 id="t" tabIndex={-1}>
+          Title
+        </h2>
+        <button type="button">Field A</button>
+        <button type="button">Save</button>
+      </Modal>
+    );
+    const heading = screen.getByRole("heading", { name: "Title" });
+    const closeX = screen.getByRole("button", { name: "Close X" });
+    const fieldA = screen.getByRole("button", { name: "Field A" });
+
+    heading.focus();
+    fireEvent.keyDown(window, { key: "Tab" });
+    expect(fieldA).toHaveFocus(); // forwards, not back to Close X
+
+    heading.focus();
+    fireEvent.keyDown(window, { key: "Tab", shiftKey: true });
+    expect(closeX).toHaveFocus(); // the control actually before it
+  });
+
+  it("does not let Tab escape a dialog with nothing focusable in it", () => {
+    // A content-free dialog is supported — the open-time chain lands on the
+    // container for exactly that case. The Tab handler used to bail before
+    // preventDefault, so the default ran and, with #root inert, focus left the
+    // page: the escape this trap exists to close.
+    render(
+      <Modal labelledBy="t" onClose={() => {}}>
+        <h2 id="t">Nothing to do here</h2>
+      </Modal>
+    );
+    // role="dialog" sits on the overlay; the focus target is the inner .dialog,
+    // which carries tabIndex -1 as the last-resort landing spot.
+    const inner = document.querySelector(".dialog") as HTMLElement;
+    expect(inner).toHaveFocus();
+
+    const notPrevented = fireEvent.keyDown(window, { key: "Tab" });
+    expect(notPrevented).toBe(false); // false = preventDefault() was called
+    expect(inner).toHaveFocus();
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
   it("keeps Tab inside with only one focusable control", () => {
     render(
       <Modal labelledBy="t" onClose={() => {}}>

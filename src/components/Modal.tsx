@@ -207,7 +207,16 @@ export const Modal: React.FC<ModalProps> = ({
       const dialog = dialogRef.current;
       if (!dialog) return;
       const focusables = dialog.querySelectorAll<HTMLElement>(FOCUSABLE);
-      if (focusables.length === 0) return;
+      if (focusables.length === 0) {
+        // A dialog with nothing focusable in it is supported — the open-time
+        // chain lands on the container for exactly that case. Without a floor
+        // here the handler returned, the default ran, and focus left the page,
+        // which is the escape this trap exists to close. Owning Tab has to mean
+        // owning it in the empty case too.
+        e.preventDefault();
+        handOffFocus(dialogRef);
+        return;
+      }
 
       // The trap owns Tab entirely while a dialog is open, rather than trying to
       // detect "focus is at the edge" and intervening only there. Edge detection
@@ -223,25 +232,45 @@ export const Modal: React.FC<ModalProps> = ({
       // each one removes the whole question. It never needs to know WHICH
       // elements can take focus — it tries them in order and stops at the first
       // that does, which is the same principle `focus.ts` is built on.
-      const list = Array.from(focusables);
-      const at = list.indexOf(document.activeElement as HTMLElement);
-
       // Tab order matches document order here: nothing in this app uses a
       // positive tabIndex, so querySelectorAll's order is the browser's order.
+      const list = Array.from(focusables);
+      const active = document.activeElement as HTMLElement | null;
+      const at = active ? list.indexOf(active) : -1;
+
       let order: HTMLElement[];
-      if (at === -1) {
-        // Focus is outside the dialog, or on the container itself (which carries
-        // tabIndex -1 as the last-resort target and so is excluded from
-        // FOCUSABLE). Either way, enter from the appropriate end.
-        order = e.shiftKey ? [...list].reverse() : list;
-      } else {
+      if (at !== -1) {
+        // On one of the controls: rotate from it, and end back on it so that a
+        // dialog with a single focusable does nothing rather than escaping.
         const after = list.slice(at + 1);
         const before = list.slice(0, at);
-        // Wrap around, and end on the current element: with one focusable
-        // control, Tab correctly does nothing rather than escaping.
         order = e.shiftKey
           ? [...before.reverse(), ...after.reverse(), list[at]]
           : [...after, ...before, list[at]];
+      } else if (active && dialog.contains(active)) {
+        // Inside the dialog but not IN the list — a `tabIndex={-1}` element,
+        // which FOCUSABLE deliberately excludes. This is not a rare case: it is
+        // where every hand-off inside a dialog lands, including "Clear form"
+        // moving focus to the sheet's own heading and the container itself.
+        //
+        // It must not share a branch with "focus is outside". `at === -1` was
+        // carrying both meanings, so Tab from the heading restarted at the top
+        // of the list — and since the ✕ renders BEFORE the heading, that sent
+        // focus backwards. One value, one meaning: ask where this element sits
+        // in document order instead of inferring it from a failed lookup.
+        const nextIdx = list.findIndex(
+          (el) =>
+            active.compareDocumentPosition(el) &
+            Node.DOCUMENT_POSITION_FOLLOWING
+        );
+        const after = nextIdx === -1 ? [] : list.slice(nextIdx);
+        const before = nextIdx === -1 ? list : list.slice(0, nextIdx);
+        order = e.shiftKey
+          ? [...before.reverse(), ...after.reverse()]
+          : [...after, ...before];
+      } else {
+        // Genuinely outside: enter from the appropriate end.
+        order = e.shiftKey ? [...list].reverse() : list;
       }
 
       e.preventDefault();
