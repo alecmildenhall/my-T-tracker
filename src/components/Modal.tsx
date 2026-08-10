@@ -11,8 +11,24 @@ import { handOffFocus } from "../utils/focus";
 
 // Elements that can receive keyboard focus. Excludes tabindex="-1" (e.g. the
 // visually-hidden file input) so the trap only cycles real, reachable controls.
+// Excludes `tabindex="-1"` (the visually-hidden file input, and the containers
+// that exist only as hand-off targets) so the trap cycles real controls.
+//
+// `:not([disabled])` matters more than it looks. A disabled control cannot hold
+// focus, but it still matched `button`, so it sat in this list and made every
+// index-based question about the list wrong: "is focus on the last control" was
+// answered against an element nothing can focus. That produced two separate
+// escapes. Filtering at the source is what every tabbability implementation does
+// first, and it makes the list mean what its consumers assume it means.
+//
+// Still not a complete tabbability check — `display: none`, `visibility: hidden`
+// and a collapsed <details> also make an element unfocusable and are not
+// expressible here. Nothing in this app's dialogs hits those, and `handOffFocus`
+// verifies after every move, so the remaining exposure is the index arithmetic
+// below. See the roadmap's "the Modal's Tab trap wants its own owner".
 const FOCUSABLE =
-  'a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])';
+  "a[href], button:not([disabled]), input:not([disabled]), " +
+  'select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /** Inputs whose own Tab handling moves between segments inside the control. */
 const SEGMENTED_INPUT =

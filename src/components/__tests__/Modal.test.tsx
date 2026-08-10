@@ -201,6 +201,31 @@ describe("Modal", () => {
     expect(date).toHaveFocus(); // wrapped back inside
   });
 
+  it("lets Tab out of a date field even when a DISABLED control follows it", () => {
+    // The segmented-input escape hatch asks "is there a control beyond this one",
+    // and a disabled button used to answer yes — so Tab was handed back to the
+    // browser, which skipped the disabled control and, with #root inert, left the
+    // page. Excluding disabled from FOCUSABLE makes the question mean what its
+    // asker assumes: a control you can actually reach.
+    render(
+      <Modal labelledBy="t" onClose={() => {}}>
+        <h2 id="t">Title</h2>
+        <button type="button">Before</button>
+        <input type="date" aria-label="Date" />
+        <button type="button" disabled>
+          Disabled
+        </button>
+      </Modal>
+    );
+    const date = screen.getByLabelText("Date");
+    date.focus();
+
+    // The date is now the LAST reachable control, so the trap must own this Tab.
+    const notPrevented = fireEvent.keyDown(window, { key: "Tab" });
+    expect(notPrevented).toBe(false);
+    expect(screen.getByRole("button", { name: "Before" })).toHaveFocus();
+  });
+
   it("ignores Ctrl/Alt/Cmd+Tab, which belong to the browser", () => {
     // preventDefault does not stop a reserved shortcut, so intercepting these
     // only meant returning from another browser tab to find focus silently
