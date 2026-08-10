@@ -28,36 +28,70 @@ import { expect } from "vitest";
  * Parsed rather than restated, so this cannot drift from the stylesheet the way
  * the stylesheet drifted from the components. Read once at module load.
  */
-const ringSelectors: string[] = (() => {
-  // Read from disk rather than imported: Vitest stubs CSS imports to an empty
-  // string by default, so `import css from "../styles.css?raw"` silently yields
-  // nothing — and a parser that finds nothing makes every ring assertion pass
-  // vacuously. (The test asserting this parser found real selectors exists
-  // because that is exactly what happened while building it.)
-  //
+/**
+ * Selectors granted a focus indicator by `css`.
+ *
+ * Exported so it can be tested against synthetic stylesheets: the live one has
+ * no ring-REMOVING `:focus` rule today, so a test driven by the real file cannot
+ * tell whether that exclusion works — and an exclusion nobody can see fail is
+ * how the previous, broken one survived.
+ */
+/**
+ * The real stylesheet, read from disk.
+ *
+ * Not imported: Vitest stubs CSS imports to an empty string by default, so
+ * `import css from "../styles.css?raw"` silently yields nothing — and a parser
+ * that finds nothing makes every ring assertion pass vacuously. (The test
+ * asserting this parser found real selectors exists because that is exactly what
+ * happened, twice, while building it.)
+ *
+ * Path from the project root, not `import.meta.url`: Vitest serves modules over
+ * a dev-server URL, so resolving relative to this file yields "/src/styles.css"
+ * — absolute from the filesystem root, and nonexistent.
+ */
+function readStylesheet(): string {
+  return readFileSync(`${process.cwd()}/src/styles.css`, "utf8");
+}
+
+export function parseRingSelectors(css: string): string[] {
   // Comments are stripped FIRST. Without that, `[^{}]+` swallows the comment
   // block above a rule into its selector, so the first selector in every list is
   // unparseable and never matches — and these comments discuss `:focus-visible`
   // in prose, which the block filter would then believe.
-  // Path from the project root, not `import.meta.url`: Vitest serves modules over
-  // a dev-server URL, so resolving relative to this file yields "/src/styles.css"
-  // — absolute from the filesystem root, and nonexistent.
-  const css = readFileSync(`${process.cwd()}/src/styles.css`, "utf8").replace(
-    /\/\*[\s\S]*?\*\//g,
-    ""
-  );
+  const source = css.replace(/\/\*[\s\S]*?\*\//g, "");
   const selectors: string[] = [];
 
-  // Rule blocks whose selector mentions :focus and whose body paints something
-  // you can see. `outline: none` is excluded deliberately — the field reset at
-  // the top of styles.css uses it, and it is the absence of a ring, not one.
-  for (const [, selector, body] of css.matchAll(/([^{}]+)\{([^{}]+)\}/g)) {
+  // Rule blocks whose selector mentions :focus and whose body does anything
+  // other than REMOVE the ring.
+  //
+  // Deliberately not a list of properties that "count" as an indicator. The
+  // first version allowed only outline / box-shadow / border-color, which
+  // misfiled `.skip-link:focus` — it reveals a visually-hidden link by setting
+  // `left` and `top`, a perfectly good focus treatment — and would misfile a
+  // redesign that reached for `background` or `transform`. Deciding whether an
+  // indicator is *good enough* is a human and browser judgement; the question
+  // this guard can actually answer is whether a focus rule exists at all.
+  //
+  // The exclusion is a real parse, not a negative lookahead. The previous
+  // `/outline\s*:\s*(?!none)/` never excluded anything: `\s*` backtracks, gives
+  // the space back, and the lookahead then runs against " none" and succeeds —
+  // so a rule that only removed a ring was recorded as granting one, and every
+  // element it matched would have passed vacuously.
+  for (const [, selector, body] of source.matchAll(/([^{}]+)\{([^{}]+)\}/g)) {
     if (!selector.includes(":focus")) continue;
-    const paints =
-      /outline\s*:\s*(?!none)[^;]+/.test(body) ||
-      /box-shadow\s*:\s*(?!none)[^;]+/.test(body) ||
-      /border-color\s*:\s*[^;]+/.test(body);
-    if (!paints) continue;
+    const declarations = body
+      .split(";")
+      .map((d) => d.trim())
+      .filter(Boolean);
+    const onlyRemovesTheRing =
+      declarations.length > 0 &&
+      declarations.every((d) => {
+        const [prop, ...rest] = d.split(":");
+        if (prop.trim() !== "outline") return false;
+        const value = rest.join(":").trim();
+        return value === "none" || value === "0";
+      });
+    if (declarations.length === 0 || onlyRemovesTheRing) continue;
 
     for (const part of selector.split(",")) {
       const trimmed = part.trim();
@@ -65,7 +99,9 @@ const ringSelectors: string[] = (() => {
     }
   }
   return selectors;
-})();
+}
+
+const ringSelectors: string[] = parseRingSelectors(readStylesheet());
 
 /** Every selector, with the :focus/:focus-visible pseudo stripped so jsdom's
  *  `matches()` can test the element itself — jsdom does not track focus-visible. */

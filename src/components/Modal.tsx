@@ -14,6 +14,11 @@ import { handOffFocus } from "../utils/focus";
 const FOCUSABLE =
   'a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
+/** Inputs whose own Tab handling moves between segments inside the control. */
+const SEGMENTED_INPUT =
+  'input[type="date"], input[type="time"], input[type="datetime-local"], ' +
+  'input[type="month"], input[type="week"]';
+
 interface ModalProps {
   /** id of the heading element inside, for aria-labelledby. */
   labelledBy: string;
@@ -204,6 +209,11 @@ export const Modal: React.FC<ModalProps> = ({
         return;
       }
       if (e.key !== "Tab") return;
+      // Ctrl/Alt/Cmd+Tab are the browser's and the OS's, not ours. They still
+      // dispatch a Tab keydown to the page, and preventDefault doesn't stop a
+      // reserved shortcut — it just meant coming back from another browser tab
+      // to find focus silently moved inside the sheet.
+      if (e.ctrlKey || e.altKey || e.metaKey) return;
       const dialog = dialogRef.current;
       if (!dialog) return;
       const focusables = dialog.querySelectorAll<HTMLElement>(FOCUSABLE);
@@ -237,6 +247,27 @@ export const Modal: React.FC<ModalProps> = ({
       const list = Array.from(focusables);
       const active = document.activeElement as HTMLElement | null;
       const at = active ? list.indexOf(active) : -1;
+
+      // `input[type=date]` and friends are several controls in one: Tab steps
+      // between month, day and year BEFORE leaving the field, and that stepping
+      // IS the default action. Owning every Tab cancelled it, so the log sheet's
+      // date — required, and the first thing focused in the primary flow — lost
+      // segment navigation entirely. Verified in Chrome: outside a dialog three
+      // Tabs stay inside the field; inside one, the first Tab left it.
+      //
+      // Hand Tab back whenever there is still a control beyond this one in the
+      // direction of travel, since the browser can then only move within the
+      // field or on to that control — either way it stays inside the dialog. At
+      // the boundary we take over again, which is where the trap matters.
+      //
+      // Residual, accepted and bounded: if EVERY control beyond a segmented
+      // input were unfocusable, the browser would skip them all and leave. Not
+      // reachable here — the sheet's Save button is last and always enabled —
+      // and predicting focusability is the thing this file refuses to do.
+      if (at !== -1 && active?.matches(SEGMENTED_INPUT)) {
+        const beyond = e.shiftKey ? at > 0 : at < list.length - 1;
+        if (beyond) return;
+      }
 
       let order: HTMLElement[];
       if (at !== -1) {

@@ -113,4 +113,36 @@ describe("the ring guard itself", () => {
     expect(__ringSelectorsForTest.every((s) => !s.includes("/*"))).toBe(true);
     expect(__ringSelectorsForTest.every((s) => !s.includes("*/"))).toBe(true);
   });
+
+  it("counts a focus rule that reveals a hidden element, not just outlines", async () => {
+    // `.skip-link:focus` has no outline, box-shadow or border — it makes a
+    // visually-hidden link visible by setting left/top, which is a perfectly
+    // good focus indicator. An allow-list of "ring" properties classified it as
+    // unringed, which would fail any future hand-off styled that way with a
+    // message telling the author to add a rule that already exists.
+    const { __ringSelectorsForTest } = await import("../../test/focusRing");
+    expect(__ringSelectorsForTest).toContain(".skip-link");
+  });
+
+  it("does not count a rule that only REMOVES the ring", async () => {
+    // Driven by synthetic CSS, not the live stylesheet: nothing in styles.css
+    // both mentions :focus and only strips the outline, so a test reading the
+    // real file cannot tell whether this exclusion works — which is exactly how
+    // the previous, broken version of it survived. That one used a negative
+    // lookahead that never excluded anything (`\s*` backtracks, so the lookahead
+    // ran against " none" and passed), meaning a ring-removing rule was recorded
+    // as granting one and every element it matched passed vacuously.
+    const { parseRingSelectors } = await import("../../test/focusRing");
+
+    expect(parseRingSelectors(".a:focus { outline: none; }")).toEqual([]);
+    expect(parseRingSelectors(".a:focus { outline: 0; }")).toEqual([]);
+    // ...but removing the outline while painting something else does count.
+    // (parseRingSelectors returns selectors with the pseudo still attached; the
+    // module strips it afterwards so jsdom's `matches()` can test the element.)
+    expect(
+      parseRingSelectors(".a:focus { outline: none; box-shadow: 0 0 0 2px red; }")
+    ).toEqual([".a:focus"]);
+    // ...and any focus treatment counts, not just an allow-list of properties.
+    expect(parseRingSelectors(".a:focus { left: 0; top: 0; }")).toEqual([".a:focus"]);
+  });
 });

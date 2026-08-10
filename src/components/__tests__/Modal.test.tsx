@@ -174,6 +174,48 @@ describe("Modal", () => {
     expect(document.activeElement).not.toBe(document.body);
   });
 
+  it("leaves Tab alone inside a date field, which uses it to change segment", () => {
+    // `input[type=date]` is several controls in one — Tab steps month → day →
+    // year before leaving — and that stepping is the DEFAULT action. Owning
+    // every Tab cancelled it, so the log sheet's date field (required, and the
+    // first thing focused in the primary flow) lost segment navigation. jsdom
+    // has no segments, so this pins the contract instead: the handler must not
+    // preventDefault while there is a control beyond it.
+    render(
+      <Modal labelledBy="t" onClose={() => {}}>
+        <h2 id="t">Title</h2>
+        <input type="date" aria-label="Date" />
+        <button type="button">After</button>
+      </Modal>
+    );
+    const date = screen.getByLabelText("Date");
+    date.focus();
+
+    const notPrevented = fireEvent.keyDown(window, { key: "Tab" });
+    expect(notPrevented).toBe(true); // true = default left alone, browser steps
+
+    // ...but at the far edge the trap takes over again, or focus would escape.
+    const after = screen.getByRole("button", { name: "After" });
+    after.focus();
+    expect(fireEvent.keyDown(window, { key: "Tab" })).toBe(false);
+    expect(date).toHaveFocus(); // wrapped back inside
+  });
+
+  it("ignores Ctrl/Alt/Cmd+Tab, which belong to the browser", () => {
+    // preventDefault does not stop a reserved shortcut, so intercepting these
+    // only meant returning from another browser tab to find focus silently
+    // moved somewhere else in the dialog.
+    render(<Harness />);
+    const cancel = screen.getByRole("button", { name: "Cancel" });
+    cancel.focus();
+
+    for (const mod of ["ctrlKey", "altKey", "metaKey"] as const) {
+      const notPrevented = fireEvent.keyDown(window, { key: "Tab", [mod]: true });
+      expect(notPrevented).toBe(true);
+      expect(cancel).toHaveFocus();
+    }
+  });
+
   it("keeps Tab inside with only one focusable control", () => {
     render(
       <Modal labelledBy="t" onClose={() => {}}>
