@@ -1,0 +1,34 @@
+{
+  /* Tests and test helpers. Separate from the app program so that `node:fs` —
+     which src/test/focusRing.ts needs to read the real stylesheet, since Vitest
+     stubs CSS imports to an empty string — does not put `process`, `Buffer` and
+     friends in scope for every browser-only module under src/. Code using them
+     would typecheck cleanly and fail at runtime, which is exactly the class of
+     guard this project keeps tight elsewhere. */
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.test.tsbuildinfo",
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "types": ["vite/client", "vitest/globals", "node"],
+    "skipLibCheck": true,
+
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": true
+  },
+  /* vite-env.d.ts carries the `__APP_VERSION__` declare that appMeta.ts needs,
+     and tests import it transitively. */
+  "include": ["src/test", "src/**/__tests__", "src/vite-env.d.ts"]
+}

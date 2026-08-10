@@ -117,9 +117,14 @@ export const Modal: React.FC<ModalProps> = ({
     // refused focus — so an initialFocusRef pointing at something not yet
     // focusable failed silently and skipped both fallbacks. Last resort is the
     // dialog itself, per the WAI-ARIA APG.
+    // Every focusable in turn, not just the first: `querySelector` gave a single
+    // candidate, so if both the initialFocusRef and that one control refused
+    // focus — a disabled Cancel on a confirm dialog is the realistic case —
+    // focus fell straight through to the container, leaving the user on a
+    // tabIndex -1 div with nothing announced. Same walk the Tab trap does.
     handOffFocus(
       initialFocusRef,
-      dialogRef.current?.querySelector<HTMLElement>(FOCUSABLE),
+      ...(dialogRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []),
       dialogRef
     );
 
@@ -184,6 +189,14 @@ export const Modal: React.FC<ModalProps> = ({
   //
   // A document-level listener is what focus-trap, Radix and Reach UI all do, for
   // this reason. `aria-modal` is advisory only, so the trap has to be real.
+  //
+  // LATENT, if a dialog ever opens a second one: two mounted Modals would both
+  // listen, and the outer one would see focus as "outside" and haul it back out
+  // of the inner dialog. Not reachable today — the log sheet, the delete
+  // confirm, and the saved-values and import dialogs are mutually exclusive, and
+  // `#root` stays inert across the whole 200ms closing window — so this is a
+  // note rather than a guard. The fix, when it is needed, is for the listener to
+  // no-op unless its own dialog is the last one mounted.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -196,29 +209,43 @@ export const Modal: React.FC<ModalProps> = ({
       const focusables = dialog.querySelectorAll<HTMLElement>(FOCUSABLE);
       if (focusables.length === 0) return;
 
-      const active = document.activeElement;
-      // Three ways Tab must be redirected back inside:
-      //  - focus escaped the dialog altogether (the padding-click case above);
-      //  - focus is on the container itself, which is focusable via tabIndex -1
-      //    as the last-resort target but excluded from FOCUSABLE, so it is
-      //    neither `first` nor `last` and would fall through both branches;
-      //  - focus is on the control at the edge it is about to step past.
-      const outside = !dialog.contains(active);
-      const onContainer = active === dialog;
-      const atStart = active === focusables[0];
-      const atEnd = active === focusables[focusables.length - 1];
+      // The trap owns Tab entirely while a dialog is open, rather than trying to
+      // detect "focus is at the edge" and intervening only there. Edge detection
+      // cannot be made reliable: FOCUSABLE matches a DISABLED button, and a
+      // hidden one, neither of which can hold focus — so the last element in the
+      // list is often not the last element you can actually reach, and comparing
+      // against it says "not at the edge" exactly when you are. The default then
+      // ran and focus left the dialog for browser chrome, since `#root` is inert
+      // and there is nothing else to land on. That was the bug this trap exists
+      // to prevent, reintroduced in its own edge check.
+      //
+      // Building the candidate order instead and letting `handOffFocus` verify
+      // each one removes the whole question. It never needs to know WHICH
+      // elements can take focus — it tries them in order and stops at the first
+      // that does, which is the same principle `focus.ts` is built on.
+      const list = Array.from(focusables);
+      const at = list.indexOf(document.activeElement as HTMLElement);
 
-      // Walk inward from the far end rather than focusing one fixed element:
-      // FOCUSABLE matches a DISABLED button, which cannot take focus, so wrapping
-      // onto one left focus where it was with the default already prevented —
-      // i.e. Tab did nothing at all.
-      if (e.shiftKey && (outside || onContainer || atStart)) {
-        e.preventDefault();
-        handOffFocus(...[...focusables].reverse(), dialogRef);
-      } else if (!e.shiftKey && (outside || onContainer || atEnd)) {
-        e.preventDefault();
-        handOffFocus(...focusables, dialogRef);
+      // Tab order matches document order here: nothing in this app uses a
+      // positive tabIndex, so querySelectorAll's order is the browser's order.
+      let order: HTMLElement[];
+      if (at === -1) {
+        // Focus is outside the dialog, or on the container itself (which carries
+        // tabIndex -1 as the last-resort target and so is excluded from
+        // FOCUSABLE). Either way, enter from the appropriate end.
+        order = e.shiftKey ? [...list].reverse() : list;
+      } else {
+        const after = list.slice(at + 1);
+        const before = list.slice(0, at);
+        // Wrap around, and end on the current element: with one focusable
+        // control, Tab correctly does nothing rather than escaping.
+        order = e.shiftKey
+          ? [...before.reverse(), ...after.reverse(), list[at]]
+          : [...after, ...before, list[at]];
       }
+
+      e.preventDefault();
+      handOffFocus(...order, dialogRef);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

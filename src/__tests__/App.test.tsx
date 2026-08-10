@@ -1187,9 +1187,12 @@ describe("App — a failed EDIT is held open too", () => {
 describe("focus is never left on <body>", () => {
   it("survives opening and dismissing the log sheet", async () => {
     renderApp();
-    withFocusGuard("after opening the log sheet", () =>
-      fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }))
-    );
+    // Focus the opener first. `fireEvent.click` does not focus what it clicks
+    // (nor does Safari), so without this the guard starts from <body> and passes
+    // vacuously — there is no stranding to detect if nothing was held.
+    const opener = screen.getByRole("button", { name: /Log a shot/ });
+    opener.focus();
+    withFocusGuard("after opening the log sheet", () => fireEvent.click(opener));
     dismissSheet();
     await sheetGone();
     expectFocusSomewhereUseful("after dismissing the log sheet");
@@ -1224,9 +1227,9 @@ describe("focus is never left on <body>", () => {
     seedShots([{ id: "a", date: "2026-06-01", notes: "x" }]);
     renderApp();
     goTo("History");
-    withFocusGuard("after opening an edit sheet", () =>
-      fireEvent.click(screen.getByRole("button", { name: "Edit" }))
-    );
+    const editBtn = screen.getByRole("button", { name: "Edit" });
+    editBtn.focus(); // see the note on the log-sheet guard above
+    withFocusGuard("after opening an edit sheet", () => fireEvent.click(editBtn));
     fireEvent.click(
       within(screen.getByRole("dialog")).getByRole("button", { name: "Update shot" })
     );
@@ -1283,9 +1286,12 @@ describe("focus is never left on <body>", () => {
 
   it("survives the skip link, which must not poison later focus restores", async () => {
     renderApp();
-    withFocusGuard("after using the skip link", () =>
-      fireEvent.click(screen.getByRole("link", { name: /Skip to navigation/i }))
-    );
+    const skip = screen.getByRole("link", { name: /Skip to navigation/i });
+    skip.focus(); // a skip link is only ever reached BY keyboard, so this is realistic
+    withFocusGuard("after using the skip link", () => fireEvent.click(skip));
+    // The whole point of the link: it must actually land somewhere, visibly.
+    expectFocusSomewhereUseful("after using the skip link");
+    expectVisibleFocusRing("after using the skip link");
     // ...and a dialog opened afterwards still restores focus properly, rather
     // than to whatever the skip link left in the URL.
     fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));

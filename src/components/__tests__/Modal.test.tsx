@@ -110,11 +110,64 @@ describe("Modal", () => {
     const first = screen.getByRole("button", { name: "First" });
     const middle = screen.getByRole("button", { name: "Middle" });
 
+    // Backwards from the first control wraps to the last one that can take it.
     first.focus();
-    fireEvent.keyDown(first, { key: "Tab", shiftKey: true });
-
+    fireEvent.keyDown(window, { key: "Tab", shiftKey: true });
     expect(middle).toHaveFocus();
-    expect(document.activeElement).not.toBe(document.body);
+
+    // FORWARDS from the last REAL control is the direction that escaped. The
+    // edge check compared against focusables[length - 1] — the disabled button —
+    // so it read "not at the edge" precisely when you were, let the default run,
+    // and focus left the page (#root is inert, so there is nothing to land on).
+    middle.focus();
+    const notPrevented = fireEvent.keyDown(window, { key: "Tab" });
+    expect(notPrevented).toBe(false); // false = preventDefault() was called
+    expect(first).toHaveFocus(); // wrapped round to the start, still inside
+  });
+
+  it("keeps Tab inside with only one focusable control", () => {
+    render(
+      <Modal labelledBy="t" onClose={() => {}}>
+        <h2 id="t">Title</h2>
+        <button type="button">Only</button>
+      </Modal>
+    );
+    const only = screen.getByRole("button", { name: "Only" });
+    only.focus();
+
+    fireEvent.keyDown(window, { key: "Tab" });
+    expect(only).toHaveFocus();
+    fireEvent.keyDown(window, { key: "Tab", shiftKey: true });
+    expect(only).toHaveFocus();
+  });
+
+  it("steps through controls in order, not just at the edges", () => {
+    // The trap now owns every Tab, so ordinary movement has to keep working —
+    // taking over Tab and getting the order wrong would be a worse bug than the
+    // one it fixes.
+    render(
+      <Modal labelledBy="t" onClose={() => {}}>
+        <h2 id="t">Title</h2>
+        <button type="button">One</button>
+        <button type="button">Two</button>
+        <button type="button">Three</button>
+      </Modal>
+    );
+    const [one, two, three] = ["One", "Two", "Three"].map((n) =>
+      screen.getByRole("button", { name: n })
+    );
+
+    one.focus();
+    fireEvent.keyDown(window, { key: "Tab" });
+    expect(two).toHaveFocus();
+    fireEvent.keyDown(window, { key: "Tab" });
+    expect(three).toHaveFocus();
+    fireEvent.keyDown(window, { key: "Tab" });
+    expect(one).toHaveFocus(); // wrapped
+    fireEvent.keyDown(window, { key: "Tab", shiftKey: true });
+    expect(three).toHaveFocus(); // wrapped back
+    fireEvent.keyDown(window, { key: "Tab", shiftKey: true });
+    expect(two).toHaveFocus();
   });
 
   it("keeps Tab inside even from the dialog container itself", () => {

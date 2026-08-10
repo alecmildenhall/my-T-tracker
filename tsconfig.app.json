@@ -5,9 +5,7 @@
     "useDefineForClassFields": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
-    // "node" is here for test helpers only — src/test/focusRing.ts reads the real
-    // styles.css off disk, because Vitest stubs CSS imports to an empty string.
-    "types": ["vite/client", "vitest/globals", "node"],
+    "types": ["vite/client", "vitest/globals"],
     "skipLibCheck": true,
 
     /* Bundler mode */
@@ -26,5 +24,8 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  /* Tests live in their own program (tsconfig.test.json) so their Node typings
+     stay out of the app's scope. */
+  "exclude": ["src/test", "src/**/__tests__"]
 }
