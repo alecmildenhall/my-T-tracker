@@ -136,6 +136,12 @@ describe("the ring guard itself", () => {
 
     expect(parseRingSelectors(".a:focus { outline: none; }")).toEqual([]);
     expect(parseRingSelectors(".a:focus { outline: 0; }")).toEqual([]);
+    // The variants a literal two-string check let through as "ringed".
+    expect(parseRingSelectors(".a:focus { outline: 0px; }")).toEqual([]);
+    expect(parseRingSelectors(".a:focus { outline: none !important; }")).toEqual([]);
+    expect(
+      parseRingSelectors(".a:focus { outline: none; outline-offset: 0; }")
+    ).toEqual([]);
     // ...but removing the outline while painting something else does count.
     // (parseRingSelectors returns selectors with the pseudo still attached; the
     // module strips it afterwards so jsdom's `matches()` can test the element.)

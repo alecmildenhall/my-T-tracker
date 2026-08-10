@@ -1185,6 +1185,13 @@ describe("App — a failed EDIT is held open too", () => {
 // jsdom sees neither `inert` nor CSS, so "the trap is escapable" and "the ring
 // is invisible" — the other two shapes among the nine — stay Playwright checks.
 describe("focus is never left on <body>", () => {
+  // Scoped restore, matching the other two mocking blocks in this file. One test
+  // here spies on Storage.prototype.setItem; restoring inline at the end of it
+  // means a failure earlier in the test leaks a THROWING setItem into every
+  // later test. `unstubGlobals` does not cover spies — this file has already
+  // been bitten once by exactly that.
+  afterEach(() => vi.restoreAllMocks());
+
   it("survives opening and dismissing the log sheet", async () => {
     renderApp();
     // Focus the opener first. `fireEvent.click` does not focus what it clicks
@@ -1312,6 +1319,5 @@ describe("focus is never left on <body>", () => {
         within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
       )
     );
-    vi.restoreAllMocks();
   });
 });

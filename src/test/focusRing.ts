@@ -83,13 +83,22 @@ export function parseRingSelectors(css: string): string[] {
       .split(";")
       .map((d) => d.trim())
       .filter(Boolean);
+    // A rule only REMOVES the ring when every declaration in it is an
+    // outline-family property being zeroed. Matching just the literal `outline:
+    // none` and `outline: 0` let `outline: 0px`, `outline: none !important`, and
+    // `outline: none; outline-offset: 0` through as rings — the same vacuous-pass
+    // class as the backtracking lookahead this replaced.
     const onlyRemovesTheRing =
       declarations.length > 0 &&
       declarations.every((d) => {
         const [prop, ...rest] = d.split(":");
-        if (prop.trim() !== "outline") return false;
-        const value = rest.join(":").trim();
-        return value === "none" || value === "0";
+        if (!prop.trim().startsWith("outline")) return false;
+        const value = rest
+          .join(":")
+          .replace(/!important/gi, "")
+          .trim()
+          .toLowerCase();
+        return ["none", "0", "0px", "0em", "0rem", "transparent"].includes(value);
       });
     if (declarations.length === 0 || onlyRemovesTheRing) continue;
 

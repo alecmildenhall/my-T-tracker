@@ -358,7 +358,6 @@ textarea {
    one. */
 .shot-list-item:focus-visible,
 .tabbar:focus-visible,
-.dialog h3:focus-visible,
 .history__count:focus-visible,
 .history:focus-visible,
 .manage-values:focus-visible,
@@ -692,7 +691,15 @@ textarea {
 /* A modal moves focus to a button on open (e.g. the confirm dialog auto-focuses
    Cancel). Use :focus, not :focus-visible, so that programmatic focus is still
    shown — Chrome won't mark auto-focus as :focus-visible. */
-.dialog-actions button:focus {
+.dialog-actions button:focus,
+/* The combine step's heading, which the rename dialog hands focus to when Cancel
+   won't take it. Same `:focus` reasoning as the buttons above: that hand-off runs
+   as the dialog CHANGES STATE under a click, and Chrome won't mark focus applied
+   then as :focus-visible — so :focus-visible would leave it invisible in exactly
+   the case it exists for. Scoped by [tabindex] rather than matching every dialog
+   h3: only a hand-off target should count as ringed, or the ring guard starts
+   reporting "fine" for headings nothing can focus. */
+.dialog h3[tabindex]:focus {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -790,6 +797,16 @@ textarea {
 }
 
 /* Bottom tab bar */
+
+/* Drawn INSIDE the bar. `.tabbar` is fixed to the left, right and bottom edges
+   of the viewport, so the shared `outline-offset: 2px` above put the ring 4px
+   outside it on three sides — leaving only the top segment visible, 2px above an
+   existing 1px border, which reads as part of the border rather than as focus.
+   Measured at 390x844: the ring box ran -4 to 394 across a 390-wide screen.
+   jsdom does no layout, so expectVisibleFocusRing cannot see this. */
+.tabbar:focus-visible {
+  outline-offset: -2px;
+}
 
 .tabbar {
   position: fixed;

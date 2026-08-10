@@ -359,6 +359,16 @@ Worth knowing what this rule is suspending, since it stops being free the day so
 
   Two things this cannot see, both verified in a browser instead: jsdom implements neither `inert` nor CSS, so **the escapable trap and the invisible ring stay Playwright checks**. That mattered — the browser pass found the trap escape *live on desktop*, still present: clicking the sheet's dead padding drops focus to `<body>`, and the trap was the dialog's own `onKeyDown`, which only fires for keys pressed while focus is already inside. **The trap now lives on the window listener that already owned Escape**, which is what focus-trap, Radix and Reach UI all do and for exactly this reason. Wrapping also walks inward from the far end, because `FOCUSABLE` matches a *disabled* button and wrapping onto one made Tab a dead key.
 
+- [ ] _Engineering:_ **the Modal's Tab trap wants its own owner.** The focus-hand-off PR consolidated eight `.focus()` sites into `handOffFocus`, and in doing so rewrote the trap twice — each rewrite fixing the previous one's escape and introducing the next defect. Four review rounds on that one file: the wrap target ignored disabled controls; then edge detection ignored them too; then owning every Tab conflated "inside on a `tabIndex={-1}` element" with "outside the dialog"; then owning every Tab cancelled `input[type=date]`'s own segment stepping. Every one was invisible to jsdom and found either in a browser or by review.
+
+  **What is left, knowingly.** The segmented-input escape hatch decides whether to hand Tab back by comparing list indices — which is the same edge detection the code's own comment says cannot be made reliable, since `FOCUSABLE` matches disabled and hidden controls. Two consequences, neither reachable today and both bounded by accident rather than by design:
+    - A dialog whose date/time input is followed only by a disabled or hidden control would let Tab leave the page.
+    - A segmented input at either **end** of the list loses in-field stepping in that direction. Safe now only because `.shot-form__close` happens to render before the date input, so the sheet's date sits at index ≥ 1.
+
+  **B½ adds fields to that sheet**, which is what turns "not reachable" into "not reachable yet".
+
+  The fix is not another special case. Every defect above came from *predicting* what the browser would do with Tab; the reliable version **observes** instead — let the default run and correct focus on `focusout`/`focusin` when it actually leaves — which is the same "try, then verify" principle `handOffFocus` already runs on and the reason it has held up unchanged across all four rounds. That is a real rewrite of the trap, not a patch, so it belongs in its own PR with its own browser pass.
+
 - [x] Add optional testosterone start date for HRT milestones — _Settings → Your journey; future start dates allowed (planning ahead reads as "not started yet")_
 - [x] Add optional display name / preferred name for affirming milestone messages
 - [x] Add milestone logic for three-month intervals during year one, then six-month intervals after that — _labels read "1 year 3 months", never months-only_
