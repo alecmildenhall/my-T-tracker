@@ -12,6 +12,7 @@
 // hand-off is invisible because no rule styles programmatic focus" — two more of
 // the nine — cannot be seen from here at all. Those stay browser checks. The
 // note is in this file so nobody reads a green suite as covering them.
+import { waitFor } from "@testing-library/react";
 import { expect } from "vitest";
 
 const isNowhere = (el: Element | null): boolean =>
@@ -59,4 +60,23 @@ export function withFocusGuard(context: string, interaction: () => void): void {
   const held = !isNowhere(document.activeElement);
   interaction();
   if (held) expectFocusSomewhereUseful(context);
+}
+
+/**
+ * Wait for focus to settle somewhere usable, then assert it did.
+ *
+ * **Use this after anything that unmounts a dialog.** Focus restoration is
+ * asynchronous relative to the DOM: `Modal` restores focus from a passive effect
+ * cleanup, which runs *after* React has removed the dialog — so there is a real
+ * window where the element that held focus is gone and nothing has claimed it
+ * yet. `waitFor(dialog gone)` can land inside that window, and asserting there
+ * fails on a condition that resolves microseconds later.
+ *
+ * That intermittency is what it looks like: a suite that goes red roughly one
+ * run in fifteen, on a different test each time. The synchronous
+ * {@link expectFocusSomewhereUseful} is still right after an interaction that
+ * moves focus without unmounting anything.
+ */
+export function expectFocusSettled(context: string): Promise<void> {
+  return waitFor(() => expectFocusSomewhereUseful(context));
 }

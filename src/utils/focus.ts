@@ -37,7 +37,12 @@ export type FocusTarget =
 
 const resolve = (target: FocusTarget): HTMLElement | null => {
   if (!target) return null;
-  return "current" in target ? target.current : target;
+  // `instanceof`, not `"current" in target`. A real element can have a `current`
+  // property: HTMLFormElement exposes its named controls as own properties, so a
+  // form containing <input name="current"> would resolve to the input instead of
+  // the form. Both Modal call sites splat raw querySelectorAll results in here,
+  // and FOCUSABLE's `[tabindex]` clause matches <form tabindex="0">.
+  return target instanceof HTMLElement ? target : target.current;
 };
 
 /**

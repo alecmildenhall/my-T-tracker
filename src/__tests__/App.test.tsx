@@ -9,7 +9,11 @@ import { STORAGE_KEYS } from "../storageKeys";
 import { SHEET_EXIT_MS } from "../components/Modal";
 import { todayLocalISO } from "../utils/datetime";
 import * as dl from "../utils/download";
-import { withFocusGuard, expectFocusSomewhereUseful } from "../test/focus";
+import {
+  withFocusGuard,
+  expectFocusSomewhereUseful,
+  expectFocusSettled,
+} from "../test/focus";
 import { expectVisibleFocusRing } from "../test/focusRing";
 
 // App reads both stores via context (Settings uses the profile store), so mount
@@ -1202,7 +1206,7 @@ describe("focus is never left on <body>", () => {
     withFocusGuard("after opening the log sheet", () => fireEvent.click(opener));
     dismissSheet();
     await sheetGone();
-    expectFocusSomewhereUseful("after dismissing the log sheet");
+    await expectFocusSettled("after dismissing the log sheet");
     expectVisibleFocusRing("after dismissing the log sheet");
   });
 
@@ -1213,7 +1217,7 @@ describe("focus is never left on <body>", () => {
       within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
     );
     await sheetGone();
-    expectFocusSomewhereUseful("after saving a shot");
+    await expectFocusSettled("after saving a shot");
     expectVisibleFocusRing("after saving a shot");
   });
 
@@ -1241,7 +1245,7 @@ describe("focus is never left on <body>", () => {
       within(screen.getByRole("dialog")).getByRole("button", { name: "Update shot" })
     );
     await sheetGone();
-    expectFocusSomewhereUseful("after saving an edit");
+    await expectFocusSettled("after saving an edit");
     expectVisibleFocusRing("after saving an edit");
   });
 
@@ -1259,7 +1263,7 @@ describe("focus is never left on <body>", () => {
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
     );
-    expectFocusSomewhereUseful("after deleting a shot");
+    await expectFocusSettled("after deleting a shot");
     expectVisibleFocusRing("after deleting a shot");
   });
 
@@ -1274,7 +1278,7 @@ describe("focus is never left on <body>", () => {
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
     );
-    expectFocusSomewhereUseful("after deleting the only shot");
+    await expectFocusSettled("after deleting the only shot");
     expectVisibleFocusRing("after deleting the only shot");
   });
 
@@ -1304,7 +1308,7 @@ describe("focus is never left on <body>", () => {
     fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
     dismissSheet();
     await sheetGone();
-    expectFocusSomewhereUseful("after a sheet opened following the skip link");
+    await expectFocusSettled("after a sheet opened following the skip link");
   });
 
   it("survives a save that storage refuses, where the sheet stays open", () => {

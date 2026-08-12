@@ -23,20 +23,6 @@ import { readFileSync } from "node:fs";
 import { expect } from "vitest";
 
 /**
- * Selectors that styles.css grants a visible focus indicator.
- *
- * Parsed rather than restated, so this cannot drift from the stylesheet the way
- * the stylesheet drifted from the components. Read once at module load.
- */
-/**
- * Selectors granted a focus indicator by `css`.
- *
- * Exported so it can be tested against synthetic stylesheets: the live one has
- * no ring-REMOVING `:focus` rule today, so a test driven by the real file cannot
- * tell whether that exclusion works — and an exclusion nobody can see fail is
- * how the previous, broken one survived.
- */
-/**
  * The real stylesheet, read from disk.
  *
  * Not imported: Vitest stubs CSS imports to an empty string by default, so
@@ -50,7 +36,19 @@ import { expect } from "vitest";
  * — absolute from the filesystem root, and nonexistent.
  */
 function readStylesheet(): string {
-  return readFileSync(`${process.cwd()}/src/styles.css`, "utf8");
+  const path = `${process.cwd()}/src/styles.css`;
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    // Resolved from the working directory, so running Vitest from a subdirectory
+    // fails here at module load with a bare ENOENT and no clue why. Say what is
+    // actually wrong instead.
+    throw new Error(
+      `focusRing.ts could not read ${path}. Run the suite from the project ` +
+        `root (npm test -- --run); it resolves the stylesheet from the working ` +
+        `directory because Vitest stubs CSS imports to an empty string.`
+    );
+  }
 }
 
 export function parseRingSelectors(css: string): string[] {
@@ -83,24 +81,32 @@ export function parseRingSelectors(css: string): string[] {
       .split(";")
       .map((d) => d.trim())
       .filter(Boolean);
-    // A rule only REMOVES the ring when every declaration in it is an
-    // outline-family property being zeroed. Matching just the literal `outline:
-    // none` and `outline: 0` let `outline: 0px`, `outline: none !important`, and
-    // `outline: none; outline-offset: 0` through as rings — the same vacuous-pass
-    // class as the backtracking lookahead this replaced.
-    const onlyRemovesTheRing =
-      declarations.length > 0 &&
-      declarations.every((d) => {
-        const [prop, ...rest] = d.split(":");
-        if (!prop.trim().startsWith("outline")) return false;
-        const value = rest
-          .join(":")
-          .replace(/!important/gi, "")
-          .trim()
-          .toLowerCase();
-        return ["none", "0", "0px", "0em", "0rem", "transparent"].includes(value);
-      });
-    if (declarations.length === 0 || onlyRemovesTheRing) continue;
+    // Does any declaration here actually paint something?
+    //
+    // Stated positively, because the negative form ("does it ONLY remove the
+    // ring?") had a hole of exactly the kind this guard exists to close: a rule
+    // setting only `outline-offset: -2px` — which the tab bar now uses, so its
+    // ring draws inside the viewport — is not a removal, so it counted as
+    // GRANTING a ring. `.tabbar` appeared twice in the allowlist, and dropping
+    // the real rule during the UI redesign would have left the offset-only one
+    // keeping it there, green and painting nothing.
+    const ZEROED = ["none", "0", "0px", "0em", "0rem", "transparent"];
+    const grantsRing = declarations.some((d) => {
+      const [rawProp, ...rest] = d.split(":");
+      const prop = rawProp.trim().toLowerCase();
+      const value = rest
+        .join(":")
+        .replace(/!important/gi, "")
+        .trim()
+        .toLowerCase();
+      // `outline-offset` alone paints nothing — it only shifts an outline that
+      // has to come from somewhere else.
+      if (prop === "outline-offset") return false;
+      // An outline property zeroed out is the absence of a ring, not one.
+      if (prop.startsWith("outline") && ZEROED.includes(value)) return false;
+      return true;
+    });
+    if (!grantsRing) continue;
 
     for (const part of selector.split(",")) {
       const trimmed = part.trim();
@@ -110,10 +116,25 @@ export function parseRingSelectors(css: string): string[] {
   return selectors;
 }
 
+/**
+ * Selectors that styles.css grants a visible focus indicator.
+ *
+ * Parsed rather than restated, so this cannot drift from the stylesheet the way
+ * the stylesheet drifted from the components. Read once, at module load.
+ */
 const ringSelectors: string[] = parseRingSelectors(readStylesheet());
 
-/** Every selector, with the :focus/:focus-visible pseudo stripped so jsdom's
- *  `matches()` can test the element itself — jsdom does not track focus-visible. */
+/**
+ * Every selector with its `:focus` / `:focus-visible` pseudo stripped, so jsdom's
+ * `matches()` can test the element itself — jsdom models neither pseudo.
+ *
+ * The cost, stated so it isn't mistaken for coverage: this cannot tell the two
+ * apart. A target whose ONLY rule is `:focus-visible`, focused by a mouse-driven
+ * action, passes here and paints nothing in Chrome — the split that
+ * `styles.css` deliberately makes (`:focus` for focus applied as a dialog changes
+ * state, `:focus-visible` for focus following a keyboard action) is invisible
+ * from here. That half stays a browser check.
+ */
 const structuralSelectors = ringSelectors.map((s) =>
   s.replace(/:focus-visible|:focus/g, "").trim()
 );

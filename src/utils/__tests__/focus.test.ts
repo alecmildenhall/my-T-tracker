@@ -69,6 +69,26 @@ describe("handOffFocus", () => {
     expect(handOffFocus(null, undefined, { current: null }, real)).toBe(real);
   });
 
+  it("does not mistake an element with a `current` property for a ref", () => {
+    // HTMLFormElement exposes its named controls as own properties, so a form
+    // containing <input name="current"> satisfies `"current" in target` and a
+    // duck-typed check would resolve to the INPUT instead of the form. Both
+    // Modal call sites splat raw querySelectorAll results into handOffFocus, and
+    // FOCUSABLE's `[tabindex]` clause matches <form tabindex="0">.
+    // jsdom does not implement form named-property access, so the property is
+    // defined by hand here: what is being pinned is the discriminator, not
+    // jsdom's form behaviour. Confirmed in Chrome that a real form with an
+    // <input name="current"> does expose it as `form.current`.
+    const el = mounted("div", (d) => (d.tabIndex = -1));
+    Object.defineProperty(el, "current", {
+      value: document.createElement("input"),
+    });
+
+    expect("current" in el).toBe(true); // the duck-type check would be fooled
+    expect(handOffFocus(el)).toBe(el);
+    expect(document.activeElement).toBe(el);
+  });
+
   it("accepts refs and elements interchangeably", () => {
     const el = mounted("button");
 
@@ -124,6 +144,7 @@ describe("the ring guard itself", () => {
     expect(__ringSelectorsForTest).toContain(".skip-link");
   });
 
+
   it("does not count a rule that only REMOVES the ring", async () => {
     // Driven by synthetic CSS, not the live stylesheet: nothing in styles.css
     // both mentions :focus and only strips the outline, so a test reading the
@@ -142,6 +163,12 @@ describe("the ring guard itself", () => {
     expect(
       parseRingSelectors(".a:focus { outline: none; outline-offset: 0; }")
     ).toEqual([]);
+    // outline-offset alone paints nothing — it shifts an outline that has to come
+    // from elsewhere. `.tabbar:focus-visible { outline-offset: -2px }` is a real
+    // rule in this stylesheet, and counting it as a ring put .tabbar in the
+    // allowlist twice, so losing the actual rule would have gone unnoticed.
+    expect(parseRingSelectors(".a:focus { outline-offset: -2px; }")).toEqual([]);
+    expect(parseRingSelectors(".a:focus { outline-offset: 4px; }")).toEqual([]);
     // ...but removing the outline while painting something else does count.
     // (parseRingSelectors returns selectors with the pseudo still attached; the
     // module strips it afterwards so jsdom's `matches()` can test the element.)

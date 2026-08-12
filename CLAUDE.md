@@ -18,7 +18,7 @@ ever bumped** — until the user says the project is no longer pre-GA.
 
 # Code style
 - **One value, one meaning.** Never overload a value to carry a second meaning (a sentinel). This is the single most expensive bug class in this codebase: `ShotDraft.date` used `""` for both "untouched, follow today" and "the user emptied the field", and twice silently re-dated a logged shot — once by a day, once by months. Give the second meaning its own carrier (`T | null`, or a separate flag). Applies to **every** layer, not just stored models — the draft/form layer is where it broke.
-- **Ask the real question, not a cheaper one that resembles it.** When you need to know whether something will work, **do it and check the result** — never run a proxy and infer. This has now cost three separate defects, and every time the proxy differed from the real thing in a dimension nobody thought about:
+- **Ask the real question, not a cheaper one that resembles it.** When you need to know whether something will work, **do it and check the result** — never run a proxy and infer. It has cost two defect *classes* so far — the second recurring three times across four review rounds — and every time the proxy differed from the real thing in a dimension nobody had thought about:
   - A **one-byte probe write to a throwaway key** was used to predict whether saving a shot would succeed. Quota depends on the *size of the value*, so the probe sailed through while the shot was rejected — the sheet closed, the draft cleared, and the app reported success for data it had not stored.
   - The Modal's Tab trap decided **"focus is on the last control"** by comparing against the last element of a `querySelectorAll` list, which matched disabled buttons that cannot hold focus. Wrong in both directions, on separate occasions, each letting focus leave the page.
 
@@ -34,6 +34,8 @@ ever bumped** — until the user says the project is no longer pre-GA.
 # Testing
 - Tests live in `__tests__/` next to the code they cover (`*.test.ts(x)`).
 - `beforeEach(() => localStorage.clear())` in every test file that touches storage.
+- **Focus restoration is asynchronous relative to the DOM.** `Modal` restores focus from a *passive* effect cleanup, which runs after React has removed the dialog — so there is a real window where the element that held focus is gone and nothing has claimed it. Waiting for the dialog to disappear does **not** mean focus has landed. After anything that unmounts a dialog, use `await expectFocusSettled(...)` (`src/test/focus.ts`), never the synchronous `expectFocusSomewhereUseful`. Getting this wrong makes the suite red about one run in fifteen, on a different test each time, which reads as an unrelated flake.
+- **A test that fails intermittently is a finding, not noise.** Measure it — a handful of green runs cannot clear a 5–10% failure rate, and "I couldn't reproduce it" has twice been wrong here. Loop the full suite 15+ times, and compare against `main` in a worktree before assuming the branch caused it.
 
 # Privacy (non-negotiable)
 - No network layer (fetch/API calls), analytics, telemetry, or third-party SDKs — everything stays in `localStorage`. Stop and confirm with the user before adding any of these.

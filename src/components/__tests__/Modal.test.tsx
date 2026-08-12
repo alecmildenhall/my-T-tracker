@@ -226,6 +226,32 @@ describe("Modal", () => {
     expect(screen.getByRole("button", { name: "Before" })).toHaveFocus();
   });
 
+  it("does nothing once its own dialog has left the document", () => {
+    // The listener can outlive the dialog: React removes the DOM in the commit
+    // and runs the passive cleanup that detaches this listener afterwards. In
+    // that window a stale Modal would measure a detached subtree, move nothing,
+    // and still preventDefault — which makes the LIVE dialog's listener bail on
+    // defaultPrevented, turning Tab into a no-op. It showed up as a suite that
+    // went red about one run in sixteen.
+    render(<Harness />);
+    const outside = document.createElement("button");
+    document.body.appendChild(outside);
+    outside.focus();
+
+    // Detach the dialog without unmounting React, reproducing that window.
+    const overlay = document.querySelector(".dialog-overlay") as HTMLElement;
+    overlay.remove();
+
+    const notPrevented = fireEvent.keyDown(window, { key: "Tab" });
+    expect(notPrevented).toBe(true); // left alone entirely
+    expect(outside).toHaveFocus(); // and focus not dragged into a dead dialog
+
+    // Put it back before teardown: the overlay is portaled to <body>, and React
+    // throws on unmount if the node it means to remove has already gone.
+    document.body.appendChild(overlay);
+    outside.remove();
+  });
+
   it("ignores Ctrl/Alt/Cmd+Tab, which belong to the browser", () => {
     // preventDefault does not stop a reserved shortcut, so intercepting these
     // only meant returning from another browser tab to find focus silently

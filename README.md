@@ -371,6 +371,12 @@ Worth knowing what this rule is suspending, since it stops being free the day so
 
   Either write that check, or take the dependency. Either way it is a rewrite with its own browser pass, not a patch.
 
+  **Browser-pass checklist for B½,** since B½ adds fields to the very sheet this is bounded by, and none of it is visible to jsdom:
+    - Tab and Shift+Tab through the whole log sheet, both directions, and confirm focus never leaves it.
+    - Tab *within* the date and time inputs and confirm the segments still step (this broke once already).
+    - Confirm no new field lands a segmented input first or last in the sheet's tab order, which is the ordering the escape hatch is silently relying on.
+    - Confirm the focus ring is actually painted on every new hand-off target, at 390px — the ring guard proves a rule exists, not that it is on screen.
+
 - [x] Add optional testosterone start date for HRT milestones — _Settings → Your journey; future start dates allowed (planning ahead reads as "not started yet")_
 - [x] Add optional display name / preferred name for affirming milestone messages
 - [x] Add milestone logic for three-month intervals during year one, then six-month intervals after that — _labels read "1 year 3 months", never months-only_

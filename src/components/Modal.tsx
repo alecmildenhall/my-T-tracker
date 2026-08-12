@@ -9,10 +9,9 @@ import { createPortal } from "react-dom";
 import { useBackToClose } from "../hooks/useBackToClose";
 import { handOffFocus } from "../utils/focus";
 
-// Elements that can receive keyboard focus. Excludes tabindex="-1" (e.g. the
-// visually-hidden file input) so the trap only cycles real, reachable controls.
-// Excludes `tabindex="-1"` (the visually-hidden file input, and the containers
-// that exist only as hand-off targets) so the trap cycles real controls.
+// Elements that can receive keyboard focus. Excludes `tabindex="-1"` — the
+// visually-hidden file input, and the containers that exist only as hand-off
+// targets — so the trap cycles real, reachable controls.
 //
 // `:not([disabled])` matters more than it looks. A disabled control cannot hold
 // focus, but it still matched `button`, so it sat in this list and made every
@@ -118,6 +117,22 @@ export const Modal: React.FC<ModalProps> = ({
   // lifting inert silently fails and focus lands nowhere useful. Splitting these
   // into two effects made that ordering an accident of declaration order — and
   // jsdom ignores `inert` entirely, so no unit test would notice.
+  // Deliberately a PASSIVE effect, not a layout one, and the teardown is why.
+  //
+  // Cleanup runs after the commit, so between React removing the dialog's DOM
+  // and this restore running, focus sits briefly on <body>. Moving it to
+  // `useLayoutEffect` closes that gap and was tried — it breaks something more
+  // important. Layout cleanup runs during the mutation phase, before React has
+  // finished removing the rest of the tree, so `restoreTarget.isConnected` still
+  // reports true for an opener that is about to vanish: a confirm dialog that
+  // deleted its own row then restored focus to that row's button, which React
+  // removed a moment later, landing focus nowhere. The whole point of the
+  // restore/fallback split is knowing which of those happened, and only the
+  // settled DOM can answer.
+  //
+  // So the transit through <body> is accepted. It is sub-frame in a browser, and
+  // it is why tests must wait for focus to SETTLE rather than for the dialog to
+  // disappear — see `expectFocusSettled` in src/test/focus.ts.
   useEffect(() => {
     const root = document.getElementById("root");
     const previouslyFocused = document.activeElement as HTMLElement | null;
@@ -215,16 +230,38 @@ export const Modal: React.FC<ModalProps> = ({
   // listen, and the outer one would see focus as "outside" and haul it back out
   // of the inner dialog. Not reachable today — the log sheet, the delete
   // confirm, and the saved-values and import dialogs are mutually exclusive, and
-  // `#root` stays inert across the whole 200ms closing window — so this is a
-  // note rather than a guard. The fix, when it is needed, is for the listener to
-  // no-op unless its own dialog is the last one mounted.
+  // `#root` stays inert across the whole 200ms closing window. The
+  // `defaultPrevented` check below makes a second listener harmless rather than
+  // additive, which is most of the danger; a full fix still wants the listener
+  // to no-op unless its own dialog is the last one mounted.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // A listener can outlive its dialog. React removes the DOM during the
+      // commit but runs this passive cleanup afterwards, so in between there is
+      // a window where a keydown reaches a Modal whose dialog has already left
+      // the document. It then measures a detached subtree — every focusable
+      // disconnected, so `handOffFocus` moves nothing — while still having
+      // called preventDefault, which makes the LIVE dialog's listener bail on
+      // `defaultPrevented` and turns Tab into a no-op. That is the intermittent
+      // failure: not a double advance, but no advance at all.
+      //
+      // Ask whether this dialog is still in the document rather than assuming
+      // the listener's lifetime matches its own.
+      if (!dialogRef.current?.isConnected) return;
+
       if (e.key === "Escape") {
         onCloseRef.current();
         return;
       }
       if (e.key !== "Tab") return;
+      // Already handled. The old trap only acted at the list edges, so a second
+      // delivery of the same Tab was a no-op; this one rotates ONE STEP from
+      // wherever focus is, so a duplicate delivery advances twice and lands a
+      // control further on than the user asked for. Duplicates happen — a stale
+      // listener from a dialog whose cleanup has not run yet, and the stacked-
+      // dialog case noted below — and the symptom is an intermittently red
+      // suite rather than an obvious break.
+      if (e.defaultPrevented) return;
       // Ctrl/Alt/Cmd+Tab are the browser's and the OS's, not ours. They still
       // dispatch a Tab keydown to the page, and preventDefault doesn't stop a
       // reserved shortcut — it just meant coming back from another browser tab
