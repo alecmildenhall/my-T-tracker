@@ -276,6 +276,28 @@ describe("Modal", () => {
     expect(screen.getByRole("button", { name: "Before" })).toHaveFocus();
   });
 
+  it("ignores a control that is disabled AND carries an explicit tabindex", () => {
+    // The `[tabindex]` clause matched on the tabindex alone, so a
+    // <button disabled tabIndex={0}> entered the list — the same escape the other
+    // clauses were fixed for, by a third route.
+    render(
+      <Modal labelledBy="t" onClose={() => {}}>
+        <h2 id="t">Title</h2>
+        <button type="button">Before</button>
+        <input type="date" aria-label="Date" />
+        <button type="button" disabled tabIndex={0}>
+          Disabled but tabbable-looking
+        </button>
+      </Modal>
+    );
+    const date = screen.getByLabelText("Date");
+    date.focus();
+
+    // The date is the last REACHABLE control, so the trap must own this Tab.
+    expect(fireEvent.keyDown(window, { key: "Tab" })).toBe(false);
+    expect(screen.getByRole("button", { name: "Before" })).toHaveFocus();
+  });
+
   it("ignores Ctrl/Alt/Cmd+Tab, which belong to the browser", () => {
     // preventDefault does not stop a reserved shortcut, so intercepting these
     // only meant returning from another browser tab to find focus silently

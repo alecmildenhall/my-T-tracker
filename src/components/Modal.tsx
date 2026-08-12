@@ -39,7 +39,11 @@ const FOCUSABLE = [
   `input:not([disabled])${NOT_HIDDEN}`,
   `select:not([disabled])${NOT_HIDDEN}`,
   `textarea:not([disabled])${NOT_HIDDEN}`,
-  `[tabindex]${NOT_HIDDEN}`,
+  // `:not([disabled])` here too. A control can carry BOTH an explicit tabindex
+  // and `disabled` — <button disabled tabIndex={0}> — and this clause matched it
+  // on the tabindex alone, which is the same escape the other clauses were fixed
+  // for, arriving by a third route.
+  `[tabindex]:not([disabled])${NOT_HIDDEN}`,
 ].join(", ");
 
 /** Inputs whose own Tab handling moves between segments inside the control. */
@@ -361,7 +365,13 @@ export const Modal: React.FC<ModalProps> = ({
             Node.DOCUMENT_POSITION_FOLLOWING
         );
         const after = nextIdx === -1 ? [] : list.slice(nextIdx);
-        const before = nextIdx === -1 ? list : list.slice(0, nextIdx);
+        // `list.slice()`, not `list`. `.reverse()` mutates in place, so aliasing
+        // `list` here reverses the array every other branch reads. Harmless only
+        // because nothing reads `list` after this point today — and the obvious
+        // next edit (appending a floor to the handOffFocus call below, mirroring
+        // `list[at]` in the sibling branch) would silently take an element from a
+        // reversed array and send focus to the wrong end.
+        const before = nextIdx === -1 ? list.slice() : list.slice(0, nextIdx);
         order = e.shiftKey
           ? [...before.reverse(), ...after.reverse()]
           : [...after, ...before];
