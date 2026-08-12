@@ -252,6 +252,30 @@ describe("Modal", () => {
     outside.remove();
   });
 
+  it("ignores a tabIndex -1 control the same way it ignores a disabled one", () => {
+    // `:not([tabindex="-1"])` used to bind only to the last clause of FOCUSABLE,
+    // so `button:not([disabled])` matched a tabIndex -1 button. It then sat in
+    // the list, the segmented-input hatch saw "something beyond this", handed Tab
+    // to the browser, and the browser skipped it and left an inert page — the
+    // disabled-button escape again, through a different attribute.
+    render(
+      <Modal labelledBy="t" onClose={() => {}}>
+        <h2 id="t">Title</h2>
+        <button type="button">Before</button>
+        <input type="date" aria-label="Date" />
+        <button type="button" tabIndex={-1}>
+          Hidden helper
+        </button>
+      </Modal>
+    );
+    const date = screen.getByLabelText("Date");
+    date.focus();
+
+    // The date is the last REACHABLE control, so the trap must own this Tab.
+    expect(fireEvent.keyDown(window, { key: "Tab" })).toBe(false);
+    expect(screen.getByRole("button", { name: "Before" })).toHaveFocus();
+  });
+
   it("ignores Ctrl/Alt/Cmd+Tab, which belong to the browser", () => {
     // preventDefault does not stop a reserved shortcut, so intercepting these
     // only meant returning from another browser tab to find focus silently

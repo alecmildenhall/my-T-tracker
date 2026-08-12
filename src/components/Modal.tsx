@@ -9,9 +9,16 @@ import { createPortal } from "react-dom";
 import { useBackToClose } from "../hooks/useBackToClose";
 import { handOffFocus } from "../utils/focus";
 
-// Elements that can receive keyboard focus. Excludes `tabindex="-1"` — the
-// visually-hidden file input, and the containers that exist only as hand-off
-// targets — so the trap cycles real, reachable controls.
+// Elements that can receive keyboard focus.
+//
+// `tabindex="-1"` is excluded from EVERY clause, not just the last one. Written
+// as one string it read `..., textarea, [tabindex]:not([tabindex="-1"])`, so the
+// guard bound only to `[tabindex]` — and `button:not([disabled])` happily matched
+// a `tabindex="-1"` button. That is the same escape `:not([disabled])` was added
+// to close, arriving through a different attribute: the control sits in `list`,
+// the segmented-input hatch sees "there is something beyond this" and hands Tab
+// to the browser, which skips it and walks off an inert page. Built from an array
+// so a new clause cannot quietly miss the guard.
 //
 // `:not([disabled])` matters more than it looks. A disabled control cannot hold
 // focus, but it still matched `button`, so it sat in this list and made every
@@ -25,9 +32,15 @@ import { handOffFocus } from "../utils/focus";
 // expressible here. Nothing in this app's dialogs hits those, and `handOffFocus`
 // verifies after every move, so the remaining exposure is the index arithmetic
 // below. See the roadmap's "the Modal's Tab trap wants its own owner".
-const FOCUSABLE =
-  "a[href], button:not([disabled]), input:not([disabled]), " +
-  'select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+const NOT_HIDDEN = ':not([tabindex="-1"])';
+const FOCUSABLE = [
+  `a[href]${NOT_HIDDEN}`,
+  `button:not([disabled])${NOT_HIDDEN}`,
+  `input:not([disabled])${NOT_HIDDEN}`,
+  `select:not([disabled])${NOT_HIDDEN}`,
+  `textarea:not([disabled])${NOT_HIDDEN}`,
+  `[tabindex]${NOT_HIDDEN}`,
+].join(", ");
 
 /** Inputs whose own Tab handling moves between segments inside the control. */
 const SEGMENTED_INPUT =
