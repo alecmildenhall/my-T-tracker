@@ -10,6 +10,10 @@
   --accent: #0ea5e9;
   --accent-soft: rgba(14, 165, 233, 0.15);
   --danger: #f97373;
+  /* The affirming green. Same hue the primary button already ends on, so the
+     acknowledgement reads as the app's own voice rather than a new signal. */
+  --success: #4ade80;
+  --success-wash: rgba(74, 222, 128, 0.16);
   /* Subtle neutral surface, defined once. Used for the resting suggestion chip
      and for the hover/press ("engaged") fill of neutral buttons, so those
      surfaces stay in sync and can never drift apart. */
@@ -79,6 +83,13 @@ body {
   font-weight: 600;
   color: var(--text);
   text-wrap: balance;
+}
+
+/* "Logged for you." — the acknowledgement takes over the greeting slot. Colour
+   only; the words carry the meaning, so nothing depends on seeing the green
+   (WCAG 1.4.1). */
+.greeting--acknowledged {
+  color: var(--success);
 }
 
 .app-footer {
@@ -1423,4 +1434,59 @@ textarea {
   color: var(--text);
   font-size: 0.8rem;
   line-height: 1.45;
+}
+
+
+/* ---- Post-log acknowledgement ------------------------------------------- */
+
+/* The Yellow Fade Technique: the row that just arrived is tinted, then the tint
+   decays. The HOLD is what makes it read as a flash rather than a brief wash —
+   fading from the first frame does not land. 20% of 2.2s is roughly 440ms at
+   full tint before anything moves.
+
+   Animated rather than transitioned so it has an `animationend` to retire the
+   state that armed it, which keeps the 2.2s in exactly one place. */
+@keyframes shot-wash {
+  0%,
+  20% {
+    background-color: var(--success-wash);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.shot-list-item--washing {
+  animation: shot-wash 2200ms ease-out;
+}
+
+/* Reduced motion: the tint stays, the decay goes. Still an ANIMATION, not a
+   static class — `step-end` holds the colour for the full duration and then
+   ends, so `animationend` still fires and there is one retirement path rather
+   than two. Removing the animation entirely would leave the row tinted forever,
+   because nothing would ever tell React the wash was over. */
+@media (prefers-reduced-motion: reduce) {
+  @keyframes shot-wash {
+    0% {
+      background-color: var(--success-wash);
+    }
+    100% {
+      background-color: var(--success-wash);
+    }
+  }
+
+  .shot-list-item--washing {
+    animation: shot-wash 2200ms step-end;
+  }
+}
+
+/* The ✓ beat between a successful save and the sheet leaving. Flat success
+   green, no gradient and no transform: anything that springs or overshoots reads
+   as the screen acting under its own power rather than answering you. */
+.shot-form__save--confirmed,
+.shot-form__save--confirmed:disabled {
+  background: var(--success);
+  color: #052e16;
+  opacity: 1; /* beat the generic :disabled dimming — this is a success, not a dead control */
+  cursor: default;
 }

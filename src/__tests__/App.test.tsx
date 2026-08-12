@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, within, act, waitFor } from "@testing-library/react";
-import App from "../App";
+import App, { CONFIRM_MS } from "../App";
 import { ShotsProvider } from "../context/ShotsContext";
 import { ProfileProvider } from "../context/ProfileContext";
 import { StorageHealthProvider } from "../context/StorageHealthContext";
@@ -891,14 +891,47 @@ describe("App — a failed save is never silent", () => {
       target: { value: "saved fine" },
     });
     fireEvent.click(sheet().getByRole("button", { name: "Save shot" }));
-    // Second tap, inside the exit window, while the button is still live.
-    fireEvent.click(sheet().getByRole("button", { name: "Save shot" }));
+
+    // The submit now confirms with a ✓ and is disabled for that beat, so the
+    // second tap of a double-tap cannot land at all — a stronger guarantee than
+    // the closing guard, which stays because the button becomes live again for
+    // the exit that follows.
+    const confirmed = sheet().getByRole("button", { name: "✓ Saved" });
+    expect(confirmed).toBeDisabled();
+    fireEvent.click(confirmed);
 
     expect(sheet().queryByRole("alert")).not.toBeInTheDocument();
     expect(sheet().queryByRole("button", { name: "Save again" })).not.toBeInTheDocument();
     const stored = JSON.parse(localStorage.getItem("hrt-shot-tracker:v1:shots") ?? "[]");
     expect(stored).toHaveLength(1);
     expect(stored[0].notes).toBe("saved fine");
+  });
+
+  it("still drops a Save that lands during the exit, once the ✓ has passed", () => {
+    // The button is live again between the ✓ and the unmount, so the closing
+    // guard is still the thing standing between a late press and a second write.
+    vi.useFakeTimers();
+    try {
+      renderApp();
+      fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+      const sheet = () => within(screen.getByRole("dialog"));
+      fireEvent.change(sheet().getByPlaceholderText(/remember for later/i), {
+        target: { value: "once only" },
+      });
+      fireEvent.click(sheet().getByRole("button", { name: "Save shot" }));
+
+      // Past the ✓, into the slide.
+      act(() => {
+        vi.advanceTimersByTime(CONFIRM_MS);
+      });
+      fireEvent.click(sheet().getByRole("button", { name: "Save shot" }));
+
+      expect(sheet().queryByRole("alert")).not.toBeInTheDocument();
+      const stored = JSON.parse(localStorage.getItem("hrt-shot-tracker:v1:shots") ?? "[]");
+      expect(stored).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("holds the delete confirm open when the deletion can't be written", async () => {
@@ -1323,5 +1356,261 @@ describe("focus is never left on <body>", () => {
         within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
       )
     );
+  });
+});
+
+describe("the post-log acknowledgement", () => {
+  const ACK = "Logged for you.";
+  const greeting = () => screen.getByRole("status").textContent;
+  const washedRows = () =>
+    document.querySelectorAll(".shot-list-item--washing").length;
+
+  /** Log a shot and let the ✓ beat pass, leaving the sheet mid-exit. */
+  const logAShot = async (notes = "a shot") => {
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    fireEvent.change(
+      within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i),
+      { target: { value: notes } }
+    );
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+    );
+    await sheetGone();
+  };
+
+  it("says 'Logged for you.' after a save, in place of the greeting", async () => {
+    renderApp();
+    expect(greeting()).not.toContain(ACK);
+    await logAShot();
+    expect(greeting()).toBe(ACK);
+  });
+
+  it("uses the same words whether or not a name is set", async () => {
+    localStorage.setItem(
+      STORAGE_KEYS.profile,
+      JSON.stringify({ preferredName: "Lou" })
+    );
+    renderApp();
+    expect(greeting()).toContain("Lou"); // the ordinary greeting does use it
+    await logAShot();
+    expect(greeting()).toBe(ACK); // ...and the acknowledgement never does
+  });
+
+  it("outranks a milestone, but only until the next deliberate action", async () => {
+    // A milestone is the bigger landmark, so it must be DEFERRED rather than
+    // eclipsed — it is still there when you look again.
+    const oneYearAgo = new Date();
+    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+    localStorage.setItem(
+      STORAGE_KEYS.profile,
+      JSON.stringify({ startDate: oneYearAgo.toISOString().slice(0, 10) })
+    );
+    renderApp();
+    const milestone = greeting();
+    expect(milestone).toMatch(/1 year/i);
+
+    await logAShot();
+    expect(greeting()).toBe(ACK);
+
+    goTo("History");
+    goTo("Home");
+    expect(greeting()).toBe(milestone);
+  });
+
+  it("clears when the log form is opened again", async () => {
+    renderApp();
+    await logAShot();
+    expect(greeting()).toBe(ACK);
+
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    expect(greeting()).not.toBe(ACK);
+  });
+
+  it("says nothing when the save is refused", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("QuotaExceededError");
+    });
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+    );
+    expect(greeting()).not.toBe(ACK);
+    expect(washedRows()).toBe(0);
+    vi.restoreAllMocks();
+  });
+
+  it("gives a retry that succeeds the full acknowledgement", async () => {
+    // The natural mistake is to treat "this errored a moment ago" as a reason to
+    // stay quiet. The shot was still taken.
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const spy = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(() => {
+        throw new DOMException("QuotaExceededError");
+      });
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+    );
+    expect(greeting()).not.toBe(ACK);
+
+    spy.mockRestore();
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Save again" })
+    );
+    await sheetGone();
+
+    expect(greeting()).toBe(ACK);
+    expect(washedRows()).toBe(1);
+    vi.restoreAllMocks();
+  });
+
+  it("says nothing when the sheet is dismissed", async () => {
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    dismissSheet();
+    await sheetGone();
+    expect(greeting()).not.toBe(ACK);
+    expect(washedRows()).toBe(0);
+  });
+
+  it("says nothing when an existing shot is edited", async () => {
+    // "Logged for you." is about logging a shot, not correcting one.
+    seedShots([{ id: "a", date: "2026-06-01", notes: "before" }]);
+    renderApp();
+    goTo("History");
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.change(
+      within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i),
+      { target: { value: "after" } }
+    );
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Update shot" })
+    );
+    await sheetGone();
+    goTo("Home");
+    expect(greeting()).not.toBe(ACK);
+  });
+});
+
+describe("the post-log wash", () => {
+  /**
+   * Fire a real `animationend` carrying `animationName`.
+   *
+   * `fireEvent.animationEnd(el, { animationName })` silently drops the property
+   * in jsdom — it arrives as `undefined` — so driving the guard needs an event
+   * built by hand. Worth knowing before concluding the guard is broken.
+   */
+  const endAnimation = (el: Element, animationName: string) => {
+    const evt = new Event("animationend", { bubbles: true });
+    Object.defineProperty(evt, "animationName", { value: animationName });
+    fireEvent(el, evt);
+  };
+
+  const washed = () =>
+    [...document.querySelectorAll(".shot-list-item--washing")].map(
+      (el) => el.querySelector(".shot-list-item__date")?.textContent
+    );
+
+  const logAShot = async () => {
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+    );
+    await sheetGone();
+  };
+
+  it("arms the wash when the sheet leaves, not when the shot is saved", async () => {
+    // Measured in a browser: the sheet covers the screen for the ✓ plus the
+    // slide, ~440ms, which is almost exactly the 20% the wash spends holding at
+    // full tint. Armed at save time the whole hold happened behind the sheet and
+    // what you saw was a tint already fading — the flash the hold exists to make.
+    vi.useFakeTimers();
+    try {
+      renderApp();
+      fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+      fireEvent.click(
+        within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+      );
+
+      // Still confirming, sheet still up: nothing washing yet.
+      expect(document.querySelectorAll(".shot-list-item--washing")).toHaveLength(0);
+      act(() => {
+        vi.advanceTimersByTime(CONFIRM_MS);
+      });
+      // Mid-slide: still nothing.
+      expect(document.querySelectorAll(".shot-list-item--washing")).toHaveLength(0);
+
+      act(() => {
+        vi.advanceTimersByTime(SHEET_EXIT_MS);
+      });
+      expect(document.querySelectorAll(".shot-list-item--washing")).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("washes only the shot just logged, not every row", async () => {
+    seedShots([
+      { id: "old1", date: "2026-06-01" },
+      { id: "old2", date: "2026-06-08" },
+    ]);
+    renderApp();
+    await logAShot();
+
+    expect(washed()).toEqual([todayLocalISO()]);
+  });
+
+  it("does not re-arm when an unrelated re-render happens", async () => {
+    // The prototype's bug: merely opening the form replayed the wash on the
+    // previous entry. Keying the class to the shot's id means React leaves an
+    // unchanged className alone, so nothing re-triggers.
+    renderApp();
+    await logAShot();
+    const row = document.querySelector(".shot-list-item--washing")!;
+
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    dismissSheet();
+    await sheetGone();
+
+    // Same element, still washing — not a fresh node with a restarted animation.
+    expect(document.querySelector(".shot-list-item--washing")).toBe(row);
+  });
+
+  it("retires on its own animation end, not on a timer", async () => {
+    renderApp();
+    await logAShot();
+    const row = document.querySelector(".shot-list-item--washing")!;
+
+    endAnimation(row, "shot-wash");
+
+    expect(document.querySelectorAll(".shot-list-item--washing")).toHaveLength(0);
+  });
+
+  it("ignores an animationend that isn't the wash", async () => {
+    // onAnimationEnd bubbles, so "an animation ended" is not "the wash ended".
+    renderApp();
+    await logAShot();
+    const row = document.querySelector(".shot-list-item--washing")!;
+
+    endAnimation(row, "some-other-animation");
+
+    expect(document.querySelectorAll(".shot-list-item--washing")).toHaveLength(1);
+  });
+
+  it("does not replay after leaving Home and coming back", async () => {
+    // Home unmounts on navigation, so a wash still armed would restart from the
+    // beginning on every return — the nuisance the milestone item avoids by
+    // firing once on the crossing.
+    renderApp();
+    await logAShot();
+
+    goTo("History");
+    goTo("Home");
+
+    expect(document.querySelectorAll(".shot-list-item--washing")).toHaveLength(0);
   });
 });

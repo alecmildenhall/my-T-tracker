@@ -18,6 +18,15 @@ import type { View } from "./types/view";
 
 const SHEET_HEADING_ID = "shot-sheet-title";
 
+/**
+ * How long the ✓ shows before the sheet starts leaving.
+ *
+ * Inside the 100–300ms band that reads as an answer to what you just did rather
+ * than a pause. Save to sheet-gone is therefore CONFIRM_MS + SHEET_EXIT_MS,
+ * which is the point: the sheet used to vanish before the press had registered.
+ */
+export const CONFIRM_MS = 200;
+
 const VIEW_TITLES: Record<View, string> = {
   home: "T-Shot Tracker",
   history: "History",
@@ -38,6 +47,13 @@ const App: React.FC = () => {
   // forget the scroll reset — "See all" used to, and opened History at whatever
   // offset Home was scrolled to.
   const navigate = (next: View) => {
+    // Leaving Home is a deliberate action, so the acknowledgement has done its
+    // job: the greeting or milestone comes back. This also retires the wash,
+    // which matters because Home UNMOUNTS when you leave it — a wash still armed
+    // would replay from the start on every return, the same nuisance the
+    // milestone celebration avoids by firing once on the crossing.
+    setAcknowledgedId(null);
+    setWashId(null);
     setView(next);
     // Each tab is a separate destination, so it starts at its own top. Without
     // this you land mid-page in the new view — scrolled deep into History,
@@ -49,6 +65,19 @@ const App: React.FC = () => {
   // only: deliberately not persisted, so a fresh launch is never pre-filtered.
   const [historyQuery, setHistoryQuery] =
     useState<HistoryQuery>(emptyHistoryQuery);
+
+  // The post-log acknowledgement, in two pieces because they have two lifetimes.
+  //
+  // `acknowledgedId` drives the line in the greeting slot and waits for the next
+  // deliberate action. `washId` drives the row's colour wash and retires when the
+  // animation itself ends — the 2.2s lives in CSS only, so there is no duration
+  // to keep in sync. Both are in-memory: reopening the app is one of the things
+  // that should bring the greeting back.
+  //
+  // Ids rather than booleans: the wash has to know WHICH row, and the same value
+  // then tells the line that a save has just happened.
+  const [acknowledgedId, setAcknowledgedId] = useState<string | null>(null);
+  const [washId, setWashId] = useState<string | null>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
   // Initial focus goes to the first field, not the sheet's own Close button —
   // landing on Close means a stray Enter dismisses the form you just opened.
@@ -101,6 +130,8 @@ const App: React.FC = () => {
   // out. The sheet stays mounted (and marked `closing`) for exactly the
   // transition's length, then goes.
   const [closing, setClosing] = useState(false);
+  // True for the ✓ beat between a successful save and the sheet leaving.
+  const [confirming, setConfirming] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // The same fact as `closing`, held in a ref because the guards below need it
   // SYNCHRONOUSLY. State updates are async, so a rapid double-tap fires both
@@ -110,17 +141,52 @@ const App: React.FC = () => {
   // only lands on the next render.)
   const closingRef = useRef(false);
 
-  const closeSheet = () => {
+  /**
+   * Close the sheet, optionally confirming first.
+   *
+   * `confirm` holds the sheet in place for {@link CONFIRM_MS} showing a ✓ before
+   * the exit begins — the moment of "yes, that landed" that a sheet vanishing
+   * instantly does not give you. Only the save path passes it; ✕, Escape and
+   * Back have nothing to confirm.
+   *
+   * Both phases reuse ONE timer ref, so at most one is ever pending and the
+   * existing cleanup covers both. A second timer alongside this one is exactly
+   * the shape that once left a stale exit timer to tear down the next sheet.
+   */
+  const closeSheet = (options?: { confirm?: boolean; thenWash?: string }) => {
     if (closingRef.current) return; // already on the way out
+    // Set synchronously, before any wait: a second Save during the ✓ window is
+    // dropped by the guard that already exists rather than by a new one.
     closingRef.current = true;
-    setClosing(true);
+
+    const beginExit = () => {
+      setConfirming(false);
+      setClosing(true);
+      closeTimer.current = setTimeout(() => {
+        closeTimer.current = null;
+        closingRef.current = false;
+        setLoggingNew(false);
+        setEditingShot(null);
+        setClosing(false);
+        // The wash starts when the row becomes VISIBLE, not when the shot was
+        // saved. Measured in a browser: the sheet covers the screen for the ✓
+        // plus the slide, which is ~440ms — almost exactly the 20% the wash
+        // spends holding at full tint. Armed at save time, the entire hold
+        // happened behind the sheet and what you actually saw was a tint already
+        // fading, which is the thing the hold exists to prevent.
+        if (options?.thenWash) setWashId(options.thenWash);
+      }, SHEET_EXIT_MS);
+    };
+
+    if (!options?.confirm) {
+      beginExit();
+      return;
+    }
+    setConfirming(true);
     closeTimer.current = setTimeout(() => {
       closeTimer.current = null;
-      closingRef.current = false;
-      setClosing(false);
-      setLoggingNew(false);
-      setEditingShot(null);
-    }, SHEET_EXIT_MS);
+      beginExit();
+    }, CONFIRM_MS);
   };
 
   useEffect(
@@ -149,6 +215,10 @@ const App: React.FC = () => {
     }
     closingRef.current = false;
     setClosing(false);
+    // Going to log again is the moment the line has done its job. The wash is
+    // left alone: it retires on its own animation end, and opening the sheet
+    // does not cover the row.
+    setAcknowledgedId(null);
     if (shot) setEditingShot(shot);
     else setLoggingNew(true);
   };
@@ -225,7 +295,12 @@ const App: React.FC = () => {
     if (closingRef.current) return "ignored";
     if (!addShot(shot)) return "refused"; // sheet stays put, fields kept, and it says why
     clearDraft();
-    closeSheet();
+    // Only a shot that actually reached storage is acknowledged. A refused save
+    // has nothing to affirm, and a retry that succeeds is an ordinary success —
+    // it gets the full acknowledgement, not a quieter one, which falls out of
+    // hanging this off the "saved" outcome rather than off "no error happened".
+    setAcknowledgedId(shot.id);
+    closeSheet({ confirm: true, thenWash: shot.id });
     return "saved";
   };
 
@@ -292,7 +367,7 @@ const App: React.FC = () => {
 
       {view === "home" && (
         <main className="app-main">
-          <Greeting />
+          <Greeting acknowledged={acknowledgedId !== null} />
           <button
             type="button"
             className="primary-button log-cta"
@@ -300,7 +375,12 @@ const App: React.FC = () => {
           >
             + Log a shot
           </button>
-          <RecentShots shots={shots} onSeeAll={() => navigate("history")} />
+          <RecentShots
+            shots={shots}
+            onSeeAll={() => navigate("history")}
+            justLoggedId={washId}
+            onWashEnd={() => setWashId(null)}
+          />
         </main>
       )}
 
@@ -342,6 +422,7 @@ const App: React.FC = () => {
             onAddShot={handleAddShot}
             onUpdateShot={handleUpdateShot}
             onExportBackup={exportBackup}
+            confirming={confirming}
             editingShot={activeEditingShot}
             onDismiss={dismissSheet}
             shots={shots}

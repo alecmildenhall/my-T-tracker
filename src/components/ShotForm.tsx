@@ -143,6 +143,9 @@ interface ShotFormProps {
    * supplies it, and an App test proves it.
    */
   onExportBackup?: () => boolean;
+  /** True for the beat between a successful save and the sheet leaving: the
+   *  submit button confirms in green with a ✓ rather than vanishing instantly. */
+  confirming?: boolean;
   editingShot?: ShotEntry | null;
   /** Close the sheet. Never destructive: the parent keeps whatever was entered
    *  and restores it next time this same form is opened, for a new shot or an
@@ -173,6 +176,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   onAddShot,
   onUpdateShot,
   onExportBackup,
+  confirming = false,
   editingShot,
   onDismiss,
   shots = [],
@@ -782,8 +786,20 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             being edited inside a sheet that unmounts on close — so a new entry, a
             different shot, "Clear form" and a reload each get a fresh one. There
             is nothing to persist and nothing to time out. */}
-        <button type="submit" className="primary-button shot-form__save">
-          {`${editingShot ? "Update" : "Save"} ${saveFailed ? "again" : "shot"}`}
+        {/* The ✓ replaces the label rather than sitting beside it, so the button
+            does not resize under the thumb at the moment it is pressed.
+            `aria-live="polite"` on the button would fight the greeting slot's
+            own announcement, so this stays silent and the line does the talking. */}
+        <button
+          type="submit"
+          className={`primary-button shot-form__save${
+            confirming ? " shot-form__save--confirmed" : ""
+          }`}
+          disabled={confirming}
+        >
+          {confirming
+            ? "✓ Saved"
+            : `${editingShot ? "Update" : "Save"} ${saveFailed ? "again" : "shot"}`}
         </button>
       </div>
     </form>
