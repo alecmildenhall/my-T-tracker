@@ -24,5 +24,8 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  /* Tests live in their own program (tsconfig.test.json) so their Node typings
+     stay out of the app's scope. */
+  "exclude": ["src/test", "src/**/__tests__"]
 }

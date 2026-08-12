@@ -6,6 +6,7 @@ import { todayLocalISO, nowHHMM } from "../utils/datetime";
 import { toCivilDate } from "../utils/civilDate";
 import { newId } from "../utils/id";
 import { SuggestionChips } from "./SuggestionChips";
+import { handOffFocus } from "../utils/focus";
 
 /**
  * The fields worth pre-filling on a new shot: dose, type of T, and carrier oil
@@ -310,7 +311,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // bottom of the sheet would cover half the screen with a picker nobody asked
     // for. The heading summons no keyboard and no picker, names the region that
     // just changed for a screen reader, and keeps focus inside the trap.
-    headingRef.current?.focus();
+    handOffFocus(headingRef);
   }, []);
 
   // NOTE: there is deliberately no "sync the form to editingShot" effect. The

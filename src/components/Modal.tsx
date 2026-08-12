@@ -7,11 +7,49 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useBackToClose } from "../hooks/useBackToClose";
+import { handOffFocus } from "../utils/focus";
 
-// Elements that can receive keyboard focus. Excludes tabindex="-1" (e.g. the
-// visually-hidden file input) so the trap only cycles real, reachable controls.
-const FOCUSABLE =
-  'a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])';
+// Elements that can receive keyboard focus.
+//
+// `tabindex="-1"` is excluded from EVERY clause, not just the last one. Written
+// as one string it read `..., textarea, [tabindex]:not([tabindex="-1"])`, so the
+// guard bound only to `[tabindex]` — and `button:not([disabled])` happily matched
+// a `tabindex="-1"` button. That is the same escape `:not([disabled])` was added
+// to close, arriving through a different attribute: the control sits in `list`,
+// the segmented-input hatch sees "there is something beyond this" and hands Tab
+// to the browser, which skips it and walks off an inert page. Built from an array
+// so a new clause cannot quietly miss the guard.
+//
+// `:not([disabled])` matters more than it looks. A disabled control cannot hold
+// focus, but it still matched `button`, so it sat in this list and made every
+// index-based question about the list wrong: "is focus on the last control" was
+// answered against an element nothing can focus. That produced two separate
+// escapes. Filtering at the source is what every tabbability implementation does
+// first, and it makes the list mean what its consumers assume it means.
+//
+// Still not a complete tabbability check — `display: none`, `visibility: hidden`
+// and a collapsed <details> also make an element unfocusable and are not
+// expressible here. Nothing in this app's dialogs hits those, and `handOffFocus`
+// verifies after every move, so the remaining exposure is the index arithmetic
+// below. See the roadmap's "the Modal's Tab trap wants its own owner".
+const NOT_HIDDEN = ':not([tabindex="-1"])';
+const FOCUSABLE = [
+  `a[href]${NOT_HIDDEN}`,
+  `button:not([disabled])${NOT_HIDDEN}`,
+  `input:not([disabled])${NOT_HIDDEN}`,
+  `select:not([disabled])${NOT_HIDDEN}`,
+  `textarea:not([disabled])${NOT_HIDDEN}`,
+  // `:not([disabled])` here too. A control can carry BOTH an explicit tabindex
+  // and `disabled` — <button disabled tabIndex={0}> — and this clause matched it
+  // on the tabindex alone, which is the same escape the other clauses were fixed
+  // for, arriving by a third route.
+  `[tabindex]:not([disabled])${NOT_HIDDEN}`,
+].join(", ");
+
+/** Inputs whose own Tab handling moves between segments inside the control. */
+const SEGMENTED_INPUT =
+  'input[type="date"], input[type="time"], input[type="datetime-local"], ' +
+  'input[type="month"], input[type="week"]';
 
 interface ModalProps {
   /** id of the heading element inside, for aria-labelledby. */
@@ -96,6 +134,22 @@ export const Modal: React.FC<ModalProps> = ({
   // lifting inert silently fails and focus lands nowhere useful. Splitting these
   // into two effects made that ordering an accident of declaration order — and
   // jsdom ignores `inert` entirely, so no unit test would notice.
+  // Deliberately a PASSIVE effect, not a layout one, and the teardown is why.
+  //
+  // Cleanup runs after the commit, so between React removing the dialog's DOM
+  // and this restore running, focus sits briefly on <body>. Moving it to
+  // `useLayoutEffect` closes that gap and was tried — it breaks something more
+  // important. Layout cleanup runs during the mutation phase, before React has
+  // finished removing the rest of the tree, so `restoreTarget.isConnected` still
+  // reports true for an opener that is about to vanish: a confirm dialog that
+  // deleted its own row then restored focus to that row's button, which React
+  // removed a moment later, landing focus nowhere. The whole point of the
+  // restore/fallback split is knowing which of those happened, and only the
+  // settled DOM can answer.
+  //
+  // So the transit through <body> is accepted. It is sub-frame in a browser, and
+  // it is why tests must wait for focus to SETTLE rather than for the dialog to
+  // disappear — see `expectFocusSettled` in src/test/focus.ts.
   useEffect(() => {
     const root = document.getElementById("root");
     const previouslyFocused = document.activeElement as HTMLElement | null;
@@ -109,42 +163,33 @@ export const Modal: React.FC<ModalProps> = ({
     document.body.style.overflow = "hidden";
     root?.setAttribute("inert", "");
 
-    const target =
-      initialFocusRef?.current ??
-      dialogRef.current?.querySelector<HTMLElement>(FOCUSABLE) ??
-      // Nothing focusable inside: land on the dialog itself (WAI-ARIA APG's
-      // fallback) rather than nowhere. Leaving focus where it was is not an
-      // option — that element is inside the root just marked inert, so the
-      // browser drops focus to <body> and Escape becomes the only way out.
-      dialogRef.current;
-    target?.focus();
+    // Opening is a hand-off too: the element that had focus is inside the root
+    // just marked inert, so anything short of landing INSIDE the dialog drops
+    // focus to <body> and leaves Escape as the only way out. This was a `??`
+    // chain, which falls through on a null candidate but not on a candidate that
+    // refused focus — so an initialFocusRef pointing at something not yet
+    // focusable failed silently and skipped both fallbacks. Last resort is the
+    // dialog itself, per the WAI-ARIA APG.
+    // Every focusable in turn, not just the first: `querySelector` gave a single
+    // candidate, so if both the initialFocusRef and that one control refused
+    // focus — a disabled Cancel on a confirm dialog is the realistic case —
+    // focus fell straight through to the container, leaving the user on a
+    // tabIndex -1 div with nothing announced. Same walk the Tab trap does.
+    handOffFocus(
+      initialFocusRef,
+      ...(dialogRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []),
+      dialogRef
+    );
 
     return () => {
       // Lift inert FIRST, or the focus calls below hit an unfocusable subtree.
       root?.removeAttribute("inert");
       document.body.style.overflow = overflow;
-      // If the opener was removed while the dialog was open (a confirm deleted
-      // its row), focusing it is a no-op that drops focus to <body>; fall back to
-      // a logical location instead.
-      //
-      // <body> is excluded explicitly, and it is the common case rather than an
-      // edge one: `document.activeElement` is <body> whenever nothing holds
-      // focus, and Safari does not focus a <button> when you tap it — so on the
-      // app's primary platform, opening the sheet by tapping "Log a shot"
-      // captures <body> as the opener. It IS connected, so the guard below used
-      // to take the restore branch, `body.focus()` did nothing, and the fallback
-      // never ran — leaving focus nowhere and the next Tab back at the top of
-      // the page, which is precisely what fallbackFocusRef exists to prevent.
-      const restorable =
-        restoreTarget && restoreTarget !== document.body && restoreTarget.isConnected;
-      if (restorable) restoreTarget.focus();
-      // Verify rather than assume: focus() on an element that is not focusable
-      // (no tabindex, disabled, hidden) silently does nothing and leaves focus on
-      // <body>. Checking the result covers both a non-focusable opener and a
-      // non-focusable fallback, instead of trusting either to be focusable.
-      if (!restorable || document.activeElement === document.body) {
-        fallbackTarget?.focus();
-      }
+      // The opener, then a logical location if it is gone — a confirm dialog
+      // routinely deletes the row that opened it, and on Safari the "opener" is
+      // often <body> to begin with, since tapping a <button> there doesn't focus
+      // it. handOffFocus skips both cases and verifies the result.
+      handOffFocus(restoreTarget, fallbackTarget);
     };
     // Mount/unmount only — the refs are read at open and close respectively.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -184,37 +229,163 @@ export const Modal: React.FC<ModalProps> = ({
   useEffect(() => {
     onCloseRef.current = onClose;
   });
+  // Escape and the Tab trap, both on the WINDOW rather than on the dialog.
+  //
+  // The trap used to be the dialog's own onKeyDown, which only fires for keys
+  // pressed while focus is inside it — so the one situation it most needed to
+  // handle was the one it could not see. Clicking a dialog's non-focusable
+  // padding drops focus to <body>; from there the dialog's handler never ran,
+  // and with #root inert there was nothing earlier in the document to Tab to, so
+  // focus left the page entirely. Verified in a real browser, where the sheet's
+  // bottom bar has exactly such dead space beside the Save button; jsdom cannot
+  // see it, since it neither lays out padding nor implements `inert`.
+  //
+  // A document-level listener is what focus-trap, Radix and Reach UI all do, for
+  // this reason. `aria-modal` is advisory only, so the trap has to be real.
+  //
+  // LATENT, if a dialog ever opens a second one: two mounted Modals would both
+  // listen, and the outer one would see focus as "outside" and haul it back out
+  // of the inner dialog. Not reachable today — the log sheet, the delete
+  // confirm, and the saved-values and import dialogs are mutually exclusive, and
+  // `#root` stays inert across the whole 200ms closing window. The
+  // `defaultPrevented` check below makes a second listener harmless rather than
+  // additive, which is most of the danger; a full fix still wants the listener
+  // to no-op unless its own dialog is the last one mounted.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCloseRef.current();
+      // A listener can outlive its dialog. React removes the DOM during the
+      // commit but runs this passive cleanup afterwards, so in between there is
+      // a window where a keydown reaches a Modal whose dialog has already left
+      // the document. It then measures a detached subtree — every focusable
+      // disconnected, so `handOffFocus` moves nothing — while still having
+      // called preventDefault, which makes the LIVE dialog's listener bail on
+      // `defaultPrevented` and turns Tab into a no-op. That is the intermittent
+      // failure: not a double advance, but no advance at all.
+      //
+      // Ask whether this dialog is still in the document rather than assuming
+      // the listener's lifetime matches its own.
+      if (!dialogRef.current?.isConnected) return;
+
+      if (e.key === "Escape") {
+        onCloseRef.current();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      // Already handled. The old trap only acted at the list edges, so a second
+      // delivery of the same Tab was a no-op; this one rotates ONE STEP from
+      // wherever focus is, so a duplicate delivery advances twice and lands a
+      // control further on than the user asked for. Duplicates happen — a stale
+      // listener from a dialog whose cleanup has not run yet, and the stacked-
+      // dialog case noted below — and the symptom is an intermittently red
+      // suite rather than an obvious break.
+      if (e.defaultPrevented) return;
+      // Ctrl/Alt/Cmd+Tab are the browser's and the OS's, not ours. They still
+      // dispatch a Tab keydown to the page, and preventDefault doesn't stop a
+      // reserved shortcut — it just meant coming back from another browser tab
+      // to find focus silently moved inside the sheet.
+      if (e.ctrlKey || e.altKey || e.metaKey) return;
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+      const focusables = dialog.querySelectorAll<HTMLElement>(FOCUSABLE);
+      if (focusables.length === 0) {
+        // A dialog with nothing focusable in it is supported — the open-time
+        // chain lands on the container for exactly that case. Without a floor
+        // here the handler returned, the default ran, and focus left the page,
+        // which is the escape this trap exists to close. Owning Tab has to mean
+        // owning it in the empty case too.
+        e.preventDefault();
+        handOffFocus(dialogRef);
+        return;
+      }
+
+      // The trap owns Tab entirely while a dialog is open, rather than trying to
+      // detect "focus is at the edge" and intervening only there. Edge detection
+      // cannot be made reliable: FOCUSABLE matches a DISABLED button, and a
+      // hidden one, neither of which can hold focus — so the last element in the
+      // list is often not the last element you can actually reach, and comparing
+      // against it says "not at the edge" exactly when you are. The default then
+      // ran and focus left the dialog for browser chrome, since `#root` is inert
+      // and there is nothing else to land on. That was the bug this trap exists
+      // to prevent, reintroduced in its own edge check.
+      //
+      // Building the candidate order instead and letting `handOffFocus` verify
+      // each one removes the whole question. It never needs to know WHICH
+      // elements can take focus — it tries them in order and stops at the first
+      // that does, which is the same principle `focus.ts` is built on.
+      // Tab order matches document order here: nothing in this app uses a
+      // positive tabIndex, so querySelectorAll's order is the browser's order.
+      const list = Array.from(focusables);
+      const active = document.activeElement as HTMLElement | null;
+      const at = active ? list.indexOf(active) : -1;
+
+      // `input[type=date]` and friends are several controls in one: Tab steps
+      // between month, day and year BEFORE leaving the field, and that stepping
+      // IS the default action. Owning every Tab cancelled it, so the log sheet's
+      // date — required, and the first thing focused in the primary flow — lost
+      // segment navigation entirely. Verified in Chrome: outside a dialog three
+      // Tabs stay inside the field; inside one, the first Tab left it.
+      //
+      // Hand Tab back whenever there is still a control beyond this one in the
+      // direction of travel, since the browser can then only move within the
+      // field or on to that control — either way it stays inside the dialog. At
+      // the boundary we take over again, which is where the trap matters.
+      //
+      // Residual, accepted and bounded: if EVERY control beyond a segmented
+      // input were unfocusable, the browser would skip them all and leave. Not
+      // reachable here — the sheet's Save button is last and always enabled —
+      // and predicting focusability is the thing this file refuses to do.
+      if (at !== -1 && active?.matches(SEGMENTED_INPUT)) {
+        const beyond = e.shiftKey ? at > 0 : at < list.length - 1;
+        if (beyond) return;
+      }
+
+      let order: HTMLElement[];
+      if (at !== -1) {
+        // On one of the controls: rotate from it, and end back on it so that a
+        // dialog with a single focusable does nothing rather than escaping.
+        const after = list.slice(at + 1);
+        const before = list.slice(0, at);
+        order = e.shiftKey
+          ? [...before.reverse(), ...after.reverse(), list[at]]
+          : [...after, ...before, list[at]];
+      } else if (active && dialog.contains(active)) {
+        // Inside the dialog but not IN the list — a `tabIndex={-1}` element,
+        // which FOCUSABLE deliberately excludes. This is not a rare case: it is
+        // where every hand-off inside a dialog lands, including "Clear form"
+        // moving focus to the sheet's own heading and the container itself.
+        //
+        // It must not share a branch with "focus is outside". `at === -1` was
+        // carrying both meanings, so Tab from the heading restarted at the top
+        // of the list — and since the ✕ renders BEFORE the heading, that sent
+        // focus backwards. One value, one meaning: ask where this element sits
+        // in document order instead of inferring it from a failed lookup.
+        const nextIdx = list.findIndex(
+          (el) =>
+            active.compareDocumentPosition(el) &
+            Node.DOCUMENT_POSITION_FOLLOWING
+        );
+        const after = nextIdx === -1 ? [] : list.slice(nextIdx);
+        // `list.slice()`, not `list`. `.reverse()` mutates in place, so aliasing
+        // `list` here reverses the array every other branch reads. Harmless only
+        // because nothing reads `list` after this point today — and the obvious
+        // next edit (appending a floor to the handOffFocus call below, mirroring
+        // `list[at]` in the sibling branch) would silently take an element from a
+        // reversed array and send focus to the wrong end.
+        const before = nextIdx === -1 ? list.slice() : list.slice(0, nextIdx);
+        order = e.shiftKey
+          ? [...before.reverse(), ...after.reverse()]
+          : [...after, ...before];
+      } else {
+        // Genuinely outside: enter from the appropriate end.
+        order = e.shiftKey ? [...list].reverse() : list;
+      }
+
+      e.preventDefault();
+      handOffFocus(...order, dialogRef);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-
-  // Keep Tab focus inside the dialog (aria-modal is advisory only).
-  const trapTab = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== "Tab") return;
-    const focusables = dialogRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE);
-    if (!focusables || focusables.length === 0) return;
-    const first = focusables[0];
-    const last = focusables[focusables.length - 1];
-    // The container itself is focusable (tabIndex -1, as the last-resort target
-    // when nothing inside can take focus) but FOCUSABLE excludes tabindex="-1",
-    // so it is neither `first` nor `last` and would fall through both branches
-    // below. It is genuinely reachable: `.dialog` has padding, and clicking that
-    // dead space focuses it — from there Shift+Tab was not intercepted and, with
-    // #root inert leaving nothing earlier in the document, focus left the page
-    // entirely. Treat the container as sitting before the first control.
-    const onContainer = document.activeElement === dialogRef.current;
-    if (e.shiftKey && (onContainer || document.activeElement === first)) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && (onContainer || document.activeElement === last)) {
-      e.preventDefault();
-      first.focus();
-    }
-  };
 
   // Portaled to <body> so it sits OUTSIDE the app root — which is what lets the
   // root be marked inert without disabling the dialog itself.
@@ -239,14 +410,11 @@ export const Modal: React.FC<ModalProps> = ({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      {/* onKeyDown here is the focus trap, not a widget interaction. */}
-      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
       <div
         className={`dialog dialog--${variant}${offscreen ? " is-closed" : ""}${
           closing ? " is-closing" : ""
         }`}
         ref={dialogRef}
-        onKeyDown={trapTab}
         // Focusable only as the last-resort target below — a dialog whose
         // content holds nothing focusable would otherwise open with focus still
         // outside it, in a subtree that was just marked inert, stranding it on

@@ -4,6 +4,7 @@ import type { ShotEntry } from "../types/shot";
 import { normalizeValue, valueGroupsFor, type TextField } from "../utils/suggestions";
 import { pluralizeEntries as entries } from "../utils/format";
 import { Modal } from "./Modal";
+import { handOffFocus } from "../utils/focus";
 
 interface ManageValuesProps {
   shots: ShotEntry[];
@@ -47,12 +48,20 @@ export const ManageValues: React.FC<ManageValuesProps> = ({
   const openerRef = useRef<HTMLElement | null>(null);
   // Logical focus fallback when a confirm removes the opener's row (see Modal).
   const containerRef = useRef<HTMLDivElement>(null);
+  const dialogTitleRef = useRef<HTMLHeadingElement>(null);
 
   // The rename step focuses its input; destructive/combine steps focus Cancel.
   // When rename collides and switches to the combine step in place (the Modal
   // stays mounted, so its open-time focus doesn't re-run), move focus to Cancel.
+  //
+  // The fallback is the dialog's own HEADING, not this panel: while the Modal is
+  // open it marks `#root` inert, and the panel lives inside it — so focusing the
+  // panel is a silent no-op and would read as a working floor that isn't one.
+  // The floor has to be inside the dialog's portal, which is exactly why the
+  // Modal's own open-time chain ends at the dialog element. jsdom ignores
+  // `inert` entirely, so no unit test would ever have said so.
   useEffect(() => {
-    if (dialog?.mode === "combine") cancelRef.current?.focus();
+    if (dialog?.mode === "combine") handOffFocus(cancelRef, dialogTitleRef);
   }, [dialog?.mode]);
 
   const close = () => {
@@ -252,7 +261,9 @@ export const ManageValues: React.FC<ManageValuesProps> = ({
 
           {dialog.mode === "combine" && (
             <>
-              <h3 id="dialog-title">“{dialog.target}” already exists</h3>
+              <h3 id="dialog-title" ref={dialogTitleRef} tabIndex={-1}>
+                “{dialog.target}” already exists
+              </h3>
               <p className="dialog-text">
                 Renaming will combine them — the <b>{entries(dialog.count)}</b> logged
                 as “{dialog.value}” will be relabeled “{dialog.target}”.

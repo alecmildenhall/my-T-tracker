@@ -14,6 +14,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useStorageHealth } from "../context/StorageHealthContext";
 import { useBackupExport } from "../hooks/useBackupExport";
+import { handOffFocus } from "../utils/focus";
 
 export const StorageBanner: React.FC<{
   /** Where focus goes when the banner removes itself. */
@@ -56,9 +57,7 @@ export const StorageBanner: React.FC<{
     wasShown.current = false;
     // Only rescue focus that was actually dropped — if something else has since
     // claimed it, moving it again would be the more surprising behaviour.
-    if (document.activeElement === document.body) {
-      returnFocusRef?.current?.focus();
-    }
+    if (document.activeElement === document.body) handOffFocus(returnFocusRef);
   }, [shown, returnFocusRef]);
 
   if (!shown) return null;

@@ -9,6 +9,12 @@ import { STORAGE_KEYS } from "../storageKeys";
 import { SHEET_EXIT_MS } from "../components/Modal";
 import { todayLocalISO } from "../utils/datetime";
 import * as dl from "../utils/download";
+import {
+  withFocusGuard,
+  expectFocusSomewhereUseful,
+  expectFocusSettled,
+} from "../test/focus";
+import { expectVisibleFocusRing } from "../test/focusRing";
 
 // App reads both stores via context (Settings uses the profile store), so mount
 // it under the same providers main.tsx does.
@@ -1172,5 +1178,150 @@ describe("App — a failed EDIT is held open too", () => {
     // is what keeps the screen and storage telling the same story.
     expect(JSON.parse(localStorage.getItem("hrt-shot-tracker:v1:shots") ?? "[]")[0].notes)
       .toBe("before");
+  });
+});
+
+// The shared guard, applied across flows rather than case by case. Four of slice
+// B's nine focus defects were exactly this condition, each found by hand after
+// review; this covers every interaction that removes the element holding focus,
+// which is the whole population the bug can come from.
+//
+// jsdom sees neither `inert` nor CSS, so "the trap is escapable" and "the ring
+// is invisible" — the other two shapes among the nine — stay Playwright checks.
+describe("focus is never left on <body>", () => {
+  // Scoped restore, matching the other two mocking blocks in this file. One test
+  // here spies on Storage.prototype.setItem; restoring inline at the end of it
+  // means a failure earlier in the test leaks a THROWING setItem into every
+  // later test. `unstubGlobals` does not cover spies — this file has already
+  // been bitten once by exactly that.
+  afterEach(() => vi.restoreAllMocks());
+
+  it("survives opening and dismissing the log sheet", async () => {
+    renderApp();
+    // Focus the opener first. `fireEvent.click` does not focus what it clicks
+    // (nor does Safari), so without this the guard starts from <body> and passes
+    // vacuously — there is no stranding to detect if nothing was held.
+    const opener = screen.getByRole("button", { name: /Log a shot/ });
+    opener.focus();
+    withFocusGuard("after opening the log sheet", () => fireEvent.click(opener));
+    dismissSheet();
+    await sheetGone();
+    await expectFocusSettled("after dismissing the log sheet");
+    expectVisibleFocusRing("after dismissing the log sheet");
+  });
+
+  it("survives saving a shot", async () => {
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+    );
+    await sheetGone();
+    await expectFocusSettled("after saving a shot");
+    expectVisibleFocusRing("after saving a shot");
+  });
+
+  it("survives 'Clear form', which removes the link that was clicked", () => {
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    const sheet = () => within(screen.getByRole("dialog"));
+    fireEvent.change(sheet().getByPlaceholderText(/remember for later/i), {
+      target: { value: "something" },
+    });
+    withFocusGuard("after Clear form", () =>
+      fireEvent.click(sheet().getByRole("button", { name: "Clear form" }))
+    );
+    expectVisibleFocusRing("after Clear form");
+  });
+
+  it("survives editing a shot from History", async () => {
+    seedShots([{ id: "a", date: "2026-06-01", notes: "x" }]);
+    renderApp();
+    goTo("History");
+    const editBtn = screen.getByRole("button", { name: "Edit" });
+    editBtn.focus(); // see the note on the log-sheet guard above
+    withFocusGuard("after opening an edit sheet", () => fireEvent.click(editBtn));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Update shot" })
+    );
+    await sheetGone();
+    await expectFocusSettled("after saving an edit");
+    expectVisibleFocusRing("after saving an edit");
+  });
+
+  it("survives deleting a shot — the confirm removes the row that opened it", async () => {
+    seedShots([
+      { id: "a", date: "2026-06-01" },
+      { id: "b", date: "2026-06-08" },
+    ]);
+    renderApp();
+    goTo("History");
+    fireEvent.click(screen.getAllByRole("button", { name: "Delete" })[0]);
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" })
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    );
+    await expectFocusSettled("after deleting a shot");
+    expectVisibleFocusRing("after deleting a shot");
+  });
+
+  it("survives deleting the LAST shot, when there is no row left to receive focus", async () => {
+    seedShots([{ id: "only", date: "2026-06-01" }]);
+    renderApp();
+    goTo("History");
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" })
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    );
+    await expectFocusSettled("after deleting the only shot");
+    expectVisibleFocusRing("after deleting the only shot");
+  });
+
+  it("survives every tab change", () => {
+    // Focus the tab first. jsdom's fireEvent.click does not focus what it clicks
+    // (nor does Safari), so without this the guard would start from <body> and
+    // pass vacuously — there is no stranding to detect if nothing was held.
+    renderApp();
+    const nav = () => within(screen.getByRole("navigation"));
+    for (const tab of ["History", "Settings", "Home"] as const) {
+      const button = nav().getByRole("button", { name: tab });
+      button.focus();
+      withFocusGuard(`after navigating to ${tab}`, () => fireEvent.click(button));
+    }
+  });
+
+  it("survives the skip link, which must not poison later focus restores", async () => {
+    renderApp();
+    const skip = screen.getByRole("link", { name: /Skip to navigation/i });
+    skip.focus(); // a skip link is only ever reached BY keyboard, so this is realistic
+    withFocusGuard("after using the skip link", () => fireEvent.click(skip));
+    // The whole point of the link: it must actually land somewhere, visibly.
+    expectFocusSomewhereUseful("after using the skip link");
+    expectVisibleFocusRing("after using the skip link");
+    // ...and a dialog opened afterwards still restores focus properly, rather
+    // than to whatever the skip link left in the URL.
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    dismissSheet();
+    await sheetGone();
+    await expectFocusSettled("after a sheet opened following the skip link");
+  });
+
+  it("survives a save that storage refuses, where the sheet stays open", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("QuotaExceededError");
+    });
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    withFocusGuard("after a refused save", () =>
+      fireEvent.click(
+        within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+      )
+    );
   });
 });

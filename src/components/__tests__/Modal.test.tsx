@@ -72,6 +72,292 @@ describe("Modal", () => {
     expect(confirm).toHaveFocus();
   });
 
+  it("re-traps Tab even when focus has already escaped the dialog", () => {
+    // The trap used to be the dialog's own onKeyDown, so it only saw keys pressed
+    // while focus was already inside — missing the one case it most needed to
+    // catch. Clicking a dialog's non-focusable padding drops focus to <body>, and
+    // from there Tab left the page entirely (#root is inert, so there is nothing
+    // earlier to land on). Found in a real browser; jsdom neither lays out
+    // padding nor implements `inert`, so only the consequence is testable here.
+    render(<Harness />);
+    (document.activeElement as HTMLElement)?.blur();
+    expect(document.activeElement).toBe(document.body);
+
+    fireEvent.keyDown(window, { key: "Tab" });
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+
+    // ...and backwards, which is the direction that actually left the page.
+    (document.activeElement as HTMLElement)?.blur();
+    fireEvent.keyDown(window, { key: "Tab", shiftKey: true });
+    expect(screen.getByRole("button", { name: "Confirm" })).toHaveFocus();
+  });
+
+  it("wraps past a DISABLED control instead of making Tab a dead key", () => {
+    // FOCUSABLE matches `button`, disabled included, so a disabled control at
+    // either end used to be the wrap target: focus() silently refused, the
+    // default was already prevented, and Tab did nothing whatsoever. Walking
+    // inward lands on the outermost control that will actually take focus.
+    render(
+      <Modal labelledBy="t" onClose={() => {}}>
+        <h2 id="t">Title</h2>
+        <button type="button">First</button>
+        <button type="button">Middle</button>
+        <button type="button" disabled>
+          Last
+        </button>
+      </Modal>
+    );
+    const first = screen.getByRole("button", { name: "First" });
+    const middle = screen.getByRole("button", { name: "Middle" });
+
+    // Backwards from the first control wraps to the last one that can take it.
+    first.focus();
+    fireEvent.keyDown(window, { key: "Tab", shiftKey: true });
+    expect(middle).toHaveFocus();
+
+    // FORWARDS from the last REAL control is the direction that escaped. The
+    // edge check compared against focusables[length - 1] — the disabled button —
+    // so it read "not at the edge" precisely when you were, let the default run,
+    // and focus left the page (#root is inert, so there is nothing to land on).
+    middle.focus();
+    const notPrevented = fireEvent.keyDown(window, { key: "Tab" });
+    expect(notPrevented).toBe(false); // false = preventDefault() was called
+    expect(first).toHaveFocus(); // wrapped round to the start, still inside
+  });
+
+  it("continues from a tabIndex -1 element inside, rather than restarting", () => {
+    // Where every in-dialog hand-off lands: "Clear form" moves focus to the
+    // sheet's own heading, which FOCUSABLE excludes. Treating that the same as
+    // "focus is outside" restarted Tab at the top of the list — and since the ✕
+    // renders BEFORE the heading, that sent focus BACKWARDS out of the content.
+    render(
+      <Modal labelledBy="t" onClose={() => {}}>
+        <button type="button">Close X</button>
+        <h2 id="t" tabIndex={-1}>
+          Title
+        </h2>
+        <button type="button">Field A</button>
+        <button type="button">Save</button>
+      </Modal>
+    );
+    const heading = screen.getByRole("heading", { name: "Title" });
+    const closeX = screen.getByRole("button", { name: "Close X" });
+    const fieldA = screen.getByRole("button", { name: "Field A" });
+
+    heading.focus();
+    fireEvent.keyDown(window, { key: "Tab" });
+    expect(fieldA).toHaveFocus(); // forwards, not back to Close X
+
+    heading.focus();
+    fireEvent.keyDown(window, { key: "Tab", shiftKey: true });
+    expect(closeX).toHaveFocus(); // the control actually before it
+  });
+
+  it("does not let Tab escape a dialog with nothing focusable in it", () => {
+    // A content-free dialog is supported — the open-time chain lands on the
+    // container for exactly that case. The Tab handler used to bail before
+    // preventDefault, so the default ran and, with #root inert, focus left the
+    // page: the escape this trap exists to close.
+    render(
+      <Modal labelledBy="t" onClose={() => {}}>
+        <h2 id="t">Nothing to do here</h2>
+      </Modal>
+    );
+    // role="dialog" sits on the overlay; the focus target is the inner .dialog,
+    // which carries tabIndex -1 as the last-resort landing spot.
+    const inner = document.querySelector(".dialog") as HTMLElement;
+    expect(inner).toHaveFocus();
+
+    const notPrevented = fireEvent.keyDown(window, { key: "Tab" });
+    expect(notPrevented).toBe(false); // false = preventDefault() was called
+    expect(inner).toHaveFocus();
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it("leaves Tab alone inside a date field, which uses it to change segment", () => {
+    // `input[type=date]` is several controls in one — Tab steps month → day →
+    // year before leaving — and that stepping is the DEFAULT action. Owning
+    // every Tab cancelled it, so the log sheet's date field (required, and the
+    // first thing focused in the primary flow) lost segment navigation. jsdom
+    // has no segments, so this pins the contract instead: the handler must not
+    // preventDefault while there is a control beyond it.
+    render(
+      <Modal labelledBy="t" onClose={() => {}}>
+        <h2 id="t">Title</h2>
+        <input type="date" aria-label="Date" />
+        <button type="button">After</button>
+      </Modal>
+    );
+    const date = screen.getByLabelText("Date");
+    date.focus();
+
+    const notPrevented = fireEvent.keyDown(window, { key: "Tab" });
+    expect(notPrevented).toBe(true); // true = default left alone, browser steps
+
+    // ...but at the far edge the trap takes over again, or focus would escape.
+    const after = screen.getByRole("button", { name: "After" });
+    after.focus();
+    expect(fireEvent.keyDown(window, { key: "Tab" })).toBe(false);
+    expect(date).toHaveFocus(); // wrapped back inside
+  });
+
+  it("lets Tab out of a date field even when a DISABLED control follows it", () => {
+    // The segmented-input escape hatch asks "is there a control beyond this one",
+    // and a disabled button used to answer yes — so Tab was handed back to the
+    // browser, which skipped the disabled control and, with #root inert, left the
+    // page. Excluding disabled from FOCUSABLE makes the question mean what its
+    // asker assumes: a control you can actually reach.
+    render(
+      <Modal labelledBy="t" onClose={() => {}}>
+        <h2 id="t">Title</h2>
+        <button type="button">Before</button>
+        <input type="date" aria-label="Date" />
+        <button type="button" disabled>
+          Disabled
+        </button>
+      </Modal>
+    );
+    const date = screen.getByLabelText("Date");
+    date.focus();
+
+    // The date is now the LAST reachable control, so the trap must own this Tab.
+    const notPrevented = fireEvent.keyDown(window, { key: "Tab" });
+    expect(notPrevented).toBe(false);
+    expect(screen.getByRole("button", { name: "Before" })).toHaveFocus();
+  });
+
+  it("does nothing once its own dialog has left the document", () => {
+    // The listener can outlive the dialog: React removes the DOM in the commit
+    // and runs the passive cleanup that detaches this listener afterwards. In
+    // that window a stale Modal would measure a detached subtree, move nothing,
+    // and still preventDefault — which makes the LIVE dialog's listener bail on
+    // defaultPrevented, turning Tab into a no-op. It showed up as a suite that
+    // went red about one run in sixteen.
+    render(<Harness />);
+    const outside = document.createElement("button");
+    document.body.appendChild(outside);
+    outside.focus();
+
+    // Detach the dialog without unmounting React, reproducing that window.
+    const overlay = document.querySelector(".dialog-overlay") as HTMLElement;
+    overlay.remove();
+
+    const notPrevented = fireEvent.keyDown(window, { key: "Tab" });
+    expect(notPrevented).toBe(true); // left alone entirely
+    expect(outside).toHaveFocus(); // and focus not dragged into a dead dialog
+
+    // Put it back before teardown: the overlay is portaled to <body>, and React
+    // throws on unmount if the node it means to remove has already gone.
+    document.body.appendChild(overlay);
+    outside.remove();
+  });
+
+  it("ignores a tabIndex -1 control the same way it ignores a disabled one", () => {
+    // `:not([tabindex="-1"])` used to bind only to the last clause of FOCUSABLE,
+    // so `button:not([disabled])` matched a tabIndex -1 button. It then sat in
+    // the list, the segmented-input hatch saw "something beyond this", handed Tab
+    // to the browser, and the browser skipped it and left an inert page — the
+    // disabled-button escape again, through a different attribute.
+    render(
+      <Modal labelledBy="t" onClose={() => {}}>
+        <h2 id="t">Title</h2>
+        <button type="button">Before</button>
+        <input type="date" aria-label="Date" />
+        <button type="button" tabIndex={-1}>
+          Hidden helper
+        </button>
+      </Modal>
+    );
+    const date = screen.getByLabelText("Date");
+    date.focus();
+
+    // The date is the last REACHABLE control, so the trap must own this Tab.
+    expect(fireEvent.keyDown(window, { key: "Tab" })).toBe(false);
+    expect(screen.getByRole("button", { name: "Before" })).toHaveFocus();
+  });
+
+  it("ignores a control that is disabled AND carries an explicit tabindex", () => {
+    // The `[tabindex]` clause matched on the tabindex alone, so a
+    // <button disabled tabIndex={0}> entered the list — the same escape the other
+    // clauses were fixed for, by a third route.
+    render(
+      <Modal labelledBy="t" onClose={() => {}}>
+        <h2 id="t">Title</h2>
+        <button type="button">Before</button>
+        <input type="date" aria-label="Date" />
+        <button type="button" disabled tabIndex={0}>
+          Disabled but tabbable-looking
+        </button>
+      </Modal>
+    );
+    const date = screen.getByLabelText("Date");
+    date.focus();
+
+    // The date is the last REACHABLE control, so the trap must own this Tab.
+    expect(fireEvent.keyDown(window, { key: "Tab" })).toBe(false);
+    expect(screen.getByRole("button", { name: "Before" })).toHaveFocus();
+  });
+
+  it("ignores Ctrl/Alt/Cmd+Tab, which belong to the browser", () => {
+    // preventDefault does not stop a reserved shortcut, so intercepting these
+    // only meant returning from another browser tab to find focus silently
+    // moved somewhere else in the dialog.
+    render(<Harness />);
+    const cancel = screen.getByRole("button", { name: "Cancel" });
+    cancel.focus();
+
+    for (const mod of ["ctrlKey", "altKey", "metaKey"] as const) {
+      const notPrevented = fireEvent.keyDown(window, { key: "Tab", [mod]: true });
+      expect(notPrevented).toBe(true);
+      expect(cancel).toHaveFocus();
+    }
+  });
+
+  it("keeps Tab inside with only one focusable control", () => {
+    render(
+      <Modal labelledBy="t" onClose={() => {}}>
+        <h2 id="t">Title</h2>
+        <button type="button">Only</button>
+      </Modal>
+    );
+    const only = screen.getByRole("button", { name: "Only" });
+    only.focus();
+
+    fireEvent.keyDown(window, { key: "Tab" });
+    expect(only).toHaveFocus();
+    fireEvent.keyDown(window, { key: "Tab", shiftKey: true });
+    expect(only).toHaveFocus();
+  });
+
+  it("steps through controls in order, not just at the edges", () => {
+    // The trap now owns every Tab, so ordinary movement has to keep working —
+    // taking over Tab and getting the order wrong would be a worse bug than the
+    // one it fixes.
+    render(
+      <Modal labelledBy="t" onClose={() => {}}>
+        <h2 id="t">Title</h2>
+        <button type="button">One</button>
+        <button type="button">Two</button>
+        <button type="button">Three</button>
+      </Modal>
+    );
+    const [one, two, three] = ["One", "Two", "Three"].map((n) =>
+      screen.getByRole("button", { name: n })
+    );
+
+    one.focus();
+    fireEvent.keyDown(window, { key: "Tab" });
+    expect(two).toHaveFocus();
+    fireEvent.keyDown(window, { key: "Tab" });
+    expect(three).toHaveFocus();
+    fireEvent.keyDown(window, { key: "Tab" });
+    expect(one).toHaveFocus(); // wrapped
+    fireEvent.keyDown(window, { key: "Tab", shiftKey: true });
+    expect(three).toHaveFocus(); // wrapped back
+    fireEvent.keyDown(window, { key: "Tab", shiftKey: true });
+    expect(two).toHaveFocus();
+  });
+
   it("keeps Tab inside even from the dialog container itself", () => {
     // The container carries tabIndex -1 as the last-resort focus target, but
     // FOCUSABLE excludes tabindex="-1", so it is neither the first nor the last
