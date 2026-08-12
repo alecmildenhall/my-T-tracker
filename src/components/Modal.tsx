@@ -79,8 +79,14 @@ interface ModalProps {
 }
 
 /** How long the sheet's exit transition runs — must match styles.css. Exported
- *  so the parent can hold the dialog mounted for exactly that long. */
-export const SHEET_EXIT_MS = 200;
+ *  so the parent can hold the dialog mounted for exactly that long.
+ *
+ *  240, not 200: across a full-screen surface, 200ms means the sheet is moving
+ *  fastest at the instant it disappears, which reads as dropped rather than
+ *  dismissed. Material's own scale steps 200 → 250 and this sits between them
+ *  deliberately — 230/240/245 were compared and 240 was the one that stopped
+ *  looking dropped without starting to feel slow. Don't "correct" it to a token. */
+export const SHEET_EXIT_MS = 240;
 
 export const Modal: React.FC<ModalProps> = ({
   labelledBy,

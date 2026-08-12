@@ -1,7 +1,8 @@
+import { readFileSync } from "node:fs";
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, act, configure } from "@testing-library/react";
 import { useRef, useState } from "react";
-import { Modal } from "../Modal";
+import { Modal, SHEET_EXIT_MS } from "../Modal";
 
 // Harness: a modal with Cancel + Confirm, optionally given an initial-focus ref.
 const Harness = ({
@@ -749,5 +750,35 @@ describe("Modal", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
 
     expect(screen.getByRole("heading", { name: "Title" })).toHaveFocus();
+  });
+});
+
+/**
+ * `SHEET_EXIT_MS` and the stylesheet's exit durations are one value in three
+ * places. If JS is shorter than CSS the sheet unmounts mid-slide; if it is
+ * longer the dialog lingers invisible, delaying the focus restore. The README
+ * has said "they are a set and must move together" since they were written —
+ * this makes that a check rather than a hope.
+ */
+describe("the sheet exit duration is one value in three places", () => {
+  const css = readFileSync(`${process.cwd()}/src/styles.css`, "utf8");
+
+  it("is never shorter than the longest exit in styles.css", () => {
+    // Only the `.is-closing` rules — the 300ms enter is a different value.
+    const durations = [
+      ...css.matchAll(/\.dialog(?:-overlay)?--sheet\.is-closing\s*\{([^}]*)\}/g),
+    ]
+      .map(([, body]) => /transition-duration:\s*(\d+)ms/.exec(body)?.[1])
+      .filter((d): d is string => d !== undefined)
+      .map(Number);
+
+    expect(durations.length).toBeGreaterThan(0); // the regex still finds the rules
+
+    // Equal to the longest, not to every one: the reduced-motion block shortens
+    // the exit deliberately, and a CSS exit *shorter* than the JS wait is
+    // harmless (the sheet has finished moving and waits, invisible, to unmount).
+    // The failure mode this guards is the other direction — any CSS exit LONGER
+    // than SHEET_EXIT_MS unmounts the sheet mid-slide.
+    expect(Math.max(...durations)).toBe(SHEET_EXIT_MS);
   });
 });

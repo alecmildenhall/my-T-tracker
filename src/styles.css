@@ -1135,7 +1135,7 @@ textarea {
    Durations/curves follow Material's emphasized set:
      enter  300ms decelerate (fast off the mark, gentle settle — reads as weight
             arriving rather than stopping dead)
-     exit   200ms accelerate (deliberately quicker: entering teaches you where
+     exit   240ms accelerate (deliberately quicker: entering teaches you where
             the sheet lives, leaving you have already decided)
    Only `transform` and `opacity` animate, so the whole thing is composited and
    never triggers layout. Transitions are interruptible for free: close mid-open
@@ -1158,13 +1158,13 @@ textarea {
 }
 
 .dialog-overlay--sheet.is-closing {
-  transition-duration: 200ms;
+  transition-duration: 240ms;
 }
 
 /* A sheet on its way out takes no more input. The handlers also guard on
    `closing`, but this stops the press landing at all — the sheet is portaled
    outside the inert app root, so its own Save button would otherwise stay
-   clickable for the whole 200ms slide. */
+   clickable for the whole 240ms slide. */
 .dialog-overlay--sheet.is-closing {
   pointer-events: none;
 }
@@ -1175,7 +1175,7 @@ textarea {
    exit would snap instead of fading. */
 .dialog--sheet.is-closing {
   transition-property: transform;
-  transition-duration: 200ms;
+  transition-duration: 240ms;
   transition-timing-function: cubic-bezier(0.3, 0, 0.8, 0.15);
 }
 
