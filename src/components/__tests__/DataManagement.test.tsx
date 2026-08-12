@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, within } from "@testing-library/react";
+import { render, screen, fireEvent, within, waitFor } from "@testing-library/react";
 import { DataManagement } from "../DataManagement";
 import type { ShotEntry } from "../../types/shot";
 import * as downloadModule from "../../utils/download";
@@ -388,6 +388,14 @@ describe("DataManagement", () => {
 
       const cancel = within(dialog).getByRole("button", { name: "Cancel" });
       const replace = within(dialog).getByRole("button", { name: "Replace" });
+
+      // Wait for the dialog's OWN focus to land before moving it. `findByRole`
+      // resolves on DOM presence, but Modal focuses initialFocusRef (Cancel)
+      // from a passive effect that runs after the commit — so under load the
+      // effect could fire after `replace.focus()` below and haul focus back to
+      // Cancel. Tab then started from the wrong control and wrapped to Replace,
+      // failing this assertion about one run in sixteen.
+      await waitFor(() => expect(cancel).toHaveFocus());
 
       // Tab forward off the last control wraps to the first (stays in the modal).
       replace.focus();
