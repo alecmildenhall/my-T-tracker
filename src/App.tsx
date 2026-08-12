@@ -1,8 +1,9 @@
 // src/App.tsx
 import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ShotForm, type ShotDraft } from "./components/ShotForm";
 import { Settings } from "./components/Settings";
-import { Greeting } from "./components/Greeting";
+import { Greeting, ACKNOWLEDGEMENT } from "./components/Greeting";
 import { TabBar } from "./components/TabBar";
 import { RecentShots } from "./components/RecentShots";
 import { HistoryView } from "./components/HistoryView";
@@ -215,10 +216,17 @@ const App: React.FC = () => {
     }
     closingRef.current = false;
     setClosing(false);
-    // Going to log again is the moment the line has done its job. The wash is
-    // left alone: it retires on its own animation end, and opening the sheet
-    // does not cover the row.
+    // `confirming` is part of the same half-finished exit this function exists to
+    // retire. Left set, the next sheet would mount with its submit permanently
+    // reading "✓ Saved" and refusing to save anything.
+    setConfirming(false);
+    // Going to log again is the moment both have done their job. The wash goes
+    // too: the sheet covers the row at phone widths, so a wash left running would
+    // spend its life behind it — the same way the hold did before it was moved to
+    // arm on exit. It also bounds the case where the saved shot is not in the
+    // teaser at all (a backdated entry), where no row ever mounts to end it.
     setAcknowledgedId(null);
+    setWashId(null);
     if (shot) setEditingShot(shot);
     else setLoggingNew(true);
   };
@@ -272,12 +280,12 @@ const App: React.FC = () => {
   };
 
   // Both save paths bail once the sheet is closing, for the same reason
-  // dismissSheet does: the sheet stays mounted through its 200ms exit animation
+  // dismissSheet does: the sheet stays mounted through its exit animation
   // and only `#root` is inert, so its own Save button is still live. Without this
   // a double-tap inside that window wrote the shot twice — the second a blank
   // duplicate, since the post-save reset had already cleared the fields — and a
   // Save landing just after ✕/Escape saved a shot the user had just dismissed.
-  // 200ms is precisely a double-tap, and there is no undo until slice C.
+  // The exit window is precisely a double-tap, and there is no undo until slice C.
   // A failed save must not ALSO lose what was typed. The sheet closes on save
   // and the draft is cleared, so without this a write that throws left the user
   // with nothing on screen and nothing in storage — the worst of both.
@@ -363,6 +371,23 @@ const App: React.FC = () => {
       {/* Above every view, not inside the log sheet: writes fail from logging,
           editing, deleting and Settings alike, and an in-sheet message would
           leave three of those silent. */}
+      {/* The acknowledgement, for assistive tech.
+          Portaled to <body> so it sits OUTSIDE #root, which an open sheet marks
+          `inert` — and `inert` removes a subtree from the accessibility tree
+          entirely. The line in the greeting slot is set while the sheet is still
+          up, so its mutation happens inside that hidden subtree; by the time
+          inert lifts the text has already changed and there is no second
+          mutation left to announce. Spoken to nobody, in other words, for the
+          one feature whose whole point is the words.
+          Persistent rather than mounted on demand: a live region does not
+          announce its INITIAL content, only changes to it. */}
+      {createPortal(
+        <p className="visually-hidden" role="status">
+          {acknowledgedId !== null ? ACKNOWLEDGEMENT : ""}
+        </p>,
+        document.body
+      )}
+
       <StorageBanner returnFocusRef={titleRef} />
 
       {view === "home" && (

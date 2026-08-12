@@ -253,7 +253,7 @@ export const Modal: React.FC<ModalProps> = ({
   // listen, and the outer one would see focus as "outside" and haul it back out
   // of the inner dialog. Not reachable today — the log sheet, the delete
   // confirm, and the saved-values and import dialogs are mutually exclusive, and
-  // `#root` stays inert across the whole 200ms closing window. The
+  // `#root` stays inert across the whole closing window. The
   // `defaultPrevented` check below makes a second listener harmless rather than
   // additive, which is most of the danger; a full fix still wants the listener
   // to no-op unless its own dialog is the last one mounted.

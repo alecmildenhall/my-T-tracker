@@ -29,14 +29,13 @@ export const Greeting: React.FC<{ acknowledged?: boolean }> = ({
   // you just did. App retires it on the next deliberate action, so a milestone
   // is deferred rather than eclipsed and is waiting when you look again.
   //
-  // `role="status"` announces the swap politely. A live region does not announce
-  // its INITIAL content, so an ordinary greeting stays silent and only the change
-  // to this line is spoken.
+  // Deliberately NOT a live region. The swap happens while the sheet still has
+  // `#root` inert, so this element is out of the accessibility tree at the moment
+  // it changes and nothing would be announced; and once the acknowledgement
+  // clears, the mutation back to an ordinary greeting WOULD announce, which is
+  // noise. App portals a persistent live region outside #root for the announcing.
   return (
-    <p
-      className={`greeting${acknowledged ? " greeting--acknowledged" : ""}`}
-      role="status"
-    >
+    <p className={`greeting${acknowledged ? " greeting--acknowledged" : ""}`}>
       {acknowledged ? ACKNOWLEDGEMENT : text}
     </p>
   );

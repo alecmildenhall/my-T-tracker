@@ -824,3 +824,31 @@ describe("the in-sheet export button", () => {
     expect(screen.getByRole("alert")).not.toHaveTextContent(/download didn.t start/i);
   });
 });
+
+describe("the confirm beat", () => {
+  it("refuses to submit again while the ✓ is showing", () => {
+    // `aria-disabled` is advisory — it tells assistive tech the control is
+    // inert and does nothing functionally, so something has to make it true.
+    // Not `disabled`, which would blur the focused button and drop focus to
+    // <body> for the whole confirm plus exit.
+    const onAddShot = vi.fn(() => "saved" as const);
+    render(<ShotForm onAddShot={onAddShot} confirming shots={[]} />);
+
+    const button = screen.getByRole("button", { name: "✓ Saved" });
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    expect(button).not.toBeDisabled(); // still focusable
+
+    fireEvent.click(button);
+
+    expect(onAddShot).not.toHaveBeenCalled();
+  });
+
+  it("submits normally once the beat has passed", () => {
+    const onAddShot = vi.fn(() => "saved" as const);
+    render(<ShotForm onAddShot={onAddShot} shots={[]} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+
+    expect(onAddShot).toHaveBeenCalledTimes(1);
+  });
+});

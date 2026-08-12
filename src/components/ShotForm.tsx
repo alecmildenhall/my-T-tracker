@@ -327,6 +327,10 @@ export const ShotForm: React.FC<ShotFormProps> = ({
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
+    // The ✓ is showing and the sheet is already leaving: this press is the second
+    // half of a double-tap. Blocked here rather than by `disabled`, which would
+    // cost the focus this button is holding.
+    if (confirming) return;
 
     // Every field is validated here, and the form carries `noValidate`, so the
     // browser never silently refuses to submit. It used to: a decimal dose or
@@ -795,7 +799,13 @@ export const ShotForm: React.FC<ShotFormProps> = ({
           className={`primary-button shot-form__save${
             confirming ? " shot-form__save--confirmed" : ""
           }`}
-          disabled={confirming}
+          // `aria-disabled`, NOT `disabled`. Disabling the focused button blurs
+          // it, and the browser drops focus to <body> for the whole confirm +
+          // exit — the class CLAUDE.md calls non-negotiable, with nothing handing
+          // focus on. It also falsified the Tab trap's assumption that the
+          // sheet's Save button is "last and always enabled". The submit guard
+          // below does the actual blocking.
+          aria-disabled={confirming}
         >
           {confirming
             ? "✓ Saved"

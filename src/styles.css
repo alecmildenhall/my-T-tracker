@@ -340,6 +340,8 @@ textarea {
 /* Shot list */
 
 .shot-list-item {
+  /* Anchors the wash overlay in ::after — see the acknowledgement block. */
+  position: relative;
   padding: 0.75rem 0.85rem;
   border-radius: var(--radius-md);
   border: 1px solid rgba(31, 41, 55, 0.9);
@@ -1440,53 +1442,73 @@ textarea {
 /* ---- Post-log acknowledgement ------------------------------------------- */
 
 /* The Yellow Fade Technique: the row that just arrived is tinted, then the tint
-   decays. The HOLD is what makes it read as a flash rather than a brief wash —
-   fading from the first frame does not land. 20% of 2.2s is roughly 440ms at
-   full tint before anything moves.
+   decays. The HOLD is what makes it read as a flash rather than a slow wash —
+   fading from the first frame does not land. 20% of 2.2s is ~440ms at full tint.
 
-   Animated rather than transitioned so it has an `animationend` to retire the
-   state that armed it, which keeps the 2.2s in exactly one place. */
+   Painted by an ::after overlay, NOT by animating the row's background-color.
+   `.shot-list-item` sets `background: radial-gradient(...)`, and a background
+   IMAGE always paints over background-color — so an animated colour underneath
+   it is invisible for the whole 2.2s while `getComputedStyle().backgroundColor`
+   reports it changing perfectly. Verified by screenshot, which is the only thing
+   that can answer "can you see it".
+
+   Animating opacity also keeps this on the compositor instead of repainting the
+   gradient 60 times a second. */
 @keyframes shot-wash {
   0%,
   20% {
-    background-color: var(--success-wash);
+    opacity: 1;
   }
   100% {
-    background-color: transparent;
+    opacity: 0;
   }
 }
 
-.shot-list-item--washing {
+.shot-list-item--washing::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--success-wash);
+  pointer-events: none;
   animation: shot-wash 2200ms ease-out;
+  /* Animation events from a pseudo-element are dispatched to the originating
+     element, so the row's onAnimationEnd still hears this and can retire the
+     state that armed it. */
 }
 
 /* Reduced motion: the tint stays, the decay goes. Still an ANIMATION, not a
-   static class — `step-end` holds the colour for the full duration and then
-   ends, so `animationend` still fires and there is one retirement path rather
-   than two. Removing the animation entirely would leave the row tinted forever,
-   because nothing would ever tell React the wash was over. */
+   static class — `step-end` holds it for the full duration and then ends, so
+   `animationend` still fires and there is one retirement path rather than two.
+   Dropping the animation entirely would leave the row tinted forever, because
+   nothing would ever tell React the wash was over. */
 @media (prefers-reduced-motion: reduce) {
   @keyframes shot-wash {
     0% {
-      background-color: var(--success-wash);
+      opacity: 1;
     }
     100% {
-      background-color: var(--success-wash);
+      opacity: 1;
     }
   }
 
-  .shot-list-item--washing {
+  .shot-list-item--washing::after {
     animation: shot-wash 2200ms step-end;
   }
 }
 
 /* The ✓ beat between a successful save and the sheet leaving. Flat success
    green, no gradient and no transform: anything that springs or overshoots reads
-   as the screen acting under its own power rather than answering you. */
-.shot-form__save--confirmed,
-.shot-form__save--confirmed:disabled {
+   as the screen acting under its own power rather than answering you.
+
+   `transition: none` because `.primary-button` transitions background-color over
+   150ms. The gradient (a background-IMAGE) drops instantly while the colour
+   interpolates from transparent, so for most of a 200ms beat the button was a
+   hole showing the card behind it with near-invisible text on top. The ✓ has to
+   land flat, not fade in. */
+.shot-form__save--confirmed {
   background: var(--success);
   color: #052e16;
-  opacity: 1; /* beat the generic :disabled dimming — this is a success, not a dead control */
+  transition: none;
   cursor: default;
 }

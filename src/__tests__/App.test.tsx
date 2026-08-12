@@ -896,8 +896,11 @@ describe("App — a failed save is never silent", () => {
     // second tap of a double-tap cannot land at all — a stronger guarantee than
     // the closing guard, which stays because the button becomes live again for
     // the exit that follows.
+    // `aria-disabled`, not `disabled`: disabling the focused button would blur
+    // it and drop focus to <body> for the whole confirm + exit.
     const confirmed = sheet().getByRole("button", { name: "✓ Saved" });
-    expect(confirmed).toBeDisabled();
+    expect(confirmed).toHaveAttribute("aria-disabled", "true");
+    expect(confirmed).not.toBeDisabled();
     fireEvent.click(confirmed);
 
     expect(sheet().queryByRole("alert")).not.toBeInTheDocument();
@@ -1361,7 +1364,10 @@ describe("focus is never left on <body>", () => {
 
 describe("the post-log acknowledgement", () => {
   const ACK = "Logged for you.";
-  const greeting = () => screen.getByRole("status").textContent;
+  const greeting = () => document.querySelector(".greeting")?.textContent;
+  /** The portaled, always-mounted live region — the thing AT actually hears. */
+  const announced = () =>
+    document.querySelector("body > .visually-hidden[role='status']")?.textContent;
   const washedRows = () =>
     document.querySelectorAll(".shot-list-item--washing").length;
 
@@ -1383,6 +1389,25 @@ describe("the post-log acknowledgement", () => {
     expect(greeting()).not.toContain(ACK);
     await logAShot();
     expect(greeting()).toBe(ACK);
+  });
+
+  it("announces it from a live region outside the inert app root", async () => {
+    // The greeting swaps while the sheet still has #root inert, and `inert`
+    // removes a subtree from the accessibility tree — so a live region there is
+    // mutated while nobody can hear it, and there is no second change once inert
+    // lifts. The announcing region is portaled to <body> and always mounted,
+    // because a live region does not announce its initial content.
+    renderApp();
+    const region = document.querySelector("body > .visually-hidden[role='status']");
+    expect(region).toBeTruthy();
+    expect(region).not.toBe(document.querySelector(".greeting"));
+    expect(announced()).toBe("");
+
+    await logAShot();
+    expect(announced()).toBe(ACK);
+
+    goTo("History");
+    expect(announced()).toBe("");
   });
 
   it("uses the same words whether or not a name is set", async () => {
@@ -1564,20 +1589,68 @@ describe("the post-log wash", () => {
     expect(washed()).toEqual([todayLocalISO()]);
   });
 
-  it("does not re-arm when an unrelated re-render happens", async () => {
-    // The prototype's bug: merely opening the form replayed the wash on the
-    // previous entry. Keying the class to the shot's id means React leaves an
-    // unchanged className alone, so nothing re-triggers.
+  it("does not carry the ✓ into the next sheet", async () => {
+    // openSheet exists to stop any route inheriting a half-finished exit, and
+    // `confirming` is part of that state. Left set, the next sheet mounts with a
+    // submit that reads "✓ Saved" and refuses to save — with no way to log a
+    // shot until reload. Unreachable by pointer today only because `#root` is
+    // inert during the beat, which is one attribute standing between this and a
+    // dead form.
+    vi.useFakeTimers();
+    try {
+      renderApp();
+      fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+      fireEvent.click(
+        within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+      );
+      expect(
+        within(screen.getByRole("dialog")).getByRole("button", { name: "✓ Saved" })
+      ).toBeInTheDocument();
+
+      // Re-open mid-beat (jsdom does not enforce inert, which is what lets this
+      // be tested at all).
+      fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+
+      const sheet = within(screen.getByRole("dialog"));
+      expect(sheet.getByRole("button", { name: "Save shot" })).toBeInTheDocument();
+      expect(sheet.getByRole("button", { name: "Save shot" })).toHaveAttribute(
+        "aria-disabled",
+        "false"
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("retires the wash when the log form is opened over it", async () => {
+    // At phone widths the sheet covers the row completely, so a wash left
+    // running would spend its life behind it — the same way the hold did before
+    // it was moved to arm on exit.
     renderApp();
     await logAShot();
-    const row = document.querySelector(".shot-list-item--washing")!;
+    expect(document.querySelectorAll(".shot-list-item--washing")).toHaveLength(1);
 
     fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
-    dismissSheet();
-    await sheetGone();
 
-    // Same element, still washing — not a fresh node with a restarted animation.
-    expect(document.querySelector(".shot-list-item--washing")).toBe(row);
+    expect(document.querySelectorAll(".shot-list-item--washing")).toHaveLength(0);
+  });
+
+  it("moves the wash to the newest row without recreating the older one", async () => {
+    // The prototype's bug was a class reapplied by a re-render restarting the
+    // animation. Keying it to the shot's id means React leaves both the element
+    // and an unchanged className alone, so the older row is the same node and
+    // simply stops washing.
+    renderApp();
+    await logAShot();
+    const first = document.querySelector(".shot-list-item")!;
+    expect(first.className).toContain("shot-list-item--washing");
+
+    await logAShot();
+
+    const rows = [...document.querySelectorAll(".shot-list-item")];
+    expect(rows).toContain(first); // same node, not rebuilt
+    expect(first.className).not.toContain("shot-list-item--washing");
+    expect(document.querySelectorAll(".shot-list-item--washing")).toHaveLength(1);
   });
 
   it("retires on its own animation end, not on a timer", async () => {
