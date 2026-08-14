@@ -668,6 +668,48 @@ describe("App — editing from History", () => {
     expect(screen.getByText("updated")).toBeInTheDocument();
   });
 
+  it("confirms an update with the ✓, held through the slide", () => {
+    // The same beat a new shot gets. CONFIRM_MS exists because a sheet that
+    // vanishes the instant you press it leaves you unsure the press registered,
+    // and that is a fact about the write landing — an edit needs it just as
+    // much. The verb mirrors the button that was pressed.
+    vi.useFakeTimers();
+    try {
+      seedShots([{ id: "a", date: "2026-06-01", notes: "original" }]);
+      renderApp();
+      goTo("History");
+      fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+      const sheet = () => within(screen.getByRole("dialog"));
+      fireEvent.change(sheet().getByPlaceholderText(/remember for later/i), {
+        target: { value: "updated" },
+      });
+      fireEvent.click(sheet().getByRole("button", { name: "Update shot" }));
+
+      expect(sheet().getByRole("button", { name: "✓ Updated" })).toBeInTheDocument();
+
+      // Still confirming mid-slide, and a second press there writes nothing.
+      act(() => {
+        vi.advanceTimersByTime(CONFIRM_MS);
+      });
+      const submit = sheet().getByRole("button", { name: "✓ Updated" });
+      fireEvent.click(submit);
+
+      act(() => {
+        vi.advanceTimersByTime(SHEET_EXIT_MS);
+      });
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+      const stored: ShotEntry[] = JSON.parse(
+        localStorage.getItem(STORAGE_KEYS.shots) ?? "[]"
+      );
+      expect(stored).toHaveLength(1);
+      expect(stored[0].notes).toBe("updated");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("the Home teaser is read-only — no edit or delete there", () => {
     seedShots([{ id: "a", date: "2026-06-01", notes: "only shot" }]);
     renderApp();
@@ -947,9 +989,19 @@ describe("App — a failed save is never silent", () => {
     expect(stored[0].notes).toBe("saved fine");
   });
 
-  it("still drops a Save that lands during the exit, once the ✓ has passed", () => {
-    // The button is live again between the ✓ and the unmount, so the closing
-    // guard is still the thing standing between a late press and a second write.
+  it("holds the ✓ through the slide, and still drops a Save that lands there", () => {
+    // Two things at once, because they are the same moment.
+    //
+    // The ✓ must survive the whole exit: retiring it when the slide STARTED put
+    // "Save shot" back on screen while the sheet was still visibly leaving,
+    // which reads as the save being taken back.
+    //
+    // And a press landing in that window must still write nothing. The button is
+    // never truly `disabled` (that would blur it and strand focus on <body>), so
+    // something has to drop the press — here it is ShotForm's own `confirming`
+    // guard. The `closingRef` guard behind it covers the dismissal path, where
+    // there is no ✓ at all; "does not save a shot that was just dismissed" is
+    // the test that exercises it.
     vi.useFakeTimers();
     try {
       renderApp();
@@ -960,15 +1012,228 @@ describe("App — a failed save is never silent", () => {
       });
       fireEvent.click(sheet().getByRole("button", { name: "Save shot" }));
 
-      // Past the ✓, into the slide.
+      // Past the ✓ beat, into the slide.
       act(() => {
         vi.advanceTimersByTime(CONFIRM_MS);
       });
-      fireEvent.click(sheet().getByRole("button", { name: "Save shot" }));
+      const submit = sheet().getByRole("button", { name: "✓ Saved" });
+      expect(sheet().queryByRole("button", { name: "Save shot" })).not.toBeInTheDocument();
+
+      fireEvent.click(submit);
 
       expect(sheet().queryByRole("alert")).not.toBeInTheDocument();
       const stored = JSON.parse(localStorage.getItem("hrt-shot-tracker:v1:shots") ?? "[]");
       expect(stored).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("leaves the typed entry on screen under the ✓", () => {
+    // The form used to clear its per-shot fields on a successful save, which was
+    // invisible while the sheet left immediately. With the ✓ beat the sheet holds
+    // still for CONFIRM_MS and then takes SHEET_EXIT_MS to slide, so the user
+    // watched what they had just typed empty itself for ~440ms under a message
+    // saying it had been saved.
+    vi.useFakeTimers();
+    try {
+      renderApp();
+      fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+      const sheet = () => within(screen.getByRole("dialog"));
+      fireEvent.change(sheet().getByPlaceholderText(/remember for later/i), {
+        target: { value: "sore today, left side" },
+      });
+      fireEvent.change(sheet().getByLabelText("Injection site"), {
+        target: { value: "Left thigh" },
+      });
+      fireEvent.click(sheet().getByRole("button", { name: "Save shot" }));
+
+      // On the ✓, sheet motionless and fully on screen.
+      expect(sheet().getByPlaceholderText(/remember for later/i)).toHaveValue(
+        "sore today, left side"
+      );
+      expect(sheet().getByLabelText("Injection site")).toHaveValue("Left thigh");
+
+      // ...and still there through the slide, which is most of the 440ms.
+      act(() => {
+        vi.advanceTimersByTime(CONFIRM_MS);
+      });
+      expect(sheet().getByPlaceholderText(/remember for later/i)).toHaveValue(
+        "sore today, left side"
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("opens a NEW shot mid-exit of an edit, rather than reopening that edit", () => {
+    // The exit timer is what clears `editingShot`, and openSheet cancels it — so
+    // without retiring the subject here, an interrupted edit stayed current.
+    // The sheet reopened titled "Edit shot", and because its key is that shot's
+    // id the openCount bump did not force a remount either, so Save routed
+    // through handleUpdateShot and OVERWROTE the entry instead of adding one.
+    vi.useFakeTimers();
+    try {
+      seedShots([{ id: "a", date: "2026-06-01", notes: "the original" }]);
+      renderApp();
+      goTo("History");
+      fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+      fireEvent.change(
+        within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i),
+        { target: { value: "an edit" } }
+      );
+      fireEvent.click(
+        within(screen.getByRole("dialog")).getByRole("button", { name: "Update shot" })
+      );
+
+      // Mid-exit — the sheet is still mounted, its timer still pending.
+      act(() => {
+        vi.advanceTimersByTime(CONFIRM_MS);
+      });
+      goTo("Home");
+      fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+
+      const sheet = within(screen.getByRole("dialog"));
+      expect(sheet.getByRole("heading", { name: "Log a shot" })).toBeInTheDocument();
+      expect(sheet.getByRole("button", { name: "Save shot" })).toBeInTheDocument();
+
+      fireEvent.change(sheet.getByPlaceholderText(/remember for later/i), {
+        target: { value: "a second, separate shot" },
+      });
+      fireEvent.click(sheet.getByRole("button", { name: "Save shot" }));
+      act(() => {
+        vi.advanceTimersByTime(CONFIRM_MS + SHEET_EXIT_MS);
+      });
+
+      // Two entries, and the edited one still holds its edit.
+      const stored: ShotEntry[] = JSON.parse(
+        localStorage.getItem(STORAGE_KEYS.shots) ?? "[]"
+      );
+      expect(stored).toHaveLength(2);
+      expect(stored.find((s) => s.id === "a")?.notes).toBe("an edit");
+      expect(
+        stored.some((s) => s.notes === "a second, separate shot")
+      ).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reopens the sheet with a fresh form, even mid-exit", () => {
+    // The new-shot form used to be keyed on the constant "new", so reopening
+    // while a save was still leaving reused the mounted form: the entry that had
+    // just been saved, still on screen, with `confirming` cleared and Save live
+    // — one press from a duplicate, and no undo until slice C. `#root` being
+    // inert is what made that unreachable, which is a reason it can't happen
+    // rather than a reason it can't be.
+    vi.useFakeTimers();
+    try {
+      renderApp();
+      fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+      fireEvent.change(
+        within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i),
+        { target: { value: "the saved one" } }
+      );
+      fireEvent.click(
+        within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+      );
+
+      // Mid-exit, before the sheet has unmounted.
+      act(() => {
+        vi.advanceTimersByTime(CONFIRM_MS);
+      });
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+
+      const sheet = within(screen.getByRole("dialog"));
+      expect(sheet.getByPlaceholderText(/remember for later/i)).toHaveValue("");
+      expect(sheet.getByRole("button", { name: "Save shot" })).toBeInTheDocument();
+
+      // And saving that fresh form does not write the saved entry a second time.
+      fireEvent.click(sheet.getByRole("button", { name: "Save shot" }));
+      act(() => {
+        vi.advanceTimersByTime(CONFIRM_MS + SHEET_EXIT_MS);
+      });
+      const stored: ShotEntry[] = JSON.parse(
+        localStorage.getItem(STORAGE_KEYS.shots) ?? "[]"
+      );
+      expect(stored.filter((s) => s.notes === "the saved one")).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("lets Escape cut the ✓ short instead of swallowing it", () => {
+    // The dismissal window is 440ms now and motionless for the first 200. A
+    // dismissal there is an ordinary request — the shot is saved and the beat is
+    // a courtesy — so it starts the slide rather than doing nothing. It mattered
+    // most on Android: the first Back spends the overlay's history entry, so a
+    // reflexive second one popped a REAL entry and left the app with the sheet
+    // still painted over it.
+    vi.useFakeTimers();
+    try {
+      renderApp();
+      fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+      fireEvent.change(
+        within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i),
+        { target: { value: "impatient" } }
+      );
+      fireEvent.click(
+        within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+      );
+
+      // Escape 50ms in, well before the ✓ would have ended on its own.
+      act(() => {
+        vi.advanceTimersByTime(50);
+      });
+      fireEvent.keyDown(window, { key: "Escape" });
+
+      // The slide is already running: SHEET_EXIT_MS from HERE, not from the end
+      // of the beat it cut short.
+      act(() => {
+        vi.advanceTimersByTime(SHEET_EXIT_MS);
+      });
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+      // Saved exactly once, and the dismissal did not park it as a draft to log
+      // all over again.
+      const stored: ShotEntry[] = JSON.parse(
+        localStorage.getItem(STORAGE_KEYS.shots) ?? "[]"
+      );
+      expect(stored).toHaveLength(1);
+      fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+      expect(
+        within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i)
+      ).toHaveValue("");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("ignores Clear form during the ✓", () => {
+    // The sheet is fully on screen and still for CONFIRM_MS, and this is the one
+    // control there that changes what you are looking at: it blanks every field
+    // and moves focus. Live, it reproduced the entry-empties-itself defect that
+    // deleting the post-save reset had just fixed.
+    vi.useFakeTimers();
+    try {
+      renderApp();
+      fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+      const sheet = () => within(screen.getByRole("dialog"));
+      fireEvent.change(sheet().getByPlaceholderText(/remember for later/i), {
+        target: { value: "still here" },
+      });
+      fireEvent.click(sheet().getByRole("button", { name: "Save shot" }));
+
+      fireEvent.click(sheet().getByRole("button", { name: "Clear form" }));
+
+      expect(sheet().getByPlaceholderText(/remember for later/i)).toHaveValue(
+        "still here"
+      );
+      act(() => {
+        vi.advanceTimersByTime(CONFIRM_MS + SHEET_EXIT_MS);
+      });
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }

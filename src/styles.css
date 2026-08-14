@@ -1535,3 +1535,14 @@ textarea {
   transition: none;
   cursor: default;
 }
+
+/* The press feedback goes with the press. `.primary-button:active` squeezes to
+   0.97 and brightens, and those kept applying through the ✓ — so a second tap on
+   "✓ Saved" answered like a live button while the submit was being dropped,
+   which is the one thing this beat must not do: it is there to say the save
+   landed, not to look like it is taking another one. `cursor: default` was
+   already saying so and the animation was contradicting it. */
+.shot-form__save--confirmed:active {
+  transform: none;
+  filter: none;
+}

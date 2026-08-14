@@ -753,7 +753,27 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             RENDERED — never what is parked or saved — so unlike the dirtiness
             rules it is safe to judge against the live clock. */}
         {hasUnsavedInput && !editingShot && !looksFresh && (
-          <button type="button" className="link-button" onClick={resetForm}>
+          <button
+            type="button"
+            className="link-button"
+            // Dead during the ✓, for the same reason the submit is. The sheet is
+            // fully on screen and motionless for CONFIRM_MS after a successful
+            // save, and this is the one control there that CHANGES what you are
+            // looking at: it blanks every field and moves focus to the heading —
+            // the entry emptying itself under a message saying it was saved,
+            // which is the defect the post-save reset was deleted to prevent.
+            // Editing a field in that window is harmless by comparison (nothing
+            // more is stored and the form is about to unmount), and the ✕ leads
+            // where it always did, so neither needs blocking.
+            //
+            // Guarded rather than un-rendered: pulling a control out from under
+            // a thumb mid-press is its own bug, and it could be holding focus.
+            aria-disabled={confirming}
+            onClick={() => {
+              if (confirming) return;
+              resetForm();
+            }}
+          >
             Clear form
           </button>
         )}
@@ -831,8 +851,11 @@ export const ShotForm: React.FC<ShotFormProps> = ({
           // below does the actual blocking.
           aria-disabled={confirming}
         >
+          {/* The ✓ mirrors the verb that was pressed — "Update shot" is answered
+              by "✓ Updated", not by a word the user did not use. Same fact
+              either way: the write landed. */}
           {confirming
-            ? "✓ Saved"
+            ? `✓ ${editingShot ? "Updated" : "Saved"}`
             : `${editingShot ? "Update" : "Save"} ${saveFailed ? "again" : "shot"}`}
         </button>
       </div>

@@ -799,15 +799,30 @@ describe("the sheet exit duration is one value in three places", () => {
   const css = readFileSync(`${process.cwd()}/src/styles.css`, "utf8");
 
   it("is never shorter than the longest exit in styles.css", () => {
-    // Only the `.is-closing` rules — the 300ms enter is a different value.
-    const durations = [
-      ...css.matchAll(/\.dialog(?:-overlay)?--sheet\.is-closing\s*\{([^}]*)\}/g),
-    ]
-      .map(([, body]) => /transition-duration:\s*(\d+)ms/.exec(body)?.[1])
+    // Every rule whose selector LIST mentions a closing sheet, wherever it sits.
+    //
+    // Two ways this has been wrong, both of which left it green while blind. It
+    // first matched `...--sheet\.is-closing\s*\{`, so grouping the rule with any
+    // other selector hid it. Rewriting that fixed the grouping and broke nesting:
+    // a body of `[^}]*` swallows the first rule inside an `@media` block, so the
+    // prelude becomes the "selector" and the rule inside is never matched — which
+    // lost the reduced-motion exit this file has always had. `[^{}]*` for the
+    // BODY is what makes it innermost-rules-only, and therefore nesting-proof:
+    // a body containing `{` is not a body.
+    const durations = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+      .filter(([, selectors]) =>
+        selectors
+          .split(",")
+          .some((s) => /\.dialog(-overlay)?--sheet\.is-closing\b/.test(s))
+      )
+      .map(([, , body]) => /transition-duration:\s*(\d+)ms/.exec(body)?.[1])
       .filter((d): d is string => d !== undefined)
       .map(Number);
 
-    expect(durations.length).toBeGreaterThan(0); // the regex still finds the rules
+    // Both top-level exits AND the media-scoped one. A bare "> 0" is what let the
+    // nesting blindness above pass unnoticed: it kept finding the two top-level
+    // rules and reported a healthy maximum while the `@media` rule was invisible.
+    expect(durations).toHaveLength(3);
 
     // Equal to the longest, not to every one: the reduced-motion block shortens
     // the exit deliberately, and a CSS exit *shorter* than the JS wait is

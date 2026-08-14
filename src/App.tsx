@@ -188,6 +188,9 @@ const App: React.FC = () => {
   // out. The sheet stays mounted (and marked `closing`) for exactly the
   // transition's length, then goes.
   const [closing, setClosing] = useState(false);
+  // Bumped by every openSheet, and part of the new-shot form's key, so opening
+  // always gets a form seeded from scratch — see openSheet.
+  const [openCount, setOpenCount] = useState(0);
   // True for the ✓ beat between a successful save and the sheet leaving.
   const [confirming, setConfirming] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -285,6 +288,7 @@ const App: React.FC = () => {
       return;
     }
     setConfirming(true);
+    skipConfirm.current = beginExit;
     closeTimer.current = setTimeout(() => {
       closeTimer.current = null;
       beginExit();
@@ -316,6 +320,7 @@ const App: React.FC = () => {
       closeTimer.current = null;
     }
     closingRef.current = false;
+    skipConfirm.current = null;
     setClosing(false);
     // `confirming` is part of the same half-finished exit this function exists to
     // retire. Left set, the next sheet would mount with its submit permanently
@@ -328,6 +333,24 @@ const App: React.FC = () => {
     // teaser at all (a backdated entry), where no row ever mounts to end it.
     setAcknowledgedId(null);
     setWashId(null);
+    // Force a fresh ShotForm. An edit already remounts (the key is the shot's
+    // id), but a new shot's key is the constant "new", so opening the sheet
+    // while a save was still exiting reused the mounted form — showing the
+    // entry that had just been saved, with `confirming` cleared and Save live,
+    // one press away from writing a duplicate with no undo until slice C. The
+    // only thing making that unreachable is `#root` being `inert`, which is a
+    // list of reasons it can't happen rather than a reason it can't.
+    setOpenCount((n) => n + 1);
+    // Retire the PREVIOUS subject before naming the new one. The exit timer
+    // cleared above is the one that would have done this, so skipping it left an
+    // interrupted edit still current: opening "Log a shot" during an edit's exit
+    // reopened the sheet titled "Edit shot" — and because the key is that shot's
+    // id, `openCount` did not force a remount either — so Save routed through
+    // handleUpdateShot and OVERWROTE that entry instead of adding a new one.
+    // Only `#root` being inert makes it hard to reach, which is the same list of
+    // reasons `openCount` exists not to rely on.
+    setEditingShot(null);
+    setLoggingNew(false);
     if (shot) setEditingShot(shot);
     else setLoggingNew(true);
   };
@@ -351,7 +374,29 @@ const App: React.FC = () => {
     // saving a backdated shot restored the entry that was already saved (the
     // post-save reset keeps the date, so the form still reads as dirty),
     // inviting a duplicate.
-    if (closingRef.current) return;
+    //
+    // "Must not re-decide the draft" is not the same as "must do nothing",
+    // though, and treating them as one thing left the sheet's whole dismissal
+    // window dead — 440ms once the ✓ was added, and motionless for the first 200
+    // of them. Press Save then immediately Back and the sheet just sat there.
+    // During the ✓ a dismissal is an ordinary, answerable request — the shot is
+    // saved, the beat is a courtesy — so skip the rest of it and start the
+    // slide. Once the slide is running there is nothing left to ask for.
+    //
+    // WHAT THIS DOES NOT FIX, stated plainly because an earlier version of this
+    // comment implied otherwise. On Android the first Back consumes the
+    // overlay's history entry; a second one inside the *slide* finds nothing
+    // left to skip, so it is swallowed here while the browser pops a real entry
+    // and navigates away with the sheet still painted over it. That window is
+    // 240ms of visibly moving sheet — exactly what it was before the ✓ existed,
+    // so this restores the old bound rather than closing the hole. Closing it
+    // means `useBackToClose` owning a history entry for the sheet's whole
+    // lifetime including the exit, which is its own change with its own risk of
+    // leaving entries behind.
+    if (closingRef.current) {
+      skipConfirm.current?.();
+      return;
+    }
     const live = liveDraft.current;
     // Each mode keeps its own work. Writing an edit into `draft` would wipe an
     // unfinished NEW shot parked earlier, so edits go to their own per-shot slot.
@@ -369,14 +414,21 @@ const App: React.FC = () => {
     closeSheet();
   };
 
-  // Saving clears the draft *and* the live values behind it. The sheet stays
-  // mounted through the exit animation with its Escape and Back listeners live,
-  // and the post-save reset deliberately keeps the date — so on a backdated shot
-  // the form still counts as dirty and would republish. An impatient Back press
-  // in that window would then restore the entry that was just saved, inviting a
-  // duplicate.
+  // Saving clears the parked draft. It deliberately does NOT try to clear
+  // `liveDraft` as well, which it used to.
+  //
+  // That assignment could not hold and had stopped meaning anything: the form
+  // republishes its live values on every render, `setConfirming(true)` causes one
+  // immediately, and the fields still hold the entry that was just saved (they
+  // stay visible under the ✓ now, which is the point). So `liveDraft` was null
+  // for a single render and then full again for the whole 440ms exit — a
+  // guarantee stated in code that the next render undid.
+  //
+  // What actually stops a stray Escape or Back in that window re-parking the
+  // saved entry as a draft, and offering it back to be logged twice, is
+  // `dismissSheet` bailing while the sheet is closing. One real guard is worth
+  // more than a real one plus a decorative one, which is what this was.
   const clearDraft = () => {
-    liveDraft.current = null;
     setDraft(null);
   };
 
@@ -422,7 +474,16 @@ const App: React.FC = () => {
       delete next[shot.id];
       return next;
     });
-    closeSheet();
+    // The same ✓ beat a new shot gets, and for the reason CONFIRM_MS exists at
+    // all: a sheet that vanishes the instant you press it leaves you unsure the
+    // press registered. That is a fact about the write landing, which an edit
+    // needs exactly as much — this path had been left without one by omission
+    // rather than by decision.
+    //
+    // The ACKNOWLEDGEMENT is a different thing and stays withheld: no
+    // `acknowledge`, so no wash and no "Logged for you." — that line is about
+    // logging a shot, not correcting one.
+    closeSheet({ confirm: true });
     // Symmetric with handleAddShot: the premise of this whole path is that a
     // caller can ask what the save did, so the success case has to answer too.
     return "saved";
@@ -542,7 +603,7 @@ const App: React.FC = () => {
             // Remount on a change of subject, so the form re-seeds from the new
             // shot (or from a fresh/draft state) rather than needing an effect
             // to sync it — see the note in ShotForm.
-            key={activeEditingShot?.id ?? "new"}
+            key={activeEditingShot?.id ?? `new-${openCount}`}
             headingId={SHEET_HEADING_ID}
             onAddShot={handleAddShot}
             onUpdateShot={handleUpdateShot}
