@@ -438,19 +438,20 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     }
     setSaveFailed(false);
 
-    // Clear the per-shot fields. The carried-forward ones (dose, type of T,
-    // carrier oil) are deliberately left alone: they re-derive from the shot just
-    // saved via carryForward the next time the form mounts. Normally the parent
-    // closes the sheet right after a save and this reset is moot, but it keeps
-    // the form correct for any caller that keeps it mounted.
-    if (!editingShot) {
-      setTime("");
-      setInjectionSite("");
-      setInjectionSitePosition("");
-      setPainScore("");
-      setMood("");
-      setNotes("");
-    }
+    // No post-save field reset, deliberately. There used to be one here, on the
+    // reasoning that the parent closes the sheet immediately so it was moot. The
+    // ✓ beat ended that: the sheet now holds still for CONFIRM_MS and then takes
+    // SHEET_EXIT_MS to leave, so for ~440ms the user was watching the entry they
+    // had just typed empty itself under a message saying it was saved.
+    // Screenshotted at 390px — the site and notes fields were back to their
+    // placeholders while "✓ Saved" was still on the button.
+    //
+    // Nothing needs the reset. This form unmounts with the sheet and is remounted
+    // fresh (keyed on the subject) the next time, seeded from the parent's draft
+    // — which a successful save has just cleared. Carried-forward values re-derive
+    // through carryForward on that mount. And a stray Escape or Back inside the
+    // exit window cannot resurrect these values as a draft: `dismissSheet` bails
+    // while the sheet is closing, which is the guard that actually prevents it.
   };
 
   const current: ShotDraft = {

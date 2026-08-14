@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, within, act, waitFor } from "@testing-library/react";
 import App, { CONFIRM_MS } from "../App";
@@ -52,10 +53,29 @@ const seedShots = (shots: ShotEntry[]) =>
 const goTo = (tab: "Home" | "History" | "Settings") =>
   fireEvent.click(within(screen.getByRole("navigation")).getByRole("button", { name: tab }));
 
-/** The sheet plays a 200ms exit transition before unmounting, so its removal is
- *  asynchronous. */
+/** The sheet's removal is asynchronous: a save waits CONFIRM_MS (200ms) on the ✓
+ *  and then SHEET_EXIT_MS (240ms) for the slide, so 440ms of real time passes
+ *  before the dialog unmounts.
+ *
+ *  The timeout is explicit because that 440ms had eaten more than half of
+ *  `waitFor`'s 1000ms default, on every test that saves — and this suite has a
+ *  documented history of load-dependent flakes that read as unrelated. */
 const sheetGone = () =>
-  waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument(), {
+    timeout: 3000,
+  });
+
+/** Background the app, or bring it back. jsdom reports "visible" and never
+ *  changes it, so both halves have to be driven by hand. */
+const setVisibility = (state: DocumentVisibilityState) => {
+  Object.defineProperty(document, "visibilityState", {
+    value: state,
+    configurable: true,
+  });
+  act(() => {
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+};
 
 /** Dismiss via the top-bar ✕ — which KEEPS the draft, like Escape and Back. */
 const dismissSheet = (name: RegExp | string = "Close") =>
@@ -1427,6 +1447,101 @@ describe("the post-log acknowledgement", () => {
     expect(announced()).toBe("");
   });
 
+  it("announces only once the dialog is gone", async () => {
+    // Portaling the region out of `#root` dodges the `inert` the sheet applies,
+    // but the dialog also carries aria-modal="true", which tells assistive tech
+    // to ignore everything outside it. A live region announces CHANGES, so a
+    // change made while the dialog is still up is not re-announced when it
+    // leaves — there is no second chance. Wait for the dialog to go instead.
+    vi.useFakeTimers();
+    try {
+      renderApp();
+      fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+      fireEvent.click(
+        within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+      );
+      expect(announced()).toBe(""); // during the ✓
+
+      act(() => {
+        vi.advanceTimersByTime(CONFIRM_MS);
+      });
+      expect(screen.queryByRole("dialog")).toBeInTheDocument(); // mid-slide
+      expect(announced()).toBe("");
+
+      act(() => {
+        vi.advanceTimersByTime(SHEET_EXIT_MS);
+      });
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(announced()).toBe(ACK);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("comes back to the greeting when the app is reopened", async () => {
+    // The third retirement route, alongside opening the form and changing tab.
+    // A reload would clear this for free, but "reopening the app" usually is not
+    // a reload — switching apps and back, or leaving the tab open overnight,
+    // keeps this component mounted, and the line has no timer of its own.
+    localStorage.setItem(
+      STORAGE_KEYS.profile,
+      JSON.stringify({ startDate: yearsAgoLocal(1) })
+    );
+    renderApp();
+    const milestone = greeting();
+    await logAShot();
+    expect(greeting()).toBe(ACK);
+
+    // Away...
+    setVisibility("hidden");
+    expect(greeting()).toBe(ACK); // still there while the app is in the background
+    // ...and back.
+    setVisibility("visible");
+
+    expect(greeting()).toBe(milestone);
+    expect(announced()).toBe("");
+  });
+
+  it("says nothing if the app was put away before the sheet finished leaving", () => {
+    // Both halves are armed 440ms after the save, and timers are suspended
+    // rather than throttled on iOS Safari and anything restored from bfcache —
+    // so tapping Save and locking the phone leaves that callback to run on
+    // RESUME, after the visibility sweep has already been and gone. It would arm
+    // the acknowledgement at the exact moment it is supposed to be retired, and
+    // what you would see on unlocking is "Logged for you." over the milestone it
+    // is meant to defer to. The shot is saved either way.
+    vi.useFakeTimers();
+    try {
+      renderApp();
+      fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+      fireEvent.click(
+        within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+      );
+
+      // The ORDER is the whole point, and getting it backwards is what hid a
+      // worthless first fix: the timer does not run while the app is away, it
+      // runs on RESUME. So the sweep happens first and finds nothing, and a
+      // fix that asks "is the page visible?" from inside the callback is told
+      // "yes" and arms anyway.
+      setVisibility("hidden");
+      setVisibility("visible");
+      act(() => {
+        vi.advanceTimersByTime(CONFIRM_MS + SHEET_EXIT_MS);
+      });
+
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(); // still closed
+      expect(greeting()).not.toBe(ACK);
+      expect(announced()).toBe("");
+      expect(washedRows()).toBe(0);
+      // ...and the shot is saved regardless.
+      expect(
+        JSON.parse(localStorage.getItem(STORAGE_KEYS.shots) ?? "[]")
+      ).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("uses the same words whether or not a name is set", async () => {
     localStorage.setItem(
       STORAGE_KEYS.profile,
@@ -1591,6 +1706,152 @@ describe("the post-log wash", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("keeps the wash's last frame until the class goes, in both motion modes", () => {
+    // A CSS animation stops applying the instant it ends, so with no fill mode
+    // opacity reverted to its underlying value — 1, since nothing else sets it —
+    // and the overlay snapped back to FULL tint for the frame (or more) before
+    // React's onAnimationEnd re-render dropped the class. The wash ended in a
+    // green flash instead of a fade, which no jsdom test can see and only a
+    // screenshot can settle.
+    //
+    // Both rules, because `animation` is a SHORTHAND: the reduced-motion
+    // override resets fill-mode to `none` and silently reintroduces the flash.
+    // Comments are stripped FIRST. Both rules explain the fill mode in prose, so
+    // matching the raw body found the word "forwards" in the comment and passed
+    // with the declaration itself deleted — a test that asked whether the rule
+    // was documented, not whether it was set.
+    const css = readFileSync(`${process.cwd()}/src/styles.css`, "utf8").replace(
+      /\/\*[\s\S]*?\*\//g,
+      ""
+    );
+    const rules = [
+      ...css.matchAll(/\.shot-list-item--washing::after\s*\{([^}]*)\}/g),
+    ];
+
+    expect(rules).toHaveLength(2); // base + the reduced-motion override
+    for (const [, body] of rules) expect(body).toMatch(/animation:[^;]*\bforwards\b/);
+  });
+
+  it("arms no wash for a shot the teaser will not show", async () => {
+    // A backdated entry logged behind three newer ones never enters the teaser,
+    // so no row mounts to play the animation — and `animationend` is the only
+    // thing that retires the state. Left armed, it waits for the teaser to
+    // change underneath it (a cross-tab delete, a backup import) and then plays
+    // a full wash for an entry nobody just logged.
+    seedShots([
+      { id: "n1", date: "2026-08-01" },
+      { id: "n2", date: "2026-08-02" },
+      { id: "n3", date: "2026-08-03" },
+    ]);
+    renderApp();
+
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    fireEvent.change(within(screen.getByRole("dialog")).getByLabelText("Date"), {
+      target: { value: "2026-01-05" },
+    });
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+    );
+    await sheetGone();
+
+    expect(washed()).toEqual([]);
+    // The words are not conditional on a visible row: the shot was still logged.
+    expect(
+      document.querySelector("body > .visually-hidden[role='status']")?.textContent
+    ).toBe("Logged for you.");
+
+    // Nothing is left armed, so the older entry cannot wash later when it
+    // reaches the teaser — here by the three newer ones going away in another
+    // tab. It has to be the REAL saved shot, read back from storage: seeding an
+    // invented id let this pass with the fix reverted, since nothing matched
+    // whatever was armed.
+    const stored: ShotEntry[] = JSON.parse(
+      localStorage.getItem(STORAGE_KEYS.shots) ?? "[]"
+    );
+    const backdated = stored.find((s) => s.date === "2026-01-05");
+    expect(backdated).toBeDefined();
+
+    // A storage event carries the new value; the listener never re-reads. An
+    // event without `newValue` and `storageArea` is ignored outright, which is
+    // how the first version of this test watched nothing happen and passed.
+    const fromOtherTab = JSON.stringify([backdated]);
+    seedShots([backdated!]);
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: STORAGE_KEYS.shots,
+          newValue: fromOtherTab,
+          storageArea: localStorage,
+        })
+      );
+    });
+    expect(screen.getAllByRole("listitem")).toHaveLength(1); // it IS in the teaser now
+    expect(washed()).toEqual([]);
+  });
+
+  it("retires a wash whose row leaves the teaser mid-animation", async () => {
+    // The other way a row never sends `animationend`: it unmounts while the wash
+    // is still playing. Another tab deleting a shot, or a backup import, arrives
+    // through the storage listener at any moment. Left armed, the id waits for
+    // the teaser to change back and then washes an entry nobody just logged.
+    renderApp();
+    await logAShot();
+    expect(washed()).toHaveLength(1);
+
+    const stored: ShotEntry[] = JSON.parse(
+      localStorage.getItem(STORAGE_KEYS.shots) ?? "[]"
+    );
+    const logged = stored[0];
+    const other: ShotEntry = { id: "other", date: "2026-07-01" };
+
+    // Another tab replaces the list without the washing shot in it.
+    const withoutIt = JSON.stringify([other]);
+    localStorage.setItem(STORAGE_KEYS.shots, withoutIt);
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: STORAGE_KEYS.shots,
+          newValue: withoutIt,
+          storageArea: localStorage,
+        })
+      );
+    });
+    expect(washed()).toEqual([]);
+
+    // ...and when it comes back — restoring that backup — it arrives unwashed.
+    const withItAgain = JSON.stringify([other, logged]);
+    localStorage.setItem(STORAGE_KEYS.shots, withItAgain);
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: STORAGE_KEYS.shots,
+          newValue: withItAgain,
+          storageArea: localStorage,
+        })
+      );
+    });
+    expect(washed()).toEqual([]);
+  });
+
+  it("washes a shot logged on a day that already has three", async () => {
+    // The end-to-end version of the ordering fix. With an id tiebreak, a
+    // just-logged shot could sort below three same-day ones, never enter the
+    // teaser, and get no wash — while the greeting still said "Logged for you.",
+    // telling the user it landed and showing them nothing arriving.
+    seedShots([
+      { id: "zzz1", date: todayLocalISO(), notes: "older A" },
+      { id: "zzz2", date: todayLocalISO(), notes: "older B" },
+      { id: "zzz3", date: todayLocalISO(), notes: "older C" },
+    ]);
+    renderApp();
+    await logAShot();
+
+    expect(washed()).toHaveLength(1);
+    // ...and it is the new row, at the top of the teaser.
+    const rows = screen.getAllByRole("listitem");
+    expect(rows[0].className).toContain("shot-list-item--washing");
   });
 
   it("washes only the shot just logged, not every row", async () => {

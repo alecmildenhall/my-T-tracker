@@ -41,53 +41,87 @@ describe("ShotForm suggestion chips", () => {
     expect(screen.queryByRole("button", { name: "cottonseed" })).toBeNull();
   });
 
-  it("keeps only dose/type/oil filled after adding, and clears injection site", () => {
+  // These two used to save and then assert on the SAME mounted form, because the
+  // form cleared its own fields after a successful save. That reset is gone: it
+  // was only ever reachable while the sheet was leaving, and with the ✓ beat
+  // holding the sheet still for 440ms the user watched their entry empty itself
+  // under a message saying it had been saved.
+  //
+  // The behaviour they were guarding is unchanged and still worth guarding —
+  // it is just delivered by the next MOUNT, seeded from history through
+  // carryForward, which is what the sheet actually does on every open. So they
+  // now save, then render the form again with the saved shot in history.
+  const saveAndReopen = (onAddShot: ReturnType<typeof vi.fn>) => {
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+    expect(onAddShot).toHaveBeenCalledTimes(1);
+    return onAddShot.mock.calls[0][0] as ShotEntry;
+  };
+
+  it("carries dose/type/oil into the next shot, but not the injection site", () => {
     const onAddShot = vi.fn();
-    render(<ShotForm onAddShot={onAddShot} shots={history} />);
+    const first = render(<ShotForm onAddShot={onAddShot} shots={history} />);
 
     fireEvent.click(screen.getByRole("button", { name: "50" }));
     fireEvent.click(screen.getByRole("button", { name: "cypionate" }));
     fireEvent.click(screen.getByRole("button", { name: "cottonseed" }));
     fireEvent.click(screen.getByRole("button", { name: "thigh" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+    const saved = saveAndReopen(onAddShot);
+    first.unmount();
 
-    expect(onAddShot).toHaveBeenCalledTimes(1);
-
-    const doseInput = screen.getByPlaceholderText("e.g. 50") as HTMLInputElement;
-    const siteInput = screen.getByPlaceholderText(
-      /thigh, glute, stomach/i
-    ) as HTMLInputElement;
+    render(<ShotForm onAddShot={vi.fn()} shots={[...history, saved]} />);
 
     // Values that stay the same shot-to-shot persist, so a repeat needs no re-entry.
-    expect(doseInput.value).toBe("50");
+    expect((screen.getByPlaceholderText("e.g. 50") as HTMLInputElement).value).toBe("50");
     expect(esterInput().value).toBe("cypionate");
     expect(oilInput().value).toBe("cottonseed");
-    // Injection site clears — it's commonly rotated.
-    expect(siteInput.value).toBe("");
+    // Injection site does not — it's commonly rotated.
+    expect(
+      (screen.getByPlaceholderText(/thigh, glute, stomach/i) as HTMLInputElement).value
+    ).toBe("");
   });
 
-  it("clears per-shot fields (site, position, pain, mood, notes) after adding", () => {
+  it("starts the next shot with per-shot fields empty (site, position, pain, mood, notes)", () => {
     const onAddShot = vi.fn();
-    render(<ShotForm onAddShot={onAddShot} shots={history} />);
+    const first = render(<ShotForm onAddShot={onAddShot} shots={history} />);
 
-    const site = screen.getByPlaceholderText(/thigh, glute, stomach/i) as HTMLInputElement;
-    const position = screen.getByPlaceholderText(/left, right, upper left/i) as HTMLInputElement;
-    const pain = screen.getByPlaceholderText("e.g. 3") as HTMLInputElement;
-    const mood = screen.getByPlaceholderText(/low, okay, good/i) as HTMLInputElement;
-    const notes = screen.getByPlaceholderText(/remember for later/i) as HTMLTextAreaElement;
-    fireEvent.change(site, { target: { value: "bicep" } });
-    fireEvent.change(position, { target: { value: "left" } });
-    fireEvent.change(pain, { target: { value: "4" } });
-    fireEvent.change(mood, { target: { value: "good" } });
-    fireEvent.change(notes, { target: { value: "felt fine" } });
+    fireEvent.change(screen.getByPlaceholderText(/thigh, glute, stomach/i), {
+      target: { value: "bicep" },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/left, right, upper left/i), {
+      target: { value: "left" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("e.g. 3"), { target: { value: "4" } });
+    fireEvent.change(screen.getByPlaceholderText(/low, okay, good/i), {
+      target: { value: "good" },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/remember for later/i), {
+      target: { value: "felt fine" },
+    });
 
-    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+    // Still on screen at the moment of saving: the sheet is visibly there for the
+    // ✓ and the slide, and blanking the entry under a success message reads as
+    // losing it.
+    const saved = saveAndReopen(onAddShot);
+    expect(
+      (screen.getByPlaceholderText(/remember for later/i) as HTMLTextAreaElement).value
+    ).toBe("felt fine");
+    first.unmount();
 
-    expect(site.value).toBe("");
-    expect(position.value).toBe("");
-    expect(pain.value).toBe("");
-    expect(mood.value).toBe("");
-    expect(notes.value).toBe("");
+    render(<ShotForm onAddShot={vi.fn()} shots={[...history, saved]} />);
+
+    expect(
+      (screen.getByPlaceholderText(/thigh, glute, stomach/i) as HTMLInputElement).value
+    ).toBe("");
+    expect(
+      (screen.getByPlaceholderText(/left, right, upper left/i) as HTMLInputElement).value
+    ).toBe("");
+    expect((screen.getByPlaceholderText("e.g. 3") as HTMLInputElement).value).toBe("");
+    expect(
+      (screen.getByPlaceholderText(/low, okay, good/i) as HTMLInputElement).value
+    ).toBe("");
+    expect(
+      (screen.getByPlaceholderText(/remember for later/i) as HTMLTextAreaElement).value
+    ).toBe("");
   });
 
   it("offers a dose chip from history and fills the dose field when tapped", () => {

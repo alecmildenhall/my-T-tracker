@@ -5,7 +5,8 @@ import { ShotForm, type ShotDraft } from "./components/ShotForm";
 import { Settings } from "./components/Settings";
 import { Greeting, ACKNOWLEDGEMENT } from "./components/Greeting";
 import { TabBar } from "./components/TabBar";
-import { RecentShots } from "./components/RecentShots";
+import { RecentShots, TEASER_COUNT } from "./components/RecentShots";
+import { takeRecent } from "./utils/shotQuery";
 import { HistoryView } from "./components/HistoryView";
 import { emptyHistoryQuery, type HistoryQuery } from "./utils/historyQuery";
 import { Modal, SHEET_EXIT_MS } from "./components/Modal";
@@ -79,6 +80,62 @@ const App: React.FC = () => {
   // then tells the line that a save has just happened.
   const [acknowledgedId, setAcknowledgedId] = useState<string | null>(null);
   const [washId, setWashId] = useState<string | null>(null);
+  // Whether the app has been hidden since the save that is currently waiting to
+  // acknowledge. Recorded when it happens rather than asked for later, because
+  // by the time the pending callback runs the answer has changed back. Declared
+  // here, with the state it governs and above the effect that writes it.
+  const hiddenWhilePending = useRef(false);
+
+  // The third thing that retires the acknowledgement, alongside opening the form
+  // and changing tab: coming back to the app.
+  //
+  // A reload would clear it for free, since both pieces are in memory — but
+  // "reopening the app" mostly is not a reload. Switching apps and returning, or
+  // leaving the tab open overnight, keeps this component mounted, and the line
+  // has no timer. Log a shot the evening before a milestone and the next morning
+  // Home still reads "Logged for you." with "Congrats on 1 year on T" waiting
+  // behind it — the one message the acknowledgement is supposed to defer to, not
+  // eclipse.
+  //
+  // `visibilitychange` only fires on a change, so becoming visible means it had
+  // been hidden. The wash goes too, for the reason navigate() retires it: it may
+  // have been paused mid-animation while the tab was in the background, and a
+  // half-played wash finishing on return is a flash with nothing behind it.
+  // A wash only exists as an animation on a teaser row, so it is retired the
+  // moment no teaser row carries it. `animationend` is the ONLY other thing that
+  // retires it, and there are two ways a row never sends one:
+  //
+  //   - it never mounts. A backdated entry logged behind three newer ones is not
+  //     in the teaser at all.
+  //   - it unmounts mid-animation. Another tab deleting a shot, or a backup
+  //     import, arrives through the storage listener at any moment.
+  //
+  // Either way the id sat armed, waiting for the teaser to change underneath it
+  // — and when it did, that weeks-old entry slid into view and played a full
+  // 2.2s wash for something nobody had just logged. Asking the question once,
+  // here, covers both ends; checking only at arming time covered one.
+  useEffect(() => {
+    if (washId === null) return;
+    const onScreen = takeRecent(shots, TEASER_COUNT).some((s) => s.id === washId);
+    if (!onScreen) setWashId(null);
+  }, [washId, shots]);
+
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== "visible") {
+        // Going away cancels an acknowledgement that has not landed yet, as well
+        // as retiring one that has. Both are the same rule — the line waits for
+        // your next deliberate action, and leaving is one.
+        hiddenWhilePending.current = true;
+        return;
+      }
+      setAcknowledgedId(null);
+      setWashId(null);
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () =>
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, []);
   const titleRef = useRef<HTMLHeadingElement>(null);
   // Initial focus goes to the first field, not the sheet's own Close button —
   // landing on Close means a stray Enter dismisses the form you just opened.
@@ -141,6 +198,11 @@ const App: React.FC = () => {
   // (`pointer-events: none` on the closing sheet has the same problem: the class
   // only lands on the next render.)
   const closingRef = useRef(false);
+  // Set while the ✓ is showing and the exit has not started: calling it skips the
+  // rest of the beat and starts the slide now. Null at every other moment, which
+  // is also the answer to "are we in the confirm phase" — one carrier, so the
+  // phase and the way to leave it cannot disagree.
+  const skipConfirm = useRef<(() => void) | null>(null);
 
   /**
    * Close the sheet, optionally confirming first.
@@ -154,14 +216,20 @@ const App: React.FC = () => {
    * existing cleanup covers both. A second timer alongside this one is exactly
    * the shape that once left a stale exit timer to tear down the next sheet.
    */
-  const closeSheet = (options?: { confirm?: boolean; thenWash?: string }) => {
+  const closeSheet = (options?: { confirm?: boolean; acknowledge?: string }) => {
     if (closingRef.current) return; // already on the way out
     // Set synchronously, before any wait: a second Save during the ✓ window is
     // dropped by the guard that already exists rather than by a new one.
     closingRef.current = true;
+    // The window this close is about starts now, so what happened before it is
+    // not this save's business.
+    hiddenWhilePending.current = false;
 
     const beginExit = () => {
-      setConfirming(false);
+      // Whether we got here by the beat finishing or by the user cutting it
+      // short, the confirm phase is over.
+      if (closeTimer.current) clearTimeout(closeTimer.current);
+      skipConfirm.current = null;
       setClosing(true);
       closeTimer.current = setTimeout(() => {
         closeTimer.current = null;
@@ -169,13 +237,46 @@ const App: React.FC = () => {
         setLoggingNew(false);
         setEditingShot(null);
         setClosing(false);
-        // The wash starts when the row becomes VISIBLE, not when the shot was
-        // saved. Measured in a browser: the sheet covers the screen for the ✓
-        // plus the slide, which is ~440ms — almost exactly the 20% the wash
-        // spends holding at full tint. Armed at save time, the entire hold
+        // Retired here rather than when the exit STARTS. Clearing it at the top
+        // of beginExit put "Save shot" back on a button that had been reading
+        // "✓ Saved" a moment earlier, while the sheet was still visibly on
+        // screen — measured mid-slide in a browser — so the confirmation
+        // appeared to be taken back before the sheet had finished leaving. The
+        // ✓ now holds for the whole exit and goes with the sheet.
+        setConfirming(false);
+        // Both halves of the acknowledgement are armed HERE, once the sheet is
+        // out of the way, and for two different reasons that happen to share a
+        // moment:
+        //
+        // The wash, because it starts when the row becomes VISIBLE, not when
+        // the shot was saved. Measured in a browser: the sheet covers the screen
+        // for the ✓ plus the slide, which is ~440ms — almost exactly the 20% the
+        // wash spends holding at full tint. Armed at save time, the entire hold
         // happened behind the sheet and what you actually saw was a tint already
         // fading, which is the thing the hold exists to prevent.
-        if (options?.thenWash) setWashId(options.thenWash);
+        //
+        // The line, because the live region it feeds must change while the
+        // screen reader is listening. Portaling it out of `#root` dodges the
+        // `inert` the sheet applies, but the dialog also carries
+        // `aria-modal="true"`, which tells assistive tech to ignore everything
+        // outside it — so setting this at save time mutated the region while
+        // some readers were still treating it as hidden. Waiting for the dialog
+        // to be gone removes the question.
+        // Not armed at all if the app went away between the save and here.
+        //
+        // The question is "was it hidden while this was pending", NOT "is it
+        // hidden now" — an earlier version asked the second and was worthless.
+        // Timers are suspended rather than throttled on iOS Safari and anything
+        // restored from bfcache, so this callback runs on RESUME, by which time
+        // the page is visible again and the visibilitychange sweep has already
+        // been and gone. Both cheap questions say "visible, go ahead", and what
+        // the user sees on unlocking their phone is "Logged for you." over the
+        // milestone it is meant to defer to. The shot is saved either way; there
+        // is just nobody to say it to.
+        if (options?.acknowledge && !hiddenWhilePending.current) {
+          setAcknowledgedId(options.acknowledge);
+          setWashId(options.acknowledge);
+        }
       }, SHEET_EXIT_MS);
     };
 
@@ -307,8 +408,7 @@ const App: React.FC = () => {
     // has nothing to affirm, and a retry that succeeds is an ordinary success —
     // it gets the full acknowledgement, not a quieter one, which falls out of
     // hanging this off the "saved" outcome rather than off "no error happened".
-    setAcknowledgedId(shot.id);
-    closeSheet({ confirm: true, thenWash: shot.id });
+    closeSheet({ confirm: true, acknowledge: shot.id });
     return "saved";
   };
 
