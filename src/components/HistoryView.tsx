@@ -24,7 +24,7 @@ import {
   withPainBand,
   type HistoryQuery,
 } from "../utils/historyQuery";
-import { toCivilDate } from "../utils/civilDate";
+import { toShotDate, shotDateRange } from "../utils/civilDate";
 import { suggestionsFor, normalizeValue } from "../utils/suggestions";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { ShotListItem } from "./ShotListItem";
@@ -50,6 +50,9 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   onEditShot,
   onDeleteShot,
 }) => {
+  // Same bounds the log sheet's date field carries, so a filter cannot ask for a
+  // range no shot could ever have been saved in. Per render — it reads the clock.
+  const dateRange = shotDateRange();
   const [filtersOpen, setFiltersOpen] = useState(false);
   // INTERIM — slice C replaces this with an undo snackbar (undo-over-confirm is
   // the end state the roadmap chose). Until then Delete sits beside Edit on every
@@ -279,11 +282,13 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                 From
                 <input
                   type="date"
+                  min={dateRange.min}
+                  max={dateRange.max}
                   value={query.filter.dateFrom ?? ""}
                   onChange={(e) =>
                     // Brand at the boundary: an incomplete or impossible date
                     // becomes "no constraint" rather than a bad bound.
-                    setFilter({ dateFrom: toCivilDate(e.target.value) ?? undefined })
+                    setFilter({ dateFrom: toShotDate(e.target.value) ?? undefined })
                   }
                 />
               </label>
@@ -291,9 +296,11 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                 To
                 <input
                   type="date"
+                  min={dateRange.min}
+                  max={dateRange.max}
                   value={query.filter.dateTo ?? ""}
                   onChange={(e) =>
-                    setFilter({ dateTo: toCivilDate(e.target.value) ?? undefined })
+                    setFilter({ dateTo: toShotDate(e.target.value) ?? undefined })
                   }
                 />
               </label>

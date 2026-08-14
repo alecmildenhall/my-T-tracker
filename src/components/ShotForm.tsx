@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import type { ShotEntry } from "../types/shot";
 import { suggestionsFor } from "../utils/suggestions";
 import { todayLocalISO, nowHHMM } from "../utils/datetime";
-import { toCivilDate } from "../utils/civilDate";
+import { toShotDate, isRealDate, shotDateRange } from "../utils/civilDate";
 import { newId } from "../utils/id";
 import { SuggestionChips } from "./SuggestionChips";
 import { handOffFocus } from "../utils/focus";
@@ -190,6 +190,9 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   // between saves) means they also survive closing the form, switching tabs, and
   // reloading the app — the form is now a sheet that unmounts on every save, so
   // in-component stickiness would silently do nothing.
+  // Per render, not per module load: it reads the clock, and a sheet in a session
+  // left open across New Year would otherwise bound the picker to last year.
+  const dateRange = shotDateRange();
   const carried = useMemo(() => carryForward(shots), [shots]);
   // Held in a ref so resetForm can stay identity-stable: if it changed whenever
   // `shots` changed, the editing-sync effect below would re-run and wipe fields
@@ -337,7 +340,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // constraints, which cancels the submit event outright — the button appeared
     // to do nothing at all, with no message and nothing saved. Whatever we reject
     // now, we say why, next to the field.
-    const parsedDate = toCivilDate(date);
+    const parsedDate = toShotDate(date);
     const parsedDose = doseMg === "" ? undefined : Number(doseMg);
     const parsedPain = painScore === "" ? undefined : Number(painScore);
 
@@ -346,11 +349,26 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // that person their date is not a real calendar date is answering a question
     // they did not ask. The date is required precisely because a shot always
     // happened on some day, so the fix is to ask for it, not to let it through.
+    //
+    // Out of range is a THIRD mistake, and it gets its own words for the same
+    // reason. It is nearly always a mistyped year — browsers auto-fill the
+    // segments you have not typed, so `0999` and `9999` are a slip, not a
+    // belief — and telling that person their date is not a real calendar date
+    // is both wrong (it is one) and no help in fixing it.
+    //
+    // The message names the actual boundary DATES, not their years. It used to
+    // say "1900 to 2027" while the real bound was 2027-08-13, so entering
+    // 2027-12-01 was refused by a message listing the very year that had just
+    // been typed — nothing left to work out. Read fresh here rather than at
+    // module load, so it cannot name last year's bound in a session left open.
+    const range = shotDateRange();
     const nextDateError = parsedDate
       ? null
       : date.trim() === ""
         ? "Add the date this shot was taken."
-        : "Please enter a real calendar date (YYYY-MM-DD).";
+        : isRealDate(date)
+          ? `Check the year — dates run from ${range.min} to ${range.max}.`
+          : "Please enter a real calendar date (YYYY-MM-DD).";
     // Mirrors the storage schema: a finite, non-negative number. Fractional doses
     // are fine (62.5mg while titrating is ordinary).
     const nextDoseError =
@@ -529,6 +547,12 @@ export const ShotForm: React.FC<ShotFormProps> = ({
                 if (dateError) setDateError(null);
               }}
               required
+              // Keeps the native picker inside the range the form will accept,
+              // so a mistyped year is harder to produce in the first place.
+              // These are a hint, not the check — the form carries `noValidate`
+              // and `toShotDate` is what actually decides. See shotDateRange.
+              min={dateRange.min}
+              max={dateRange.max}
               aria-invalid={dateError ? true : undefined}
               aria-describedby={dateError ? "date-error" : undefined}
             />

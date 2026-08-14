@@ -4,7 +4,7 @@
 // all enforced here so importData.ts can trust anything that parses.
 import { z } from "zod";
 import { APP_NAME, FORMAT_VERSION } from "../appMeta";
-import { isRealDate } from "./civilDate";
+import { isRealDate, isShotDateInRange } from "./civilDate";
 import { WEEKDAYS } from "./weekday";
 
 const TIME_RE = /^\d{2}:\d{2}$/; // HH:MM
@@ -24,7 +24,18 @@ function isRealTime(value: string): boolean {
  */
 export const shotEntrySchema = z.strictObject({
   id: z.string().min(1),
-  date: z.string().refine(isRealDate, "invalid date"),
+  // The same plausible range the log form enforces, not merely a real calendar
+  // date. Import is the other way into storage, so a bound applied only at the
+  // form is a bound with a door beside it — a hand-edited or hand-written file
+  // could still put year 9999 in front of a chart. `isShotDateInRange` is that one
+  // rule; see civilDate.ts.
+  //
+  // A file this rejects fails with a field-level error rather than a clean
+  // "wrong version" message, and the whole file is refused rather than the one
+  // row dropped. That is the accepted cost of strict import and the same trade
+  // the README already records for slice B½'s pain enum. Post-GA it becomes a
+  // migration question, which is why it is written down there too.
+  date: z.string().refine(isShotDateInRange, "date outside the supported range"),
   time: z.string().refine(isRealTime, "invalid time").optional(),
   doseMg: z.number().finite().nonnegative().optional(),
   injectionSite: z.string().min(1).optional(),
@@ -50,6 +61,10 @@ export const profileSchema = z.strictObject({
   // started yet" (currentMilestone returns null until the date passes), so there
   // is no negative-time bug to guard against — and rejecting it here would make a
   // profile fail to re-import the very date the app let the user set.
+  // Any real calendar date, with no range — matching the field itself, which is
+  // deliberately unbounded (see JourneySettings and the civilDate.ts header).
+  // Importing must accept whatever the app let someone set, or a profile fails
+  // to re-import the very date it stored.
   startDate: z.string().refine(isRealDate, "invalid date").optional(),
   preferredName: z.string().min(1).optional(),
   // Shot day is an enum: only the seven weekday keys are accepted, so a hand-edit

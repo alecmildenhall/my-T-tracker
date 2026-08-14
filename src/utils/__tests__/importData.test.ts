@@ -113,14 +113,33 @@ describe("parseBackup — profile", () => {
     expect(result.ok).toBe(false);
   });
 
-  it("accepts a future start date (planning to start T later)", () => {
+  it("accepts a start date however far off, so long as it is a real date", () => {
+    // Import must accept whatever the app itself let someone set, or a profile
+    // fails to re-import the very date it stored. The field is unbounded on
+    // purpose (see JourneySettings), so this boundary is too.
+    for (const startDate of ["2999-01-01", "1901-06-30"]) {
+      const result = parseBackup(
+        JSON.stringify({ ...JSON.parse(wrap([])), profile: { startDate } })
+      );
+      expect(result.ok).toBe(true);
+    }
+  });
+
+  it("rejects a start date that is not a real date", () => {
     const result = parseBackup(
       JSON.stringify({
         ...JSON.parse(wrap([])),
-        profile: { startDate: "2999-01-01" },
+        profile: { startDate: "2025-02-30" },
       })
     );
-    expect(result.ok).toBe(true);
+    expect(result.ok).toBe(false);
+  });
+
+  it("rejects a shot dated outside the supported range", () => {
+    const result = parseBackup(
+      wrap([{ id: "a", date: "9999-01-01" }])
+    );
+    expect(result.ok).toBe(false);
   });
 
   it("accepts a valid shot day and rejects a bogus one", () => {

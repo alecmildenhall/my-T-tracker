@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { ShotForm, type ShotDraft } from "../ShotForm";
 import type { ShotEntry } from "../../types/shot";
 import { todayLocalISO } from "../../utils/datetime";
+import { isShotDateInRange, shotDateRange } from "../../utils/civilDate";
 
 beforeEach(() => {
   localStorage.clear();
@@ -214,6 +215,61 @@ describe("ShotForm field mapping", () => {
     // Typing a date clears the message as you go, not only on the next submit.
     fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-06-15" } });
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("refuses a mistyped year, and says it is the year", () => {
+    // The failure this exists for: browsers auto-fill the segments you have not
+    // typed, so `08` into a cleared field yields `0008-08-05` — the year read as
+    // a day. `0999` and `9999` reached storage in a browser pass, and from there
+    // History, the CSV a provider reads, and (once charts land) an axis spanning
+    // a millennium.
+    //
+    // Out of range gets its OWN message: "not a real calendar date" is both
+    // wrong — 0999-01-01 is a real date — and no help in spotting the year as
+    // the thing that slipped.
+    const onAddShot = vi.fn();
+    render(<ShotForm onAddShot={onAddShot} />);
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: "0999-01-01" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+
+    expect(onAddShot).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent(/Check the year/);
+    expect(screen.getByLabelText("Date")).toHaveAttribute("aria-invalid", "true");
+
+    // The message names the boundary DATES, not their years. It used to say
+    // "1900 to 2027" while the real bound was 2027-08-13 — so a date late in
+    // the final year was refused by a message listing the very year that had
+    // just been typed, leaving nothing to work out.
+    const { min, max } = shotDateRange();
+    expect(screen.getByRole("alert")).toHaveTextContent(min);
+    expect(screen.getByRole("alert")).toHaveTextContent(max);
+
+    // No sibling assertion for the "not a real calendar date" message here: an
+    // `input[type=date]` cannot hold one. Setting "2026-02-30" leaves the value
+    // EMPTY (jsdom and browsers alike refuse it), so that path answers with the
+    // blank-date message instead — which is correct, and is why the impossible-
+    // date branch is only reachable from a restored draft string, not the
+    // picker. Asserting it through this input would have been testing jsdom.
+
+    // Correcting the year saves.
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: "2026-06-15" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+    expect(onAddShot).toHaveBeenCalledTimes(1);
+    expect(onAddShot.mock.calls[0][0].date).toBe("2026-06-15");
+  });
+
+  it("bounds the date picker to the range it will accept", () => {
+    // The attributes are a hint, not the check (the form carries `noValidate`),
+    // but a picker that offers a date the form then refuses is worse than no
+    // bound at all — so they must agree with isShotDateInRange.
+    render(<ShotForm onAddShot={vi.fn()} />);
+    const date = screen.getByLabelText("Date");
+    expect(isShotDateInRange(date.getAttribute("min")!)).toBe(true);
+    expect(isShotDateInRange(date.getAttribute("max")!)).toBe(true);
   });
 
   it("carries forward from the newest shot whatever order the array is in", () => {
