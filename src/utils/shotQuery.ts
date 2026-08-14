@@ -148,15 +148,31 @@ export function searchShotText(shots: ShotEntry[], text: string): ShotEntry[] {
   );
 }
 
-/** A sorted copy of `shots` (never mutates the input). "newest" negates the
- *  ascending chronological comparator; "oldest" uses it directly (the order the
- *  export uses for a clinical log). */
+/**
+ * A sorted copy of `shots` (never mutates the input). "newest" negates the
+ * ascending chronological comparator; "oldest" uses it directly (the order the
+ * export uses for a clinical log).
+ *
+ * Exact ties — same date, same time, and time is optional so same-day shots tie
+ * routinely — fall back to the order the shots are stored in, which is the order
+ * they were logged. The index is carried explicitly rather than leaning on
+ * Array#sort's stability, because stability preserves the INPUT order in both
+ * directions: newest-first would then list the earliest-logged of a tied group
+ * first, which is backwards. Multiplying the index difference by the same sign
+ * turns the tiebreak around with the sort.
+ */
 export function sortShots(
   shots: ShotEntry[],
   order: SortOrder = "newest"
 ): ShotEntry[] {
   const sign = order === "newest" ? -1 : 1;
-  return [...shots].sort((a, b) => sign * compareShotsChrono(a, b));
+  return shots
+    .map((shot, index) => ({ shot, index }))
+    .sort(
+      (a, b) =>
+        sign * (compareShotsChrono(a.shot, b.shot) || a.index - b.index)
+    )
+    .map(({ shot }) => shot);
 }
 
 /**

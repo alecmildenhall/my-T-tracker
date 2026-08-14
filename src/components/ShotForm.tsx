@@ -7,6 +7,7 @@ import { toCivilDate } from "../utils/civilDate";
 import { newId } from "../utils/id";
 import { SuggestionChips } from "./SuggestionChips";
 import { handOffFocus } from "../utils/focus";
+import { sortShots } from "../utils/shotQuery";
 
 /**
  * The fields worth pre-filling on a new shot: dose, type of T, and carrier oil
@@ -22,18 +23,16 @@ function carryForward(shots: ShotEntry[]): {
   testosteroneEster: string;
   carrierOil: string;
 } {
-  // Compared on date+time ONLY, deliberately not via compareShotsChrono: that
-  // comparator breaks ties on `id`, a random UUID. Time is optional, so two
-  // shots logged the same day with no time are indistinguishable to it and the
-  // "latest" would be a coin flip — and whatever it picked would be pre-filled
-  // and then saved into the new entry. `>=` keeps the last tying element: the
-  // most recently added, which is the one the user just logged.
-  const stamp = (s: ShotEntry) => `${s.date}T${s.time ?? "00:00"}`;
-  const latest = shots.reduce<ShotEntry | undefined>(
-    (best, shot) =>
-      best === undefined || stamp(shot) >= stamp(best) ? shot : best,
-    undefined
-  );
+  // This used to hand-roll its own date+time comparison, with a comment saying
+  // it deliberately avoided compareShotsChrono because that comparator broke
+  // ties on `id` — a random UUID — so the "latest" of two same-day shots was a
+  // coin flip, and whatever it picked got pre-filled and saved into the new
+  // entry. Routing around the shared comparator left it right here and wrong
+  // everywhere else, which is how a just-logged shot ended up missing from the
+  // Home teaser. The comparator now reports a tie as a tie and `sortShots`
+  // breaks it by the order shots were logged — the same rule this reduce was
+  // implementing by hand with `>=`, so there is nothing left to avoid.
+  const latest = sortShots(shots, "newest")[0];
   return {
     doseMg: latest?.doseMg !== undefined ? String(latest.doseMg) : "",
     testosteroneEster: latest?.testosteroneEster ?? "",

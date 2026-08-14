@@ -35,11 +35,20 @@ describe("compareShotsChrono", () => {
     expect(compareShotsChrono(noTime, withTime)).toBeLessThan(0);
   });
 
-  it("breaks exact ties deterministically by id", () => {
+  it("reports an exact tie as a tie, rather than ranking two ids", () => {
+    // It used to answer this with `a.id < b.id`, which is deterministic and
+    // meaningless: an id is a random UUID. Time is optional, so same-day shots
+    // tie constantly, and the coin flip decided which of them the app called
+    // "most recent" — putting a just-logged shot below three same-day ones,
+    // outside the Home teaser, so no row arrived and no wash played while the
+    // greeting said "Logged for you." anyway.
+    //
+    // Returning 0 hands the decision to the caller's sort, where the stored
+    // order (the order they were logged) can break it — see sortShots.
     const a = shot({ id: "a", time: "10:00" });
     const b = shot({ id: "b", time: "10:00" });
-    expect(compareShotsChrono(a, b)).toBeLessThan(0);
-    expect(compareShotsChrono(b, a)).toBeGreaterThan(0);
+    expect(compareShotsChrono(a, b)).toBe(0);
+    expect(compareShotsChrono(b, a)).toBe(0);
     expect(compareShotsChrono(a, a)).toBe(0);
   });
 });
