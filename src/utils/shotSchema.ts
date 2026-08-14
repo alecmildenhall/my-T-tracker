@@ -30,11 +30,10 @@ export const shotEntrySchema = z.strictObject({
   // could still put year 9999 in front of a chart. `isShotDateInRange` is that one
   // rule; see civilDate.ts.
   //
-  // A file this rejects fails with a field-level error rather than a clean
-  // "wrong version" message, and the whole file is refused rather than the one
-  // row dropped. That is the accepted cost of strict import and the same trade
-  // the README already records for slice B½'s pain enum. Post-GA it becomes a
-  // migration question, which is why it is written down there too.
+  // An entry this rejects is SKIPPED, and the rest of the file still restores —
+  // see `backupEnvelopeSchema` below and `parseBackup`. This comment used to say
+  // the whole file was refused; that was true, and was the wrong answer, because
+  // a backup is usually the only copy left by the time it is imported.
   date: z.string().refine(isShotDateInRange, "date outside the supported range"),
   time: z.string().refine(isRealTime, "invalid time").optional(),
   doseMg: z.number().finite().nonnegative().optional(),
@@ -88,3 +87,27 @@ export const backupSchema = z.strictObject({
 });
 
 export type Backup = z.infer<typeof backupSchema>;
+
+/**
+ * The same envelope, with the contents left unjudged.
+ *
+ * `backupSchema` above is all-or-nothing, which is right for *writing* a file
+ * (see exportData) and wrong for reading one back: a single unreadable entry
+ * would refuse the whole restore, and by the time someone imports a backup it is
+ * usually the only copy left. So import validates the envelope with this, then
+ * judges each entry on its own — see `parseBackup`.
+ *
+ * Derived from `backupSchema` rather than restated, so the envelope fields have
+ * one definition: a field added to the format cannot be enforced on export and
+ * silently unenforced on import.
+ *
+ * The envelope stays strict, and deliberately so. `app`, `formatVersion` and the
+ * absence of unknown keys are about whether this is *our file at all*; getting
+ * those wrong is not a bad row, it is a bad answer to "did you pick the right
+ * file". That distinction is the whole rule: refuse at the file level, degrade at
+ * the row level.
+ */
+export const backupEnvelopeSchema = backupSchema.extend({
+  shots: z.array(z.unknown()),
+  profile: z.unknown().optional(),
+});

@@ -83,34 +83,45 @@ describe("parseBackup — profile", () => {
     expect(result.ok && result.profile).toEqual({});
   });
 
-  it("allowlists profile fields — an unknown key is rejected", () => {
+  it("allowlists profile fields — an unknown key is not accepted", () => {
+    // A smuggled key still gets nowhere. What changed is the blast radius: the
+    // profile is refused, not the whole file, and the caller is told so it can
+    // keep the profile this device already holds.
     const result = parseBackup(
       JSON.stringify({
         ...JSON.parse(wrap([])),
         profile: { preferredName: "Lou", secret: "smuggled" },
       })
     );
-    expect(result.ok).toBe(false);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.profileUnreadable).toBe(true);
+    expect(result.profile).toEqual({});
   });
 
-  it("rejects a malformed start date in the profile", () => {
+  it("does not accept a malformed start date in the profile", () => {
     const result = parseBackup(
       JSON.stringify({
         ...JSON.parse(wrap([])),
         profile: { startDate: "01/15/2025" },
       })
     );
-    expect(result.ok).toBe(false);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.profileUnreadable).toBe(true);
+    expect(result.profile.startDate).toBeUndefined();
   });
 
-  it("rejects an empty-string preferred name in the profile", () => {
+  it("does not accept an empty-string preferred name in the profile", () => {
     const result = parseBackup(
       JSON.stringify({
         ...JSON.parse(wrap([])),
         profile: { preferredName: "" },
       })
     );
-    expect(result.ok).toBe(false);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.profileUnreadable).toBe(true);
   });
 
   it("accepts a start date however far off, so long as it is a real date", () => {
@@ -125,20 +136,22 @@ describe("parseBackup — profile", () => {
     }
   });
 
-  it("rejects a start date that is not a real date", () => {
+  it("does not accept a start date that is not a real date", () => {
     const result = parseBackup(
       JSON.stringify({
         ...JSON.parse(wrap([])),
         profile: { startDate: "2025-02-30" },
       })
     );
-    expect(result.ok).toBe(false);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.profileUnreadable).toBe(true);
   });
 
-  it("rejects a shot dated outside the supported range", () => {
-    const result = parseBackup(
-      wrap([{ id: "a", date: "9999-01-01" }])
-    );
+  it("refuses a file whose every shot is dated outside the supported range", () => {
+    // One bad row among good ones is skipped (see below); a file with nothing
+    // BUT bad rows has nothing to restore, so it is refused and changes nothing.
+    const result = parseBackup(wrap([{ id: "a", date: "9999-01-01" }]));
     expect(result.ok).toBe(false);
   });
 
@@ -156,7 +169,10 @@ describe("parseBackup — profile", () => {
         profile: { shotDay: "someday" },
       })
     );
-    expect(bad.ok).toBe(false);
+    expect(bad.ok).toBe(true);
+    if (!bad.ok) return;
+    expect(bad.profileUnreadable).toBe(true);
+    expect(bad.profile.shotDay).toBeUndefined();
   });
 
   it("accepts a past start date", () => {
@@ -192,35 +208,96 @@ describe("parseBackup — malformed input", () => {
     expectRejected(
       JSON.stringify({ ...JSON.parse(wrap([])), formatVersion: 999 })
     ));
-  it("rejects a shot missing its required date", () =>
-    expectRejected(wrap([{ id: "x" }])));
-  it("rejects a bad date format", () =>
-    expectRejected(wrap([{ id: "x", date: "07/12/2026" }])));
-  it("rejects an impossible calendar date (month/day out of range)", () =>
-    expectRejected(wrap([{ id: "x", date: "2026-13-40" }])));
-  it("rejects a non-existent day (Feb 30)", () =>
-    expectRejected(wrap([{ id: "x", date: "2026-02-30" }])));
-  it("rejects an out-of-range time", () =>
-    expectRejected(wrap([{ id: "x", date: "2026-07-12", time: "24:99" }])));
-  it("rejects an out-of-range painScore", () =>
-    expectRejected(wrap([{ id: "x", date: "2026-07-12", painScore: 99 }])));
-  it("rejects an unexpected extra key on a shot", () =>
-    expectRejected(
-      wrap([{ id: "x", date: "2026-07-12", evil: "surprise" }])
-    ));
-  it("rejects an empty-string optional field", () =>
-    expectRejected(wrap([{ id: "x", date: "2026-07-12", mood: "" }])));
+  // Entry-level problems are NOT file-level ones, so these live below. A file
+  // whose only entry is unusable still refuses — there is nothing to restore —
+  // but it says so in its own words rather than blaming the file's origin.
+  it("rejects a file whose only entry is unusable", () => {
+    const result = parseBackup(wrap([{ id: "x", date: "nope" }]));
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toMatch(/none of the 1 entry/i);
+      // NOT the wrong-file message: this IS a T-Shot Tracker backup, and
+      // telling someone to go and find a file they already have is a dead end.
+      expect(result.error).not.toMatch(/exported from this app/i);
+    }
+  });
 });
 
-describe("parseBackup — atomicity", () => {
-  it("rejects the whole file if any shot is invalid", () => {
+describe("parseBackup — a bad entry is skipped, not the file", () => {
+  const skipOne = (bad: unknown) =>
+    parseBackup(wrap([{ id: "keep", date: "2026-07-12" }, bad]));
+
+  it.each([
+    ["no date at all", { id: "x" }],
+    ["a bad date format", { id: "x", date: "07/12/2026" }],
+    ["an impossible calendar date", { id: "x", date: "2026-13-40" }],
+    ["a non-existent day (Feb 30)", { id: "x", date: "2026-02-30" }],
+    ["a date outside the supported range", { id: "x", date: "9999-01-01" }],
+    ["an out-of-range time", { id: "x", date: "2026-07-12", time: "24:99" }],
+    ["an out-of-range painScore", { id: "x", date: "2026-07-12", painScore: 99 }],
+    ["an unexpected extra key", { id: "x", date: "2026-07-12", evil: "surprise" }],
+    ["an empty-string optional field", { id: "x", date: "2026-07-12", mood: "" }],
+  ])("restores the good entry and skips one with %s", (_label, bad) => {
+    const result = skipOne(bad);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.shots.map((s) => s.id)).toEqual(["keep"]);
+    expect(result.total).toBe(2);
+    expect(result.skipped).toHaveLength(1);
+    expect(result.skipped[0].position).toBe(2);
+    expect(result.skipped[0].reason).toBeTruthy();
+  });
+
+  it("names the entry by the date the user typed, when that is readable", () => {
+    const result = skipOne({ id: "x", date: "9999-01-01" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.skipped[0].date).toBe("9999-01-01");
+    expect(result.skipped[0].reason).toMatch(/date/i);
+  });
+
+  it("carries no date when the date is the unreadable part", () => {
+    // Then the caller has to name it by position instead — there is nothing
+    // else about the entry a person would recognise.
+    const result = skipOne({ id: "x" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.skipped[0].date).toBeUndefined();
+  });
+
+  it("reports no skips at all for a clean file", () => {
+    const result = parseBackup(wrap([{ id: "a", date: "2026-07-12" }]));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.skipped).toEqual([]);
+    expect(result.total).toBe(1);
+    expect(result.profileUnreadable).toBe(false);
+  });
+});
+
+describe("parseBackup — an unreadable profile keeps the device's own", () => {
+  it("restores the shots and flags the profile rather than clearing it", () => {
+    // A profile is ONE object: there is no "43 of 44" to salvage, and replacing
+    // it with {} would clear a name and shot day this device already holds in
+    // exchange for nothing.
     const result = parseBackup(
-      wrap([
-        { id: "ok", date: "2026-07-12" },
-        { id: "bad", date: "nope" },
-      ])
+      JSON.stringify({
+        ...JSON.parse(wrap([{ id: "a", date: "2026-07-12" }])),
+        profile: { startDate: "not-a-date" },
+      })
     );
-    expect(result.ok).toBe(false);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.shots).toHaveLength(1);
+    expect(result.profileUnreadable).toBe(true);
+    expect(result.profile).toEqual({});
+  });
+
+  it("does not flag a file that simply has no profile", () => {
+    const result = parseBackup(wrap([{ id: "a", date: "2026-07-12" }]));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.profileUnreadable).toBe(false);
   });
 });
 
