@@ -754,6 +754,41 @@ describe("Modal", () => {
 });
 
 /**
+ * The scroll lock and the reserved scrollbar gutter are a pair, held in two
+ * files. Modal hides the page's overflow while a dialog is open; on a desktop
+ * browser with classic scrollbars that removes the scrollbar, which widens the
+ * layout by its width, which slides everything centred by `margin: 0 auto` —
+ * the app and the sheet inside its own overlay — sideways on open and back on
+ * close. Measured at 1280x600 before the fix: the title sat at 172.5px closed
+ * and 180px open. `scrollbar-gutter: stable` reserves the space either way, so
+ * hiding the scrollbar costs no width.
+ *
+ * jsdom has no layout and no scrollbars, so it cannot see the shift itself —
+ * only that both halves are still present. Losing either one brings the jump
+ * back, and it is invisible to every other test.
+ */
+describe("locking the page costs no layout width", () => {
+  it("hides the page's overflow while open and restores it on close", () => {
+    document.body.style.overflow = "scroll"; // a pre-existing value to restore
+    const { unmount } = render(<Harness />);
+
+    expect(document.body.style.overflow).toBe("hidden");
+
+    unmount();
+    expect(document.body.style.overflow).toBe("scroll");
+    document.body.style.overflow = "";
+  });
+
+  it("reserves the scrollbar's space in styles.css so hiding it shifts nothing", () => {
+    const css = readFileSync(`${process.cwd()}/src/styles.css`, "utf8");
+    const htmlRule = /(^|\})\s*html\s*\{([^}]*)\}/.exec(css)?.[2];
+
+    expect(htmlRule).toBeDefined();
+    expect(htmlRule).toMatch(/scrollbar-gutter:\s*stable/);
+  });
+});
+
+/**
  * `SHEET_EXIT_MS` and the stylesheet's exit durations are one value in three
  * places. If JS is shorter than CSS the sheet unmounts mid-slide; if it is
  * longer the dialog lingers invisible, delaying the focus restore. The README

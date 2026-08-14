@@ -34,6 +34,19 @@
   box-sizing: border-box;
 }
 
+html {
+  /* Reserve the scrollbar's space whether or not a scrollbar is showing, so that
+     hiding it never changes the layout width. Modal locks the page with
+     `overflow: hidden` while a sheet is open; without this, the desktop
+     scrollbar vanishes, the layout gains ~15px, and everything centred by
+     `margin: 0 auto` — the app itself and the sheet inside its overlay — jumps
+     right on open and back on close. Measured at 1280x600: 172.5px → 180px.
+     It also settles the same jump between tabs when one scrolls and another
+     doesn't. No effect where scrollbars are overlays (phones, macOS by
+     default), since there is no width to reserve. */
+  scrollbar-gutter: stable;
+}
+
 body {
   margin: 0;
   font-family: var(--font-sans);
