@@ -7,7 +7,7 @@ import { StorageHealthProvider } from "../context/StorageHealthContext";
 import type { ShotEntry } from "../types/shot";
 import { STORAGE_KEYS } from "../storageKeys";
 import { SHEET_EXIT_MS } from "../components/Modal";
-import { todayLocalISO } from "../utils/datetime";
+import { todayLocalISO, localISODate } from "../utils/datetime";
 import * as dl from "../utils/download";
 import {
   withFocusGuard,
@@ -28,6 +28,23 @@ const renderApp = () =>
       </ShotsProvider>
     </StorageHealthProvider>
   );
+
+/**
+ * A start date exactly N years before *local* today.
+ *
+ * Via `localISODate`, deliberately — these two tests used
+ * `new Date().toISOString().slice(0, 10)`, which is the UTC date. The app reads
+ * today with `todayLocalISO`, so anywhere west of UTC the two disagree for the
+ * last hours of every local day: at 18:51 PDT the UTC slice is already tomorrow,
+ * "one year ago" lands a day late, and the milestone is 364 days old and not yet
+ * earned. The tests then failed every evening, on main, on a clock nobody
+ * changed. `datetime.test.ts` already warns against "the naive UTC slice".
+ */
+const yearsAgoLocal = (years: number): string => {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() - years);
+  return localISODate(d);
+};
 
 const seedShots = (shots: ShotEntry[]) =>
   localStorage.setItem(STORAGE_KEYS.shots, JSON.stringify(shots));
@@ -1424,11 +1441,9 @@ describe("the post-log acknowledgement", () => {
   it("outranks a milestone, but only until the next deliberate action", async () => {
     // A milestone is the bigger landmark, so it must be DEFERRED rather than
     // eclipsed — it is still there when you look again.
-    const oneYearAgo = new Date();
-    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
     localStorage.setItem(
       STORAGE_KEYS.profile,
-      JSON.stringify({ startDate: oneYearAgo.toISOString().slice(0, 10) })
+      JSON.stringify({ startDate: yearsAgoLocal(1) })
     );
     renderApp();
     const milestone = greeting();
