@@ -779,6 +779,25 @@ describe("locking the page costs no layout width", () => {
     document.body.style.overflow = "";
   });
 
+  it("paints the canvas dark, so nothing outside the document is white", () => {
+    // The surface an elastic overscroll bounce exposes, and the one `body`'s
+    // background does NOT cover: a radial-gradient is a background *image*, and
+    // an image paints nothing beyond its element's box. With no colour anywhere,
+    // scrolling up past the top of a black app revealed a white band — measured
+    // by letting the document stop short of the viewport, which rendered #fff.
+    //
+    // Asserted on the stylesheet because jsdom has no canvas to sample. Both
+    // halves matter: the colour is what gets painted, `color-scheme` is what
+    // stops the browser assuming a light page for its own surfaces (scrollbars,
+    // form controls, the overscroll area on mobile).
+    const css = readFileSync(`${process.cwd()}/src/styles.css`, "utf8");
+    const htmlRule = /(^|\})\s*html\s*\{([^}]*)\}/.exec(css)?.[2];
+
+    expect(htmlRule).toBeDefined();
+    expect(htmlRule).toMatch(/background-color:\s*#020617/);
+    expect(htmlRule).toMatch(/color-scheme:\s*dark/);
+  });
+
   it("reserves the scrollbar's space in styles.css so hiding it shifts nothing", () => {
     const css = readFileSync(`${process.cwd()}/src/styles.css`, "utf8");
     const htmlRule = /(^|\})\s*html\s*\{([^}]*)\}/.exec(css)?.[2];

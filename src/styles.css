@@ -35,6 +35,30 @@
 }
 
 html {
+  /* Tells the browser this page is dark, which is not decoration: it is what
+     paints the surfaces the page does not own — the canvas behind an elastic
+     overscroll bounce, the scrollbar track, and native form controls. Left at
+     `normal` the browser assumes light, which is why scrolling up past the top
+     revealed a white band above a black app. */
+  color-scheme: dark;
+
+  /* A real base COLOUR, not just the gradient.
+     `body` carried only a radial-gradient — a background *image* — and an image
+     paints nothing outside the element's own box. The canvas underneath was
+     therefore transparent, so anything the browser exposed beyond the document
+     came out white. Measured by letting the document stop short of the viewport:
+     the remainder rendered #fff.
+     Setting a colour here stops `body`'s gradient propagating to the canvas
+     (propagation only happens while the root has no background of its own), which
+     is exactly what we want: the canvas gets this flat colour and `body` paints
+     its gradient on its own box, so the page itself looks unchanged.
+     Same first stop as the gradient, so the seam at the top — where overscroll
+     actually happens — is invisible.
+     This is the second time a gradient's missing base colour has cost a bug; the
+     first was the row wash, which animated a background-color underneath an
+     opaque background-image and was invisible for its whole 2.2s. */
+  background-color: #020617;
+
   /* Reserve the scrollbar's space whether or not a scrollbar is showing, so that
      hiding it never changes the layout width. Modal locks the page with
      `overflow: hidden` while a sheet is open; without this, the desktop
