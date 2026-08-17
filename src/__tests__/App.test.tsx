@@ -1837,13 +1837,38 @@ describe("the post-log acknowledgement", () => {
     expect(greeting()).toBe(milestone);
   });
 
-  it("clears when the log form is opened again", async () => {
+  it("holds while the form is open, and clears once it has closed", async () => {
+    // The greeting slot only ever changes while nothing is covering it.
+    // Retiring the line as the sheet OPENED was visible: it flipped back to the
+    // greeting behind a sheet that was still sliding up, which reads as the app
+    // undoing itself while you watch.
     renderApp();
     await logAShot();
     expect(greeting()).toBe(ACK);
 
     fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
-    expect(greeting()).not.toBe(ACK);
+    expect(greeting()).toBe(ACK); // still there, behind the sheet
+
+    dismissSheet();
+    await sheetGone();
+    expect(greeting()).not.toBe(ACK); // ...and gone once the sheet is
+  });
+
+  it("stays through a second save, rather than blinking between the two", async () => {
+    // Logging again does not pass through the greeting on its way to the next
+    // acknowledgement: the old one is replaced by the new one at the same
+    // moment, when the sheet has gone.
+    renderApp();
+    await logAShot("first");
+    expect(greeting()).toBe(ACK);
+
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    expect(greeting()).toBe(ACK);
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+    );
+    await sheetGone();
+    expect(greeting()).toBe(ACK);
   });
 
   it("says nothing when the save is refused", async () => {
@@ -2163,16 +2188,19 @@ describe("the post-log wash", () => {
     }
   });
 
-  it("retires the wash when the log form is opened over it", async () => {
-    // At phone widths the sheet covers the row completely, so a wash left
-    // running would spend its life behind it — the same way the hold did before
-    // it was moved to arm on exit.
+  it("retires the wash when the form closes without a shot, not when it opens", async () => {
+    // Same rule as the line above it: the row is behind the sheet either way, so
+    // there is nothing to gain by clearing at open — and clearing at open is
+    // what made the greeting visibly flip mid-slide.
     renderApp();
     await logAShot();
     expect(document.querySelectorAll(".shot-list-item--washing")).toHaveLength(1);
 
     fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    expect(document.querySelectorAll(".shot-list-item--washing")).toHaveLength(1);
 
+    dismissSheet();
+    await sheetGone();
     expect(document.querySelectorAll(".shot-list-item--washing")).toHaveLength(0);
   });
 

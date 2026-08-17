@@ -279,6 +279,16 @@ const App: React.FC = () => {
         if (options?.acknowledge && !hiddenWhilePending.current) {
           setAcknowledgedId(options.acknowledge);
           setWashId(options.acknowledge);
+        } else {
+          // Closing WITHOUT a shot to acknowledge — dismissed, or an edit saved
+          // — is what retires the previous one. It used to happen at `openSheet`
+          // instead, and you could watch it: open the form just after logging
+          // and "Logged for you." flipped back to the greeting *behind* the
+          // sheet as it slid up. The greeting slot now only ever changes while
+          // the sheet is gone, so whatever it settles on is what you find when
+          // you look at it.
+          setAcknowledgedId(null);
+          setWashId(null);
         }
       }, SHEET_EXIT_MS);
     };
@@ -326,13 +336,15 @@ const App: React.FC = () => {
     // retire. Left set, the next sheet would mount with its submit permanently
     // reading "✓ Saved" and refusing to save anything.
     setConfirming(false);
-    // Going to log again is the moment both have done their job. The wash goes
-    // too: the sheet covers the row at phone widths, so a wash left running would
-    // spend its life behind it — the same way the hold did before it was moved to
-    // arm on exit. It also bounds the case where the saved shot is not in the
-    // teaser at all (a backdated entry), where no row ever mounts to end it.
-    setAcknowledgedId(null);
-    setWashId(null);
+    // The acknowledgement is deliberately NOT retired here, though it used to be.
+    // Clearing it as the sheet opens is visible: the greeting slot flips from
+    // "Logged for you." back to the greeting behind a sheet that is still sliding
+    // up, which reads as the app undoing itself while you watch. It is retired
+    // when the sheet has finished LEAVING instead — see closeSheet — so the slot
+    // only ever changes while nothing is covering it.
+    //
+    // The wash goes with it for the same reason it is armed on exit rather than
+    // on save: its row is behind the sheet the whole time either way.
     // Force a fresh ShotForm. An edit already remounts (the key is the shot's
     // id), but a new shot's key is the constant "new", so opening the sheet
     // while a save was still exiting reused the mounted form — showing the
