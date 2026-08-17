@@ -479,8 +479,12 @@ const App: React.FC = () => {
   const handleUpdateShot = (shot: ShotEntry): SaveOutcome => {
     if (closingRef.current) return "ignored"; // see handleAddShot
     if (!updateShot(shot.id, shot)) return "refused"; // sheet holds; see handleAddShot
-    // Saved, so there is nothing in progress left to restore for this shot.
-    liveDraft.current = null;
+    // No `liveDraft.current = null` here, for the reason clearDraft no longer
+    // does it either: the form republishes its live values on every render and
+    // `setConfirming(true)` causes one immediately, so the assignment held for a
+    // single render and was undone for the whole 440ms exit. What actually stops
+    // a stray dismissal re-parking this shot is `dismissSheet` bailing while the
+    // sheet is closing. One real guard beats a real one plus a decorative one.
     setEditDrafts((prev) => {
       const next = { ...prev };
       delete next[shot.id];
@@ -553,10 +557,26 @@ const App: React.FC = () => {
           mutation left to announce. Spoken to nobody, in other words, for the
           one feature whose whole point is the words.
           Persistent rather than mounted on demand: a live region does not
-          announce its INITIAL content, only changes to it. */}
+          announce its INITIAL content, only changes to it.
+
+          And keyed on the shot, which is the same rule read one step further: a
+          live region announces a CHANGE, and two shots in a row produce the
+          identical string. Since the acknowledgement no longer clears when the
+          sheet reopens, React saw the same text, touched nothing, and the second
+          save was announced to nobody — log three backdated entries and only the
+          first is spoken. The key replaces the node instead, so each shot is its
+          own insertion into the region.
+
+          Not verified with a real screen reader; the mechanism is sound and the
+          DOM change is asserted below, but this belongs on the device pass with
+          the other two announcement claims. */}
       {createPortal(
         <p className="visually-hidden" role="status">
-          {acknowledgedId !== null ? ACKNOWLEDGEMENT : ""}
+          {acknowledgedId !== null ? (
+            <span key={acknowledgedId}>{ACKNOWLEDGEMENT}</span>
+          ) : (
+            ""
+          )}
         </p>,
         document.body
       )}

@@ -5,6 +5,7 @@ import { JourneySettings } from "../JourneySettings";
 import { ProfileProvider } from "../../context/ProfileContext";
 import { STORAGE_KEYS } from "../../storageKeys";
 import { expectFocusSomewhereUseful } from "../../test/focus";
+import { expectVisibleFocusRing } from "../../test/focusRing";
 
 beforeEach(() => localStorage.clear());
 
@@ -14,7 +15,9 @@ const renderPanel = () => {
   const headingRef = React.createRef<HTMLHeadingElement>();
   return render(
     <ProfileProvider>
-      <h2 ref={headingRef} tabIndex={-1}>
+      {/* The class matters: it is what carries the focus ring, so a bare <h2>
+          here would test a heading the app never renders. */}
+      <h2 className="settings-section__title" ref={headingRef} tabIndex={-1}>
         Your journey
       </h2>
       <JourneySettings headingRef={headingRef} />
@@ -223,6 +226,11 @@ describe("JourneySettings", () => {
     // documented that hazard and avoided it; this control walked into it.
     expect(heading()).toHaveFocus();
     expect(dateInput()).not.toHaveFocus();
+    // ...and the ring is actually painted there. A hand-off target with no rule
+    // in the stylesheet's focus allowlist moves a keyboard user silently, which
+    // is the half of this the project's own browser-pass checklist calls out and
+    // jsdom cannot see — so it is asserted against the real stylesheet.
+    expectVisibleFocusRing("after removing the start date");
   });
 
   it("still hands focus somewhere useful with no heading to aim at", () => {

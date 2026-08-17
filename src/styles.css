@@ -412,7 +412,11 @@ textarea {
 .history:focus-visible,
 .manage-values:focus-visible,
 .shot-form__title:focus-visible,
-.app-title:focus-visible {
+.app-title:focus-visible,
+/* Where "Remove start date" hands focus once it removes itself — added with
+   that control, because a hand-off target with no ring is a keyboard user
+   losing their place silently (WCAG 2.4.7). */
+.settings-section__title:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }

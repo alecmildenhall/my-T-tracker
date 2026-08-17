@@ -49,15 +49,17 @@ interface PendingImport {
 }
 
 /**
+ * How many skipped entries to name before summarising the rest. Enough to be
+ * useful for the realistic case (a typo or two), few enough that a badly corrupt
+ * file cannot bury the count that matters under a wall of bullets.
+ */
+const MAX_LISTED_SKIPS = 5;
+
+/**
  * One skipped entry, in a sentence. Named by the date the user typed where that
  * is readable, because that is what they recognise; by position only when the
  * date is the unreadable part.
  */
-/** How many skipped entries to name before summarising the rest. Enough to be
- *  useful for the realistic case (a typo or two), few enough that a badly
- *  corrupt file cannot bury the count that matters under a wall of bullets. */
-const MAX_LISTED_SKIPS = 5;
-
 const describeSkipped = (entry: SkippedEntry): string =>
   entry.date
     ? `An entry dated ${entry.date} — ${entry.reason}.`

@@ -1854,6 +1854,39 @@ describe("the post-log acknowledgement", () => {
     expect(greeting()).not.toBe(ACK); // ...and gone once the sheet is
   });
 
+  it("announces a second consecutive save, not just the first", async () => {
+    // The line reads identically for every shot, and the acknowledgement no
+    // longer clears when the sheet reopens — so React saw the same string,
+    // touched nothing, and a live region with no mutation announces nothing.
+    // Log three backdated entries and only the first was spoken.
+    //
+    // Asserted on the DOM NODE rather than the text: the text is deliberately
+    // constant, so "did it change" can only be answered by whether the region's
+    // child was replaced.
+    renderApp();
+    await logAShot("first");
+    const region = document.querySelector(
+      "body > .visually-hidden[role='status']"
+    )!;
+    const firstNode = region.firstElementChild;
+    expect(announced()).toBe(ACK);
+    expect(firstNode).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+    );
+    await sheetGone();
+
+    // Same words, same region — a different node, which is the change an
+    // assistive reader has to hear.
+    expect(announced()).toBe(ACK);
+    expect(document.querySelector("body > .visually-hidden[role='status']")).toBe(
+      region
+    );
+    expect(region.firstElementChild).not.toBe(firstNode);
+  });
+
   it("stays through a second save, rather than blinking between the two", async () => {
     // Logging again does not pass through the greeting on its way to the next
     // acknowledgement: the old one is replaced by the new one at the same
