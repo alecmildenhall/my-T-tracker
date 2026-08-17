@@ -85,7 +85,16 @@ interface ModalProps {
  *  fastest at the instant it disappears, which reads as dropped rather than
  *  dismissed. Material's own scale steps 200 → 250 and this sits between them
  *  deliberately — 230/240/245 were compared and 240 was the one that stopped
- *  looking dropped without starting to feel slow. Don't "correct" it to a token. */
+ *  looking dropped without starting to feel slow. Don't "correct" it to a token.
+ *
+ *  KNOWN, AND DEFERRED ON PURPOSE: waiting this out with a `setTimeout` is a
+ *  proxy for "the transition ended", which is the habit CLAUDE.md warns about.
+ *  Observing `transitionend` instead cannot simply replace it — that event does
+ *  not fire for a 0s duration, for a transition that never starts, or where
+ *  transitions are disabled, and a missed one leaves the sheet mounted forever
+ *  over an inert `#root`. So the timer stays as the net either way, and the
+ *  gain is precision rather than one less constant. See the UI-overhaul item in
+ *  README.md for when to do it and what shape it takes. */
 export const SHEET_EXIT_MS = 240;
 
 export const Modal: React.FC<ModalProps> = ({
