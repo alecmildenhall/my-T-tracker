@@ -135,6 +135,37 @@ describe("DataManagement", () => {
   });
 
   describe("import", () => {
+    it("keeps the live region mounted, so its content is a CHANGE when it lands", async () => {
+      // A live region announces changes to itself, not a region that appears
+      // already populated — so mounting it with its text meant a screen-reader
+      // user could press Replace and hear nothing about the skipped entries,
+      // which is the one thing the leniency depends on surfacing. Same rule the
+      // acknowledgement's portalled region follows, written down there and then
+      // not followed here.
+      render(
+        <DataManagement
+          shots={shots}
+          onReplaceAll={vi.fn(() => true)}
+          profile={{}}
+          onReplaceProfile={vi.fn(() => true)}
+        />
+      );
+      // Present before anything happens, and empty.
+      const region = screen.getByRole("status");
+      expect(region).toBeInTheDocument();
+      expect(region).toBeEmptyDOMElement();
+
+      uploadText(withShots([{ id: "good", date: "2026-05-01" }, { id: "b" }]));
+      fireEvent.click(
+        within(await screen.findByRole("dialog")).getByRole("button", {
+          name: "Replace",
+        })
+      );
+      // ...and it is the SAME element, now changed — not a new one.
+      expect(screen.getByRole("status")).toBe(region);
+      expect(region).toHaveTextContent("Restored 1 of 2 entries from backup.");
+    });
+
     it("shows a generic error for a malformed file and never replaces", async () => {
       const onReplaceAll = vi.fn(() => true);
       render(

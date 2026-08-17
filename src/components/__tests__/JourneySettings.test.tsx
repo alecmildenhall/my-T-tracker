@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { JourneySettings } from "../JourneySettings";
 import { ProfileProvider } from "../../context/ProfileContext";
 import { STORAGE_KEYS } from "../../storageKeys";
+import { expectFocusSomewhereUseful } from "../../test/focus";
 
 beforeEach(() => localStorage.clear());
 
@@ -20,7 +21,7 @@ const nameInput = () =>
 const shotDaySelect = () =>
   screen.getByLabelText("Shot day") as HTMLSelectElement;
 const stored = () =>
-  JSON.parse(localStorage.getItem(STORAGE_KEYS.profile) as string);
+  JSON.parse(localStorage.getItem(STORAGE_KEYS.profile) ?? "null");
 
 describe("JourneySettings", () => {
   it("starts blank when no profile is set", () => {
@@ -42,6 +43,10 @@ describe("JourneySettings", () => {
   it("persists edits to the profile store", () => {
     renderPanel();
     fireEvent.change(dateInput(), { target: { value: "2024-11-02" } });
+    // The date commits when you LEAVE the field, not per keystroke — see the
+    // typing test below for why. The name is a text input: it reports exactly
+    // what was typed, with no transit values, so it saves as you go.
+    fireEvent.blur(dateInput());
     fireEvent.change(nameInput(), { target: { value: "Sam" } });
     expect(stored()).toEqual({ startDate: "2024-11-02", preferredName: "Sam" });
   });
@@ -69,10 +74,12 @@ describe("JourneySettings", () => {
 
     // Far future: planning ahead, however far.
     fireEvent.change(dateInput(), { target: { value: "2099-01-01" } });
+    fireEvent.blur(dateInput());
     expect(stored()).toEqual({ startDate: "2099-01-01" });
 
     // Long ago: someone else's history is not ours to argue with.
     fireEvent.change(dateInput(), { target: { value: "1972-03-08" } });
+    fireEvent.blur(dateInput());
     expect(stored()).toEqual({ startDate: "1972-03-08" });
   });
 
@@ -98,18 +105,31 @@ describe("JourneySettings", () => {
     fireEvent.change(dateInput(), { target: { value: "" } });
     expect(stored().startDate).toBe("2020-01-01");
 
-    for (const partial of ["0002-03-15", "0020-03-15"]) {
+    // `0202` is the one that matters and the one an earlier guard let through:
+    // years 0–99 are remapped into the 1900s by Date.UTC and fail the
+    // round-trip, so they read as unreal — but year 202 SURVIVES it. Saving on
+    // each keystroke therefore wrote a third-century start date to the profile
+    // mid-word, and blur would not undo it, because it is a real date.
+    for (const partial of ["0002-03-15", "0020-03-15", "0202-03-15"]) {
       fireEvent.change(dateInput(), { target: { value: partial } });
       // Still on screen — the field shows what was typed...
       expect(dateInput().value).toBe(partial);
-      // ...and the saved date is untouched. A half-typed year is not an
-      // instruction to erase anything.
+      // ...and nothing is saved until the field is left.
       expect(stored().startDate).toBe("2020-01-01");
     }
 
     fireEvent.change(dateInput(), { target: { value: "2021-03-15" } });
+    fireEvent.blur(dateInput());
     expect(dateInput().value).toBe("2021-03-15");
     expect(stored().startDate).toBe("2021-03-15");
+  });
+
+  it("commits on leaving the field, not on every keystroke", () => {
+    renderPanel();
+    fireEvent.change(dateInput(), { target: { value: "1998-07-04" } });
+    expect(stored?.()).toBeNull(); // nothing written yet
+    fireEvent.blur(dateInput());
+    expect(stored()).toEqual({ startDate: "1998-07-04" });
   });
 
   it("removes the start date only through its own control", () => {
@@ -145,6 +165,31 @@ describe("JourneySettings", () => {
     expect(
       screen.queryByRole("button", { name: "Remove start date" })
     ).not.toBeInTheDocument();
+  });
+
+  it("hands focus on when Remove takes itself away", () => {
+    // The control only exists while a start date is set, and pressing it clears
+    // that — so it removes itself. Without a hand-off, a keyboard or
+    // screen-reader user is dropped to <body> with nothing announced and the
+    // next Tab restarting from the top of the document. CLAUDE.md calls this
+    // class non-negotiable, and every other self-removing control here already
+    // does it.
+    localStorage.setItem(
+      STORAGE_KEYS.profile,
+      JSON.stringify({ startDate: "2020-01-01" })
+    );
+    renderPanel();
+    const remove = screen.getByRole("button", { name: "Remove start date" });
+    remove.focus();
+    expect(remove).toHaveFocus();
+
+    fireEvent.click(remove);
+
+    expect(
+      screen.queryByRole("button", { name: "Remove start date" })
+    ).not.toBeInTheDocument();
+    expectFocusSomewhereUseful("after removing the start date");
+    expect(dateInput()).toHaveFocus();
   });
 
   it("puts the saved date back when a half-typed one is abandoned", () => {

@@ -114,9 +114,12 @@ export const DataManagement: React.FC<DataManagementProps> = ({
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Clear any pending flash timer on unmount.
-  useEffect(() => () => {
-    if (flashTimer.current) clearTimeout(flashTimer.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (flashTimer.current) clearTimeout(flashTimer.current);
+    },
+    [],
+  );
 
   const flash = (which: "json" | "csv") => {
     setFlashed(which);
@@ -129,7 +132,7 @@ export const DataManagement: React.FC<DataManagementProps> = ({
       !tryDownloadTextFile(
         toJson(shots, profile),
         backupFilename("t-shot-backup", "json"),
-        "application/json"
+        "application/json",
       )
     ) {
       setStatus({ kind: "error", message: EXPORT_ERROR });
@@ -144,7 +147,7 @@ export const DataManagement: React.FC<DataManagementProps> = ({
       !tryDownloadTextFile(
         toCsv(shots),
         backupFilename("t-shot-export", "csv"),
-        "text/csv"
+        "text/csv",
       )
     ) {
       setStatus({ kind: "error", message: EXPORT_ERROR });
@@ -155,7 +158,7 @@ export const DataManagement: React.FC<DataManagementProps> = ({
   };
 
   const handleFileChosen = async (
-    event: React.ChangeEvent<HTMLInputElement>
+    event: React.ChangeEvent<HTMLInputElement>,
   ) => {
     const file = event.target.files?.[0];
     // Reset the input so choosing the same file again still fires onChange.
@@ -202,7 +205,7 @@ export const DataManagement: React.FC<DataManagementProps> = ({
       !tryDownloadTextFile(
         toJson(shots, profile),
         backupFilename("t-shot-backup-before-import", "json"),
-        "application/json"
+        "application/json",
       )
     ) {
       setStatus({ kind: "error", message: IMPORT_BACKUP_ERROR });
@@ -327,42 +330,57 @@ export const DataManagement: React.FC<DataManagementProps> = ({
       </div>
 
       <p className="data-warning">
-        Backups are <b>not encrypted</b> — anyone who opens the file can read your
-        entries and your profile (including your name, if you set one). Save them
-        somewhere private, and only import files you exported yourself.
+        Backups are <b>not encrypted</b> — anyone who opens the file can read
+        your entries and your profile (including your name, if you set one).
+        Save them somewhere private, and only import files you exported
+        yourself.
       </p>
 
-      {status.kind !== "idle" && (
-        // One live region around both parts: the message and the list of skipped
-        // entries are one announcement, and splitting them would either read the
-        // list without its headline or announce twice.
-        <div role="status">
-          <p
-            className={
-              status.kind === "error" ? "data-status--error" : "data-status--ok"
-            }
-          >
-            {status.message}
-          </p>
-          {status.kind === "success" && status.skipped && (
-            <ul className="data-status__details">
-              {/* Keyed by index, not by the text: two entries can fail the same
-                  way on the same date and produce an identical sentence, and
-                  React treats duplicate keys as a bug — it warns, and its
-                  reconciliation for those children is undefined. (It does still
-                  render both, so this is a correctness-of-the-contract fix, not
-                  a visibly missing bullet.) The list is built once and never
-                  reordered, so the index is stable. */}
-              {status.skipped.map((line, i) => (
-                <li key={i}>{line}</li>
-              ))}
-            </ul>
-          )}
-          {status.kind === "success" && status.note && (
-            <p className="data-status__note">{status.note}</p>
-          )}
-        </div>
-      )}
+      {/* ALWAYS mounted, empty while idle. A live region announces CHANGES to
+          its contents, not a region that appears already populated — so mounting
+          it together with its text meant a screen-reader user could press
+          Replace and hear nothing about the entries that were skipped, which is
+          the one piece of information the leniency depends on surfacing.
+          `handleFileChosen` sets `idle` before opening the confirm dialog, so
+          the region was guaranteed absent right up to the moment it was filled.
+          Same rule the acknowledgement's portalled region follows in App.tsx —
+          written down there, and then not followed here.
+
+          One region around both parts: the message and the list of skipped
+          entries are one announcement, and splitting them would either read the
+          list without its headline or announce twice. */}
+      <div role="status">
+        {status.kind !== "idle" && (
+          <>
+            <p
+              className={
+                status.kind === "error"
+                  ? "data-status--error"
+                  : "data-status--ok"
+              }
+            >
+              {status.message}
+            </p>
+            {status.kind === "success" && status.skipped && (
+              <ul className="data-status__details">
+                {/* Keyed by index, not by the text: two entries can fail the
+                    same way on the same date and produce an identical sentence,
+                    and React treats duplicate keys as a bug — it warns, and its
+                    reconciliation for those children is undefined. (It does
+                    still render both, so this is a correctness-of-the-contract
+                    fix, not a visibly missing bullet.) The list is built once
+                    and never reordered, so the index is stable. */}
+                {status.skipped.map((line, i) => (
+                  <li key={i}>{line}</li>
+                ))}
+              </ul>
+            )}
+            {status.kind === "success" && status.note && (
+              <p className="data-status__note">{status.note}</p>
+            )}
+          </>
+        )}
+      </div>
 
       {pending && (
         <Modal
@@ -375,9 +393,9 @@ export const DataManagement: React.FC<DataManagementProps> = ({
           <p className="dialog-text">
             This replaces your current{" "}
             <b>{pluralizeEntries(pending.currentCount)}</b> with{" "}
-            <b>{pluralizeEntries(pending.incoming.length)}</b> from the backup. A
-            backup of your current data downloads first — keep that file so you
-            can undo this.
+            <b>{pluralizeEntries(pending.incoming.length)}</b> from the backup.
+            A backup of your current data downloads first — keep that file so
+            you can undo this.
           </p>
           {pending.skipped.length > 0 && (
             // Said before the destructive step, not only in the report after it.
