@@ -11,6 +11,13 @@ import {
   FUTURE_YEAR_ALLOWANCE,
 } from "../civilDate";
 
+/** A year as a date string, padded — the same four-digit shape the range check
+ *  compares against. Built raw, these stop being real dates the moment
+ *  EARLIEST_YEAR drops below 1000, and the suite would then fail for its own
+ *  construction rather than for anything the code did. */
+const yearAsDate = (year: number, rest: string) =>
+  `${String(year).padStart(4, "0")}${rest}`;
+
 describe("isRealDate", () => {
   it("accepts real calendar dates", () => {
     expect(isRealDate("2026-07-14")).toBe(true);
@@ -54,7 +61,7 @@ describe("isShotDateInRange", () => {
 
   it("accepts today, the distant-but-real past, and a year ahead", () => {
     expect(isShotDateInRange(shift(0))).toBe(true);
-    expect(isShotDateInRange(`${EARLIEST_YEAR}-01-01`)).toBe(true);
+    expect(isShotDateInRange(yearAsDate(EARLIEST_YEAR, "-01-01"))).toBe(true);
     // A year out to the day is the boundary itself, and it is inclusive.
     expect(isShotDateInRange(shift(FUTURE_YEAR_ALLOWANCE))).toBe(true);
   });
@@ -68,7 +75,7 @@ describe("isShotDateInRange", () => {
     // civilDateParts round-trips through Date.UTC, which maps 0–99 into the
     // 1900s, so the round-trip failed rather than the range.
     expect(isShotDateInRange("0008-08-05")).toBe(false);
-    expect(isShotDateInRange(`${EARLIEST_YEAR - 1}-12-31`)).toBe(false);
+    expect(isShotDateInRange(yearAsDate(EARLIEST_YEAR - 1, "-12-31"))).toBe(false);
   });
 
   it("rejects a date just past the allowance, not just wild ones", () => {
@@ -91,7 +98,12 @@ describe("shotDateRange", () => {
     // than no picker bound at all.
     expect(isShotDateInRange(min)).toBe(true);
     expect(isShotDateInRange(max)).toBe(true);
-    expect(min).toBe(`${EARLIEST_YEAR}-01-01`);
+    expect(min).toBe(yearAsDate(EARLIEST_YEAR, "-01-01"));
+    // The bound is compared LEXICALLY, which is only valid while the year is
+    // four digits. Lower EARLIEST_YEAR below 1000 without padding and "900-01-01"
+    // sorts AFTER "1899-01-01", so every date in the app is rejected — silently,
+    // with nothing else here to catch it. Pinning the width pins the invariant.
+    expect(min).toHaveLength(10);
     expect(Number(max.slice(0, 4))).toBe(
       new Date().getFullYear() + FUTURE_YEAR_ALLOWANCE
     );

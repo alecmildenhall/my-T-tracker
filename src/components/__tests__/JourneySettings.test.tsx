@@ -1,3 +1,4 @@
+import React from "react";
 import { describe, it, expect, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { JourneySettings } from "../JourneySettings";
@@ -7,12 +8,37 @@ import { expectFocusSomewhereUseful } from "../../test/focus";
 
 beforeEach(() => localStorage.clear());
 
-const renderPanel = () =>
-  render(
+/** Rendered with the heading above it, as Settings does — that heading is where
+ *  "Remove start date" hands focus. */
+const renderPanel = () => {
+  const headingRef = React.createRef<HTMLHeadingElement>();
+  return render(
     <ProfileProvider>
-      <JourneySettings />
+      <h2 ref={headingRef} tabIndex={-1}>
+        Your journey
+      </h2>
+      <JourneySettings headingRef={headingRef} />
     </ProfileProvider>
   );
+};
+
+/**
+ * The panel inside a provider that OUTLIVES it, with a switch to take just the
+ * panel away — which is what changing tab does. Unmounting the whole tree
+ * (provider included) is not the same event: the store would be gone too, so a
+ * commit on the way out could not land and the test would be measuring its own
+ * scaffolding.
+ */
+const renderRemovablePanel = () => {
+  const Harness = ({ shown }: { shown: boolean }) => (
+    <ProfileProvider>{shown && <JourneySettings />}</ProfileProvider>
+  );
+  const view = render(<Harness shown />);
+  // Re-rendered with the panel gone, rather than driven by a captured setter:
+  // assigning to a closure during render is a side effect in render, which lint
+  // rightly refuses.
+  return { removePanel: () => view.rerender(<Harness shown={false} />) };
+};
 
 const dateInput = () =>
   screen.getByLabelText("Testosterone start date") as HTMLInputElement;
@@ -20,6 +46,7 @@ const nameInput = () =>
   screen.getByLabelText("Preferred name") as HTMLInputElement;
 const shotDaySelect = () =>
   screen.getByLabelText("Shot day") as HTMLSelectElement;
+const heading = () => screen.getByRole("heading", { name: "Your journey" });
 const stored = () =>
   JSON.parse(localStorage.getItem(STORAGE_KEYS.profile) ?? "null");
 
@@ -189,7 +216,73 @@ describe("JourneySettings", () => {
       screen.queryByRole("button", { name: "Remove start date" })
     ).not.toBeInTheDocument();
     expectFocusSomewhereUseful("after removing the start date");
-    expect(dateInput()).toHaveFocus();
+    // The HEADING, not the date field. Focusing an input[type=date] from inside
+    // a click handler is what makes iOS Safari and Android Chrome throw up the
+    // date wheel — covering half the phone with a picker immediately after an
+    // action whose whole point was to not have a date. ShotForm's "Clear form"
+    // documented that hazard and avoided it; this control walked into it.
+    expect(heading()).toHaveFocus();
+    expect(dateInput()).not.toHaveFocus();
+  });
+
+  it("still hands focus somewhere useful with no heading to aim at", () => {
+    // The panel renders standalone too. The date field is a poor target but a
+    // far better one than <body>, so it stays as the fallback — handOffFocus
+    // verifies each candidate rather than assuming the first one takes.
+    localStorage.setItem(
+      STORAGE_KEYS.profile,
+      JSON.stringify({ startDate: "2020-01-01" })
+    );
+    render(
+      <ProfileProvider>
+        <JourneySettings />
+      </ProfileProvider>
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Remove start date" }));
+    expectFocusSomewhereUseful("after removing with no heading");
+  });
+
+  it("commits a picked date when the app is backgrounded without blurring", () => {
+    // On a phone you can open the field, spin the wheel, then switch apps —
+    // blur never fires. With blur as the only commit path the date was silently
+    // dropped while the field looked filled in the whole time, and silent loss
+    // is the failure this app treats as severe.
+    renderPanel();
+    fireEvent.change(dateInput(), { target: { value: "1998-07-04" } });
+    expect(stored()).toBeNull(); // nothing yet
+
+    Object.defineProperty(document, "visibilityState", {
+      value: "hidden",
+      configurable: true,
+    });
+    fireEvent(document, new Event("visibilitychange"));
+
+    expect(stored()).toEqual({ startDate: "1998-07-04" });
+    Object.defineProperty(document, "visibilityState", {
+      value: "visible",
+      configurable: true,
+    });
+  });
+
+  it("commits a picked date when the panel goes away", () => {
+    // Changing tab destroys this panel, which on a phone is a likelier exit than
+    // blurring the field.
+    const { removePanel } = renderRemovablePanel();
+    fireEvent.change(dateInput(), { target: { value: "2001-09-11" } });
+    expect(stored()).toBeNull();
+
+    removePanel();
+
+    expect(stored()).toEqual({ startDate: "2001-09-11" });
+  });
+
+  it("commits nothing on the way out when the draft is half-typed", () => {
+    // The transit values stay out of storage on every path, not just on blur —
+    // `0002` is not a date anyone meant.
+    const { removePanel } = renderRemovablePanel();
+    fireEvent.change(dateInput(), { target: { value: "0002-03-15" } });
+    removePanel();
+    expect(stored()).toBeNull();
   });
 
   it("puts the saved date back when a half-typed one is abandoned", () => {

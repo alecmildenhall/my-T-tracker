@@ -924,7 +924,10 @@ describe("the confirm beat", () => {
     const onAddShot = vi.fn(() => "saved" as const);
     render(<ShotForm onAddShot={onAddShot} confirming shots={[]} />);
 
-    const button = screen.getByRole("button", { name: "✓ Saved" });
+    // "Saved", not "✓ Saved": the tick is aria-hidden, so it stays out of the
+    // accessible name instead of announcing as "check mark Saved".
+    const button = screen.getByRole("button", { name: "Saved" });
+    expect(button).toHaveTextContent("✓"); // ...still on screen, though
     expect(button).toHaveAttribute("aria-disabled", "true");
     expect(button).not.toBeDisabled(); // still focusable
 

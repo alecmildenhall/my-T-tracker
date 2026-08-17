@@ -686,13 +686,13 @@ describe("App — editing from History", () => {
       });
       fireEvent.click(sheet().getByRole("button", { name: "Update shot" }));
 
-      expect(sheet().getByRole("button", { name: "✓ Updated" })).toBeInTheDocument();
+      expect(sheet().getByRole("button", { name: "Updated" })).toBeInTheDocument();
 
       // Still confirming mid-slide, and a second press there writes nothing.
       act(() => {
         vi.advanceTimersByTime(CONFIRM_MS);
       });
-      const submit = sheet().getByRole("button", { name: "✓ Updated" });
+      const submit = sheet().getByRole("button", { name: "Updated" });
       fireEvent.click(submit);
 
       act(() => {
@@ -977,7 +977,7 @@ describe("App — a failed save is never silent", () => {
     // the exit that follows.
     // `aria-disabled`, not `disabled`: disabling the focused button would blur
     // it and drop focus to <body> for the whole confirm + exit.
-    const confirmed = sheet().getByRole("button", { name: "✓ Saved" });
+    const confirmed = sheet().getByRole("button", { name: "Saved" });
     expect(confirmed).toHaveAttribute("aria-disabled", "true");
     expect(confirmed).not.toBeDisabled();
     fireEvent.click(confirmed);
@@ -1016,7 +1016,7 @@ describe("App — a failed save is never silent", () => {
       act(() => {
         vi.advanceTimersByTime(CONFIRM_MS);
       });
-      const submit = sheet().getByRole("button", { name: "✓ Saved" });
+      const submit = sheet().getByRole("button", { name: "Saved" });
       expect(sheet().queryByRole("button", { name: "Save shot" })).not.toBeInTheDocument();
 
       fireEvent.click(submit);
@@ -2170,7 +2170,7 @@ describe("the post-log wash", () => {
         within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
       );
       expect(
-        within(screen.getByRole("dialog")).getByRole("button", { name: "✓ Saved" })
+        within(screen.getByRole("dialog")).getByRole("button", { name: "Saved" })
       ).toBeInTheDocument();
 
       // Re-open mid-beat (jsdom does not enforce inert, which is what lets this

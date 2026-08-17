@@ -854,9 +854,17 @@ export const ShotForm: React.FC<ShotFormProps> = ({
           {/* The ✓ mirrors the verb that was pressed — "Update shot" is answered
               by "✓ Updated", not by a word the user did not use. Same fact
               either way: the write landed. */}
-          {confirming
-            ? `✓ ${editingShot ? "Updated" : "Saved"}`
-            : `${editingShot ? "Update" : "Save"} ${saveFailed ? "again" : "shot"}`}
+          {confirming ? (
+            <>
+              {/* aria-hidden so the glyph stays out of the accessible NAME:
+                  unwrapped it announced as "check mark Saved" (or worse, "white
+                  heavy check mark"), which is the decoration reading itself
+                  aloud. The word carries the meaning; the tick is the beat. */}
+              <span aria-hidden="true">✓</span> {editingShot ? "Updated" : "Saved"}
+            </>
+          ) : (
+            `${editingShot ? "Update" : "Save"} ${saveFailed ? "again" : "shot"}`
+          )}
         </button>
       </div>
     </form>

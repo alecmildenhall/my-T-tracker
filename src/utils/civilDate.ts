@@ -111,8 +111,18 @@ function latestAcceptable(): string {
   )}`;
 }
 
-/** The earliest acceptable shot date. A constant, unlike the upper bound. */
-const EARLIEST_DATE = `${EARLIEST_YEAR}-01-01`;
+/**
+ * The earliest acceptable shot date. A constant, unlike the upper bound.
+ *
+ * Zero-padded explicitly, because `isShotDateInRange` compares these strings
+ * LEXICALLY and that is only valid while every year is four digits. Interpolating
+ * the year raw happens to work at 1900 and silently inverts below 1000: lower
+ * EARLIEST_YEAR to 900 and the bound becomes "900-01-01", against which
+ * "1899-01-01" sorts EARLIER — so every date in the app is rejected, with no
+ * test or type to catch it. The padding makes the invariant the comparison rests
+ * on part of the value rather than an accident of the number chosen.
+ */
+const EARLIEST_DATE = `${String(EARLIEST_YEAR).padStart(4, "0")}-01-01`;
 
 /**
  * A real calendar date that could plausibly be a SHOT in an HRT log: no earlier

@@ -2,13 +2,21 @@
 // Settings → "Your journey": the optional T start date and preferred name that
 // power milestone messages. Both are opt-in, local-only, and clearing a field
 // removes it entirely.
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useProfileContext } from "../context/ProfileContext";
 import { WEEKDAYS, isWeekday, weekdayLabel } from "../utils/weekday";
 import { isRealDate } from "../utils/civilDate";
 import { handOffFocus } from "../utils/focus";
 
-export const JourneySettings: React.FC = () => {
+interface JourneySettingsProps {
+  /** The section heading above this panel, focused when "Remove start date"
+   *  removes itself. Optional so the panel still renders standalone in tests. */
+  headingRef?: React.RefObject<HTMLHeadingElement | null>;
+}
+
+export const JourneySettings: React.FC<JourneySettingsProps> = ({
+  headingRef,
+}) => {
   const { profile, setStartDate, setPreferredName, setShotDay } =
     useProfileContext();
 
@@ -35,6 +43,46 @@ export const JourneySettings: React.FC = () => {
   const [lastSaved, setLastSaved] = useState(profile.startDate);
   /** Where focus lands when "Remove start date" removes itself. */
   const dateFieldRef = useRef<HTMLInputElement>(null);
+
+  // Blur is the ordinary commit, but it must not be the ONLY one. On a phone you
+  // can open the field, spin the wheel to your start date, and then switch apps
+  // or close the tab without ever tapping elsewhere — no blur, and the date is
+  // silently dropped while the field looked filled in the whole time. Silent loss
+  // is the failure this app treats as severe, so leaving and backgrounding both
+  // commit as well.
+  //
+  // The cost, stated: a draft caught mid-keystroke can be a real date that was
+  // never meant (`0202-03-15` on the way to 2021 — see the onChange note), and
+  // backgrounding at exactly that moment would store it. That is the better half
+  // of the trade. A wrongly stored date is on screen in the field and one edit
+  // from fixed; a wrongly discarded one leaves nothing behind to notice.
+  // Kept in refs so the listener below can subscribe ONCE and still read the
+  // current values: re-subscribing per keystroke would run the cleanup — and
+  // therefore the commit — on every render. Written in an effect rather than
+  // during render, which is a side effect in render and what `react-hooks/refs`
+  // refuses.
+  const draftRef = useRef(dateDraft);
+  const commitRef = useRef(setStartDate);
+  useEffect(() => {
+    draftRef.current = dateDraft;
+    commitRef.current = setStartDate;
+  });
+
+  useEffect(() => {
+    const commitIfReal = () => {
+      if (isRealDate(draftRef.current)) commitRef.current(draftRef.current);
+    };
+    const onHide = () => {
+      if (document.visibilityState === "hidden") commitIfReal();
+    };
+    document.addEventListener("visibilitychange", onHide);
+    return () => {
+      document.removeEventListener("visibilitychange", onHide);
+      // Unmount too: changing tab destroys this panel, and on a phone that is a
+      // likelier exit than blurring the field.
+      commitIfReal();
+    };
+  }, []);
   if (profile.startDate !== lastSaved) {
     setLastSaved(profile.startDate);
     setDateDraft(profile.startDate ?? "");
@@ -99,12 +147,21 @@ export const JourneySettings: React.FC = () => {
           // This control removes ITSELF — it only renders while a start date is
           // set — so it has to hand focus on before it goes, or a keyboard or
           // screen-reader user is dropped to <body> with nothing announced and
-          // the next Tab restarting from the top of the document. The date field
-          // is the right landing place: it is what the press just changed.
-          // Never a bare .focus(); handOffFocus verifies the result and falls
-          // through when a candidate refuses.
+          // the next Tab restarting from the top of the document.
+          //
+          // The section HEADING, not the date field, and for the reason
+          // ShotForm's "Clear form" already documents: focusing an
+          // `input[type=date]` from inside a click handler is what makes iOS
+          // Safari and Android Chrome throw up the date wheel. Landing there
+          // would cover half the phone with a picker immediately after an action
+          // whose entire point was to not have a date. The heading summons
+          // nothing and names the region that just changed.
+          //
+          // The date field stays as the fallback: on the standalone panel (tests,
+          // or any caller that renders it without the heading) it is better than
+          // <body>, and handOffFocus verifies each candidate rather than assuming.
           onClick={() => {
-            handOffFocus(dateFieldRef);
+            handOffFocus(headingRef, dateFieldRef);
             // The field empties itself: the profile changes, so the sync above
             // pulls the draft to "". Setting it here as well was redundant, and
             // a mutation check caught that no test could tell the difference.
