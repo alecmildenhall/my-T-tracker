@@ -21,7 +21,7 @@ const renderTeaser = (
     <RecentShots
       shots={makeShots(3)}
       onSeeAll={vi.fn()}
-      onOpenShot={vi.fn()}
+      onEditShot={vi.fn()}
       {...props}
     />
   );
@@ -35,56 +35,57 @@ describe("RecentShots", () => {
   });
 
   it("carries no destructive control, one tap from the log button", () => {
-    // The row opens now, but Delete still lives only in History: a mis-tap on
-    // the screen you use most must never be able to lose an entry.
+    // Edit is here now; Delete deliberately is not. That was always the point of
+    // "read-only" — a mis-tap on the screen you use most must never lose an
+    // entry — and editing is recoverable in a way deleting is not.
     renderTeaser();
-    expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Edit" })).toHaveLength(3);
     expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
   });
 
-  it("opens a shot when its row is pressed", () => {
-    const onOpenShot = vi.fn();
-    renderTeaser({ shots: makeShots(3), onOpenShot });
+  it("edits a shot from its own Edit button", () => {
+    const onEditShot = vi.fn();
+    renderTeaser({ shots: makeShots(3), onEditShot });
 
-    // Found by ROLE, which is the point: the row is a real button, so it is in
-    // the tab order and answers Enter and Space. A div with onClick would pass
-    // a click test and none of that.
-    const rows = screen.getAllByRole("button", { name: /2026-06-/ });
-    fireEvent.click(rows[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: "Edit" })[0]);
 
-    expect(onOpenShot).toHaveBeenCalledTimes(1);
+    expect(onEditShot).toHaveBeenCalledTimes(1);
     // Newest first, so the first row is the newest shot.
-    expect(onOpenShot.mock.calls[0][0].date).toBe("2026-06-03");
+    expect(onEditShot.mock.calls[0][0].date).toBe("2026-06-03");
   });
 
-  it("nests no button inside the row button", () => {
-    // Invalid HTML that browsers reconstruct however they like — which is why
-    // the teaser passes `onOpen` and History passes `onEdit`/`onDelete`, never
-    // both.
+  it("does not make the whole row a control", () => {
+    // A card-sized target beside the app's primary button is too easy to hit on
+    // the way past, and what it opened was a modal editor rather than a page.
+    // The only buttons in a teaser row are the ones you aim at.
     renderTeaser();
-    document.querySelectorAll(".shot-list-item__open").forEach((row) => {
-      expect(row.querySelector("button")).toBeNull();
+    document.querySelectorAll("li.shot-list-item").forEach((row) => {
+      const names = [...row.querySelectorAll("button")].map((b) => b.textContent);
+      expect(names).toEqual(["Edit"]);
     });
   });
 
-  it("leaves no empty actions row taking up space on each teaser card", () => {
-    // A read-only row rendered the actions wrapper regardless, so each card
-    // carried an empty flex div and its top margin — 24px of nothing on the one
-    // screen that has to fit greeting, log button and teaser above the fold.
+  it("renders one action per row, and nothing empty when there are none", () => {
+    // The wrapper used to render regardless, so a row with no actions carried an
+    // empty flex div and its top margin — 24px of nothing on the one screen that
+    // has to fit greeting, log button and teaser above the fold. It is
+    // conditional, so it appears exactly when it has something in it.
     renderTeaser();
-    expect(document.querySelectorAll(".shot-list-item__actions")).toHaveLength(0);
+    const rows = document.querySelectorAll(".shot-list-item__actions");
+    expect(rows).toHaveLength(3);
+    rows.forEach((r) => expect(r.querySelectorAll("button")).toHaveLength(1));
   });
 
   it("offers 'See all' only once something has been logged", () => {
     const onSeeAll = vi.fn();
     const { rerender } = render(
-      <RecentShots shots={[]} onSeeAll={onSeeAll} onOpenShot={vi.fn()} />
+      <RecentShots shots={[]} onSeeAll={onSeeAll} onEditShot={vi.fn()} />
     );
     expect(screen.queryByRole("button", { name: /See all/ })).not.toBeInTheDocument();
     expect(screen.getByText(/No shots logged yet/)).toBeInTheDocument();
 
     rerender(
-      <RecentShots shots={makeShots(1)} onSeeAll={onSeeAll} onOpenShot={vi.fn()} />
+      <RecentShots shots={makeShots(1)} onSeeAll={onSeeAll} onEditShot={vi.fn()} />
     );
     fireEvent.click(screen.getByRole("button", { name: /See all/ }));
     expect(onSeeAll).toHaveBeenCalledOnce();

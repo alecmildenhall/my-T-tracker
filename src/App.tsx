@@ -50,6 +50,10 @@ const App: React.FC = () => {
   // forget the scroll reset — "See all" used to, and opened History at whatever
   // offset Home was scrolled to.
   const navigate = (next: View) => {
+    // Every route to a view passes through here, so this is the one place the
+    // flag can be retired — and the swipe sets it immediately after calling in,
+    // which is why the reset happens first.
+    setArrivedBySwipe(false);
     // Leaving Home is a deliberate action, so the acknowledgement has done its
     // job: the greeting or milestone comes back. This also retires the wash,
     // which matters because Home UNMOUNTS when you leave it — a wash still armed
@@ -384,6 +388,14 @@ const App: React.FC = () => {
    */
   const openShotFromTeaser = (shot: ShotEntry) => {
     navigate("history");
+    // Clear the History query on the way. It is deliberately kept across tab
+    // changes — "a trip to Home and back keeps the filter you were using" — but
+    // this is not a trip the user took to History, it is one taken for them, and
+    // a filter set earlier can exclude the very shot they just tapped. The sheet
+    // would then open over a list not containing it, and saving would send the
+    // entry somewhere invisible. The promise of this route is "closing lands
+    // somewhere that shows what you just did", and a stale filter breaks it.
+    setHistoryQuery(emptyHistoryQuery);
     openSheet(shot);
   };
 
@@ -396,10 +408,19 @@ const App: React.FC = () => {
   // root and its primary action, so one destination is the whole rule and there
   // is no order to memorise.
   //
-  // Off on Home, where there is nowhere back to, and off while a sheet is open:
-  // the sheet is portalled, so a swipe across the form would otherwise navigate
-  // the screen out from under it.
-  useSwipeBack(view !== "home" && !sheetOpen, () => navigate("home"));
+  // Off on Home, where there is nowhere back to. Dialogs are NOT named here:
+  // passing `!sheetOpen` covered only this component's log sheet, and the delete
+  // confirm, the rename confirm and the import confirm all live inside views the
+  // swipe would unmount — taking the decision away undecided. The hook asks the
+  // DOM whether any dialog is open instead, so no future one can be forgotten.
+  // Marks the arrival as "came back", so the incoming view can slide. Cleared on
+  // any other navigation, so a tab tap never animates — the gesture is what the
+  // motion is answering.
+  const [arrivedBySwipe, setArrivedBySwipe] = useState(false);
+  useSwipeBack(view !== "home", () => {
+    navigate("home");
+    setArrivedBySwipe(true); // after navigate, which clears it
+  });
 
   // Dismissing the sheet (Escape, the Android Back gesture, ✕) keeps whatever was
   // typed and restores it next time — chosen over a "discard?" confirm so an
@@ -618,7 +639,7 @@ const App: React.FC = () => {
       <StorageBanner returnFocusRef={titleRef} />
 
       {view === "home" && (
-        <main className="app-main">
+        <main className={`app-main${arrivedBySwipe ? " app-main--back" : ""}`}>
           <Greeting acknowledged={acknowledgedId !== null} />
           <button
             type="button"
@@ -630,7 +651,7 @@ const App: React.FC = () => {
           <RecentShots
             shots={shots}
             onSeeAll={() => navigate("history")}
-            onOpenShot={openShotFromTeaser}
+            onEditShot={openShotFromTeaser}
             justLoggedId={washId}
             onWashEnd={() => setWashId(null)}
           />

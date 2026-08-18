@@ -15,10 +15,10 @@ export const TEASER_COUNT = 3;
 interface RecentShotsProps {
   shots: ShotEntry[];
   onSeeAll: () => void;
-  /** Open a shot for editing. The teaser is read-only in the sense that
-   *  matters — no delete, nothing destructive one stray tap from the button you
-   *  press most — but tapping a row is how you get to the entry itself. */
-  onOpenShot: (shot: ShotEntry) => void;
+  /** Edit a shot: takes you to History with its editor open. An explicit
+   *  button, not the whole row — the row is card-sized and sits beside the
+   *  button you press most, and what this opens is an editor, not a page. */
+  onEditShot: (shot: ShotEntry) => void;
   /** id of the shot just logged, if its wash is still owed. */
   justLoggedId?: string | null;
   /** Fired when that wash finishes. */
@@ -28,7 +28,7 @@ interface RecentShotsProps {
 export const RecentShots: React.FC<RecentShotsProps> = ({
   shots,
   onSeeAll,
-  onOpenShot,
+  onEditShot,
   justLoggedId = null,
   onWashEnd,
 }) => {
@@ -55,7 +55,7 @@ export const RecentShots: React.FC<RecentShotsProps> = ({
             <ShotListItem
               key={shot.id}
               shot={shot}
-              onOpen={onOpenShot}
+              onEdit={onEditShot}
               justLogged={shot.id === justLoggedId}
               onWashEnd={onWashEnd}
             />

@@ -475,40 +475,6 @@ select {
   outline-offset: 2px;
 }
 
-/* The teaser row as a control. Strips the button chrome back to nothing so it
-   reads as the row it replaced — the affordance is the press feedback and the
-   focus ring, not a border. `width: 100%` and `text-align: left` because a
-   button centres and shrink-wraps by default, which would silently re-lay-out
-   every row the moment it became tappable. */
-.shot-list-item__open {
-  display: block;
-  width: 100%;
-  padding: 0;
-  border: none;
-  background: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  border-radius: inherit;
-  transition: transform 0.08s ease;
-}
-
-@media (hover: hover) {
-  .shot-list-item__open:hover .shot-list-item__date {
-    color: var(--accent);
-  }
-}
-
-.shot-list-item__open:active {
-  transform: scale(0.99);
-}
-
-.shot-list-item__open:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
 .shot-list-item__header {
   display: flex;
   justify-content: space-between;
@@ -955,6 +921,48 @@ select {
   color: var(--text-muted);
   font-size: 0.8rem;
   line-height: 1.5;
+}
+
+/* The screen you swipe back to slides in from the left, so the movement agrees
+   with the thumb that asked for it and reads as "back" rather than "a different
+   screen". Without it the view swapped in a single frame, which is the one
+   navigation in the app with no motion at all — the sheet already enters at
+   300ms and leaves at 240.
+
+   250ms: Material puts mobile screen transitions around 300ms and is explicit
+   that past ~400ms they start to feel slow. A little under, because this one
+   answers a gesture the user is already mid-way through rather than starting
+   from rest — the movement has, in a sense, already begun.
+
+   Decelerate easing, entering at speed and settling, which is the curve for
+   something arriving on screen.
+
+   Only the ARRIVING view moves. Sliding the outgoing one out as well needs both
+   mounted at once, which is the structural change that follow-the-finger would
+   need too — see the roadmap. */
+@keyframes view-slide-back {
+  from {
+    transform: translateX(-8%);
+    opacity: 0.6;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+.app-main--back {
+  animation: view-slide-back 250ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The movement goes; nothing replaces it. A swipe is deliberate, so the change
+     of screen is not a surprise that needs softening — unlike the row wash,
+     which still holds its colour because it reports something that happened
+     without being asked. */
+  .app-main--back {
+    animation: none;
+  }
 }
 
 /* Bottom tab bar */

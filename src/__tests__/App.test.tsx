@@ -67,6 +67,21 @@ const sheetGone = () =>
 
 /** Background the app, or bring it back. jsdom reports "visible" and never
  *  changes it, so both halves have to be driven by hand. */
+/** One left-to-right swipe, dispatched as the browser would. */
+const swipeRightGesture = () => {
+  const t = (x: number) =>
+    ({ clientX: x, clientY: 400, target: document.body }) as unknown as Touch;
+  const fire = (type: string, touches: Touch[], changed = touches) => {
+    const e = new Event(type) as TouchEvent & { touches: Touch[] };
+    Object.assign(e, { touches, changedTouches: changed });
+    act(() => {
+      window.dispatchEvent(e);
+    });
+  };
+  fire("touchstart", [t(40)]);
+  fire("touchend", [], [t(260)]);
+};
+
 const setVisibility = (state: DocumentVisibilityState) => {
   Object.defineProperty(document, "visibilityState", {
     value: state,
@@ -710,22 +725,32 @@ describe("App — editing from History", () => {
     }
   });
 
+  it("animates the arrival only when a swipe caused it", () => {
+    // The motion answers the gesture. A tab tap is not a swipe and gets none —
+    // otherwise the app would appear to slide sideways whenever you pressed
+    // Home, which is a different claim about what just happened.
+    seedShots([{ id: "a", date: "2026-06-01" }]);
+    renderApp();
+    const main = () => document.querySelector("main.app-main")!;
+
+    goTo("History");
+    goTo("Home");
+    expect(main().className).not.toContain("app-main--back");
+
+    goTo("History");
+    swipeRightGesture();
+    expect(main().className).toContain("app-main--back");
+
+    // ...and it is retired by the next navigation, so returning later is still.
+    goTo("Settings");
+    goTo("Home");
+    expect(main().className).not.toContain("app-main--back");
+  });
+
   it("swipes back to Home, and not from Home or under a sheet", () => {
     // The gesture is wired at the App level, so this is about WHICH screens it
     // is live on — the hook's own thresholds are covered in its unit tests.
-    const swipeRight = () => {
-      const t = (x: number) =>
-        ({ clientX: x, clientY: 400, target: document.body }) as unknown as Touch;
-      const fire = (type: string, touches: Touch[], changed = touches) => {
-        const e = new Event(type) as TouchEvent & { touches: Touch[] };
-        Object.assign(e, { touches, changedTouches: changed });
-        act(() => {
-          window.dispatchEvent(e);
-        });
-      };
-      fire("touchstart", [t(40)]);
-      fire("touchend", [], [t(260)]);
-    };
+    const swipeRight = swipeRightGesture;
     const current = () =>
       within(screen.getByRole("navigation"))
         .getAllByRole("button")
@@ -758,7 +783,7 @@ describe("App — editing from History", () => {
     expect(current()).toBe("History");
   });
 
-  it("opens a teaser row in History, with the editor already up", () => {
+  it("opens a teaser shot in History, with the editor already up", () => {
     // The roadmap's "tapping through to edit happens in the History tab",
     // finally built: the rows looked exactly like the ones you can open a tab
     // away, and pressing them did nothing.
@@ -768,7 +793,10 @@ describe("App — editing from History", () => {
     ]);
     renderApp();
 
-    fireEvent.click(screen.getByRole("button", { name: /the one tapped/ }));
+    // The row's own Edit button, not the row: a card-sized target beside "Log a
+    // shot" was too easy to hit on the way past.
+    const row = screen.getByText("the one tapped").closest("li")!;
+    fireEvent.click(within(row).getByRole("button", { name: "Edit" }));
 
     // The editor is up, on the shot that was pressed...
     const sheet = within(screen.getByRole("dialog"));
@@ -783,10 +811,44 @@ describe("App — editing from History", () => {
     ).toHaveAttribute("aria-current", "page");
   });
 
+  it("clears a History filter that would hide the shot just tapped", () => {
+    // The query survives ordinary tab changes on purpose, but this trip is one
+    // the app takes for you: a filter set earlier can exclude the very shot you
+    // tapped, so the sheet opens over a list not containing it and saving sends
+    // the entry somewhere invisible.
+    seedShots([
+      { id: "thigh", date: "2026-06-01", injectionSite: "thigh", notes: "in the filter" },
+      { id: "glute", date: "2026-06-08", injectionSite: "glute", notes: "filtered out" },
+    ]);
+    renderApp();
+
+    // Filter History down to one site, then go back to Home.
+    goTo("History");
+    fireEvent.click(screen.getByRole("button", { name: /Filters/ }));
+    fireEvent.change(screen.getByLabelText("Site"), { target: { value: "thigh" } });
+    goTo("Home");
+
+    // Tap the shot the filter excludes.
+    const hidden = screen.getByText("filtered out").closest("li")!;
+    fireEvent.click(within(hidden).getByRole("button", { name: "Edit" }));
+
+    // "Cancel editing", not "Close" — the ✕ names what dismissing does, and in
+    // edit mode that is abandoning changes rather than closing a new entry.
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Cancel editing",
+      })
+    );
+    return sheetGone().then(() => {
+      // It is on screen behind, rather than filtered away.
+      expect(screen.getByText("filtered out")).toBeInTheDocument();
+    });
+  });
+
   it("edits through from the teaser and the change sticks", () => {
     seedShots([{ id: "a", date: "2026-06-01", notes: "before" }]);
     renderApp();
-    fireEvent.click(screen.getByRole("button", { name: /before/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     fireEvent.change(
       within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i),
       { target: { value: "after" } }
@@ -803,15 +865,17 @@ describe("App — editing from History", () => {
     });
   });
 
-  it("the Home teaser is read-only — no edit or delete there", () => {
+  it("the Home teaser carries no delete", () => {
     seedShots([{ id: "a", date: "2026-06-01", notes: "only shot" }]);
     renderApp();
 
-    expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
-    // ...but the same shot is editable one tap away, in History.
-    goTo("History");
+    // Edit is on the teaser now; Delete stays History-only. Editing is
+    // recoverable, deleting is not, and this is the screen you touch most.
     expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+
+    goTo("History");
+    expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
   });
 
   it("drops the in-progress edit when the edited shot disappears", () => {

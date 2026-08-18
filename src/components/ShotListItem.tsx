@@ -9,15 +9,6 @@ interface ShotListItemProps {
   shot: ShotEntry;
   onDelete?: (id: string) => void;
   onEdit?: (shot: ShotEntry) => void;
-  /**
-   * Makes the whole row activate — the Home teaser's way through to editing.
-   *
-   * Mutually exclusive with `onEdit`/`onDelete`, and not by convention: those
-   * render buttons INSIDE the row, and a button inside a button is invalid HTML
-   * that browsers reconstruct however they like. The teaser passes this one;
-   * History passes the other two.
-   */
-  onOpen?: (shot: ShotEntry) => void;
   /** This is the shot that was just logged: play the wash once. */
   justLogged?: boolean;
   /** Called when the wash finishes, so the parent can retire the state that
@@ -30,16 +21,19 @@ export const ShotListItem: React.FC<ShotListItemProps> = ({
   shot,
   onDelete,
   onEdit,
-  onOpen,
   justLogged = false,
   onWashEnd,
 }) => {
   const dateLabel = shot.date;
   const timeLabel = shot.time || "—";
 
-  // The row's content, wrapped below either in a plain <div> or in a <button>.
-  // Extracted rather than duplicated so the two paths cannot drift — the whole
-  // point is that a teaser row and a History row show the same thing.
+  // The row is NOT itself a control, deliberately. Making the whole card
+  // activate put a card-sized tap target a thumb's width from the button you
+  // press most, and what it opened was a modal editor rather than a detail
+  // view — tapping a row to reach a destination is ordinary, tapping one to
+  // start editing by accident is not. It also announced the row's entire text
+  // as the control's name, where "Edit" names the action. The teaser passes
+  // `onEdit` like History does; only `onDelete` stays History-only.
   const content = (
     <>
       <header className="shot-list-item__header">
@@ -81,26 +75,7 @@ export const ShotListItem: React.FC<ShotListItemProps> = ({
         if (e.animationName === WASH_ANIMATION) onWashEnd?.();
       }}
     >
-      {onOpen ? (
-        // A real <button>, not a click handler on the <li>. The row is a
-        // control now, so it has to be reachable by Tab, activate on Enter and
-        // Space, and announce itself as something you can press — none of which
-        // a div with onClick does, and all of which come free here.
-        //
-        // The accessible name is the row's own text, which reads as
-        // "2026-08-12, 08:30, Dose: 50 mg… button". Verbose, but it is the
-        // information the row is FOR; a terser aria-label would hide the very
-        // details you are choosing between.
-        <button
-          type="button"
-          className="shot-list-item__open"
-          onClick={() => onOpen(shot)}
-        >
-          {content}
-        </button>
-      ) : (
-        content
-      )}
+      {content}
 
       {/* Only when there is something to put in it. The Home teaser passes
           neither handler, where an unconditional wrapper is an empty flex row

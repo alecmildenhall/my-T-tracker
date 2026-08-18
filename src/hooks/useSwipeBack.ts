@@ -14,7 +14,7 @@
 // A self-contained gesture touches none of that. If tab history is ever wanted
 // for real — deep links, a PWA with routing — do it there, once, and delete
 // this.
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 /** How far the thumb must travel before it counts as a swipe rather than a tap
  *  that wandered. Roughly a fifth of a phone screen. */
@@ -33,6 +33,28 @@ const MAX_DURATION_MS = 700;
 const IGNORED = "input, textarea, select, [contenteditable]";
 
 /**
+ * Any dialog currently on screen.
+ *
+ * Asked of the DOM at the moment of the gesture rather than tracked in state,
+ * and that is the whole point. The first version took a boolean from App, which
+ * knew only about the log sheet — so a swipe over the delete confirm, the rename
+ * confirm or the import confirm navigated the screen out from under them,
+ * taking the decision away undecided and stranding focus on `<body>`. A
+ * registry every dialog must remember to join has the same shape as a list of
+ * reasons something cannot happen: the list is never complete. `role="dialog"`
+ * is on the overlay `Modal` renders, so this cannot be forgotten by a dialog
+ * that does not exist yet.
+ */
+const anyDialogOpen = () => document.querySelector('[role="dialog"]') !== null;
+
+/** True when the user is dragging a selection rather than the screen. Long-press
+ *  a note, drag the handle sideways, and that is not navigation. */
+const isSelectingText = () => {
+  const selection = window.getSelection();
+  return selection !== null && !selection.isCollapsed;
+};
+
+/**
  * Calls `onBack` when the user swipes left-to-right.
  *
  * `enabled` is how the caller says "there is somewhere to go back to, and
@@ -41,6 +63,18 @@ const IGNORED = "input, textarea, select, [contenteditable]";
  * catch swipes meant for the form inside it.
  */
 export function useSwipeBack(enabled: boolean, onBack: () => void): void {
+  // Held in a ref so the effect subscribes ONCE. Callers pass a fresh arrow
+  // every render (`() => navigate("home")`), so with the callback in the
+  // dependency list any re-render tore the listeners down and rebuilt them —
+  // and the gesture's own state lives in the effect's locals, so an in-flight
+  // swipe was silently reset to nothing. A cross-tab storage sync or the
+  // storage banner appearing during the ~200-700ms of a swipe was enough. The
+  // same pattern `Modal` and `useBackToClose` already use, for the same reason.
+  const onBackRef = useRef(onBack);
+  useEffect(() => {
+    onBackRef.current = onBack;
+  });
+
   useEffect(() => {
     if (!enabled) return;
 
@@ -56,6 +90,7 @@ export function useSwipeBack(enabled: boolean, onBack: () => void): void {
     const onTouchStart = (e: TouchEvent) => {
       // One finger only: two is a pinch, and zooming sideways is not a swipe.
       if (e.touches.length !== 1) return cancel();
+      if (anyDialogOpen()) return cancel();
       const touch = e.touches[0];
       const target = touch.target;
       if (target instanceof Element && target.closest(IGNORED)) return cancel();
@@ -80,7 +115,10 @@ export function useSwipeBack(enabled: boolean, onBack: () => void): void {
       if (dx < MIN_DISTANCE_PX) return;
       if (Math.abs(dx) < Math.abs(dy) * DOMINANCE) return;
       if (performance.now() - startedAt > MAX_DURATION_MS) return;
-      onBack();
+      // Re-asked at the END too: a dialog can open mid-gesture, and the check
+      // that matters is the state of the screen when the gesture would act.
+      if (anyDialogOpen() || isSelectingText()) return;
+      onBackRef.current();
     };
 
     // Passive: this never calls preventDefault. Scrolling must stay smooth, and
@@ -98,5 +136,6 @@ export function useSwipeBack(enabled: boolean, onBack: () => void): void {
       window.removeEventListener("touchend", onTouchEnd);
       window.removeEventListener("touchcancel", cancel);
     };
-  }, [enabled, onBack]);
+    // `enabled` only — see onBackRef above.
+  }, [enabled]);
 }

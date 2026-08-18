@@ -128,3 +128,58 @@ describe("useSwipeBack", () => {
     expect(onBack).not.toHaveBeenCalled();
   });
 });
+
+describe("useSwipeBack — regressions found in review", () => {
+  it("survives a re-render mid-gesture", () => {
+    // The caller passes a fresh arrow every render, so `onBack` in the dep array
+    // re-subscribes the effect — and the gesture's state lives in effect-local
+    // `let`s, so an unrelated re-render between touchstart and touchend silently
+    // drops the swipe. Any App state change in that 200-700ms window does it:
+    // a cross-tab storage sync, the storage banner appearing.
+    // A NEW arrow per render, which is what App passes (`() => navigate("home")`).
+    // Reusing one stable vi.fn() keeps the dep array equal, so the effect never
+    // re-subscribes and the test proves nothing — which is how the first version
+    // of this passed against the bug it was written for.
+    const onBack = vi.fn();
+    const { rerender } = renderHook(() => useSwipeBack(true, () => onBack()));
+    fire("touchstart", [touch(40, 400)]);
+    rerender();
+    fire("touchend", [], [touch(300, 405)]);
+    expect(onBack).toHaveBeenCalledOnce();
+  });
+
+  it("stands down while any dialog is on screen", () => {
+    // Not just the log sheet: the delete confirm, the rename confirm and the
+    // import confirm are all dialogs inside views the swipe would unmount —
+    // taking the decision off screen and stranding focus on <body>.
+    const dialog = document.createElement("div");
+    dialog.setAttribute("role", "dialog");
+    document.body.appendChild(dialog);
+    const onBack = vi.fn();
+    renderHook(() => useSwipeBack(true, onBack));
+    swipe(40, 400, 300, 405);
+    expect(onBack).not.toHaveBeenCalled();
+    dialog.remove();
+  });
+
+  it("ignores a drag that is selecting text", () => {
+    // Long-press a note, drag the selection handle right, and you would be
+    // navigated to Home mid-selection.
+    const onBack = vi.fn();
+    renderHook(() => useSwipeBack(true, onBack));
+    const p = document.createElement("p");
+    p.textContent = "a note worth selecting";
+    document.body.appendChild(p);
+    const range = document.createRange();
+    range.selectNodeContents(p);
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    sel.addRange(range);
+
+    swipe(40, 400, 300, 405);
+    expect(onBack).not.toHaveBeenCalled();
+
+    sel.removeAllRanges();
+    p.remove();
+  });
+});
