@@ -13,6 +13,7 @@ import { Modal, SHEET_EXIT_MS } from "./components/Modal";
 import { StorageBanner } from "./components/StorageBanner";
 import { useBackupExport } from "./hooks/useBackupExport";
 import { handOffFocus } from "./utils/focus";
+import { useSwipeBack } from "./hooks/useSwipeBack";
 import { useShotsContext } from "./context/ShotsContext";
 import type { ShotEntry } from "./types/shot";
 import type { SaveOutcome } from "./components/ShotForm";
@@ -385,6 +386,21 @@ const App: React.FC = () => {
     navigate("history");
     openSheet(shot);
   };
+
+  // A left-to-right swipe steps one tab back — History → Home, Settings →
+  // History. Deliberately the same rule on every screen rather than a special
+  // case for the one the request named: a gesture that works here and not there
+  // reads as broken, and "one destination left" is a rule you can learn in a
+  // single try.
+  //
+  // Off on Home, where there is nothing to the left, and off while a sheet is
+  // open: the sheet is portalled, so a swipe across the form would otherwise
+  // navigate the screen out from under it.
+  const backTab: View | null =
+    view === "history" ? "home" : view === "settings" ? "history" : null;
+  useSwipeBack(backTab !== null && !sheetOpen, () => {
+    if (backTab) navigate(backTab);
+  });
 
   // Dismissing the sheet (Escape, the Android Back gesture, ✕) keeps whatever was
   // typed and restores it next time — chosen over a "discard?" confirm so an

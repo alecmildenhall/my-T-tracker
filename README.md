@@ -448,7 +448,7 @@ Worth knowing what this rule is suspending, since it stops being free the day so
   - **Navigation: a 3-tab bottom bar** — Home (house), History (**graph icon**, StoryGraph-style), Settings (gear). Three is the sweet spot both Material (3–5 destinations) and Apple's HIG endorse; a 4th tab would be worse, not better. Icons are hand-rolled inline SVG — no icon library, no CDN (privacy rule).
   - **Charts and the list share the History tab**, split by a **segmented control** rather than stacked in one long scroll (the Apple Health *Summary / Browse* pattern). Stacking rich charts above a long list is what actually creates clutter on a phone; a toggle keeps each sub-view clean while holding the tab count at three.
   - **Segment naming: `Patterns` / `History`**, with **Patterns first and selected by default.** "Patterns" comes from this project's own stated goal — helping you *see patterns* — and reads warm and insight-led rather than clinical ("Charts") or cool ("Browse").
-  - **Home teaser is read-only.** Tapping through to edit happens in the History tab.
+  - **Home teaser is read-only.** Tapping through to edit happens in the History tab — _built: a row takes you to History with that shot's editor already open. Read-only still holds where it counts, in that Delete lives only in History, so a mis-tap on the screen you use most cannot lose an entry._
 
   **What we actually track (the signals the charts are built on).** Deliberately *not* pain-as-headline: pain is the easiest thing to log and the least interesting thing to chart. Industry pattern across the apps worth emulating (Daylio, Clue, Medisafe, Apple Health) is **fast ordinal scales + categorical tags**, with correlation — not raw numbers — as the payoff.
 

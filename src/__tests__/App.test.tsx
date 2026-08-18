@@ -710,6 +710,49 @@ describe("App — editing from History", () => {
     }
   });
 
+  it("swipes back one tab, and not from Home or under a sheet", () => {
+    // The gesture is wired at the App level, so this is about WHICH screens it
+    // is live on — the hook's own thresholds are covered in its unit tests.
+    const swipeRight = () => {
+      const t = (x: number) =>
+        ({ clientX: x, clientY: 400, target: document.body }) as unknown as Touch;
+      const fire = (type: string, touches: Touch[], changed = touches) => {
+        const e = new Event(type) as TouchEvent & { touches: Touch[] };
+        Object.assign(e, { touches, changedTouches: changed });
+        act(() => {
+          window.dispatchEvent(e);
+        });
+      };
+      fire("touchstart", [t(40)]);
+      fire("touchend", [], [t(260)]);
+    };
+    const current = () =>
+      within(screen.getByRole("navigation"))
+        .getAllByRole("button")
+        .find((b) => b.getAttribute("aria-current") === "page")?.textContent;
+
+    seedShots([{ id: "a", date: "2026-06-01", notes: "an entry" }]);
+    renderApp();
+    expect(current()).toBe("Home");
+
+    // Home has nothing to its left — a swipe there must not wander off.
+    swipeRight();
+    expect(current()).toBe("Home");
+
+    goTo("Settings");
+    swipeRight();
+    expect(current()).toBe("History"); // one destination back, not all the way
+    swipeRight();
+    expect(current()).toBe("Home");
+
+    // With a sheet open the swipe belongs to the form, not the screen behind it.
+    goTo("History");
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    swipeRight();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(current()).toBe("History");
+  });
+
   it("opens a teaser row in History, with the editor already up", () => {
     // The roadmap's "tapping through to edit happens in the History tab",
     // finally built: the rows looked exactly like the ones you can open a tab
