@@ -297,23 +297,56 @@ describe("ShotForm field mapping", () => {
     expect(onAddShot.mock.calls[0][0].date).toBe("2026-06-15");
   });
 
-  it("keeps form text at 16px on a touch screen, so iOS does not zoom", () => {
+  it("leaves no form control below 16px on a touch screen", () => {
     // Not a style preference. iOS Safari zooms the whole page whenever you focus
     // a control whose text is under 16px — not configurable, not a setting, just
     // what the browser does. At 0.85rem (13.6px) that meant tapping any field on
     // a phone jumped the layout, on the app's primary platform in its primary
-    // flow. jsdom has no layout and no media-query evaluation, so this is
-    // asserted against the real stylesheet.
+    // flow.
+    //
+    // ENUMERATES the rules rather than pattern-matching for one. The first
+    // version of this asserted that a coarse-pointer block containing "16px"
+    // existed, and passed while `.dialog-field input { font-size: 0.9rem }` was
+    // still out-specifying it (0,1,1 beats 0,0,1; a media query adds no
+    // specificity) — so the rename dialog kept zooming and the guard said fine.
+    // Asking "does a rule exist" is a cheaper question than "can anything render
+    // small", and the cheaper one is the one that was wrong.
+    // `process.cwd()`, not `new URL(..., import.meta.url)`: under Vitest
+    // `import.meta.url` is a dev-server URL, not a file one, so that throws.
+    // `src/test/focusRing.ts` records the same trap.
     const css = readFileSync(`${process.cwd()}/src/styles.css`, "utf8").replace(
       /\/\*[\s\S]*?\*\//g,
       ""
     );
-    const coarse = /@media\s*\(pointer:\s*coarse\)\s*\{([\s\S]*?)\n\}/.exec(css)?.[1];
-    expect(coarse).toBeDefined();
-    expect(coarse).toMatch(/input[\s\S]*textarea[\s\S]*select[\s\S]*font-size:\s*16px/);
 
-    // And the viewport meta must NOT have been "fixed" by disabling zoom, which
-    // is the answer the web is full of: it fails WCAG 1.4.4 for everyone, to
+    const sized = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+      .filter(([, sel, body]) =>
+        /\b(input|textarea|select)\b/.test(sel) && /font-size:/.test(body)
+      )
+      .map(([, sel, body]) => ({
+        selector: sel.replace(/\s+/g, " ").trim(),
+        size: /font-size:\s*([^;]+)/.exec(body)![1].trim(),
+      }));
+
+    // Exactly two: the base size, and the touch override. A third would mean the
+    // cascade decides which wins, which is the thing that went wrong.
+    expect(sized).toHaveLength(2);
+    expect(sized[0]).toEqual({
+      selector: "input, textarea, select",
+      size: "0.85rem",
+    });
+    expect(sized[1]).toEqual({
+      selector: "input, textarea, select",
+      size: "max(1rem, 16px)",
+    });
+
+    // ...and the override is gated on a coarse pointer EXISTING, not on it being
+    // the primary one: an iPad with a Magic Keyboard reports `pointer: fine`
+    // while you are still tapping the screen.
+    expect(css).toMatch(/@media\s*\(any-pointer:\s*coarse\)/);
+
+    // The viewport meta must not have been "fixed" by disabling zoom, which is
+    // the answer most search results give: it fails WCAG 1.4.4 for everyone, to
     // work around a font size.
     const html = readFileSync(`${process.cwd()}/index.html`, "utf8");
     expect(html).not.toMatch(/user-scalable\s*=\s*no/);

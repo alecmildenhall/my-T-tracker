@@ -199,33 +199,33 @@ select {
   background: var(--bg-card-soft);
   color: var(--text);
   outline: none;
-  /* Kills the double-tap-to-zoom gesture without touching pinch-zoom.
-     Deliberately NOT claimed as a fix for the old ~300ms tap delay: that was
-     already gone the moment index.html declared `width=device-width`, which
-     every modern mobile browser treats as "this page is responsive, stop
-     waiting for a second tap". The guidance saying otherwise — and saying
-     Safari lacks `touch-action` — dates from 2014-16; Safari has supported it
-     since 13. What this buys is the gesture itself, on controls where a
-     stray second tap should do nothing. */
-  touch-action: manipulation;
 }
 
 /* iOS Safari ZOOMS THE PAGE whenever you focus a form control whose text is
    under 16px — it is not configurable and not a preference, it is what the
    browser does. At 0.85rem (13.6px) that meant tapping any field on a phone
    jumped the whole layout, on the app's primary platform, in its primary flow.
-   16px exactly at the threshold, and only where the pointer is coarse, so the
-   desktop layout keeps its smaller type.
+   Gated on `any-pointer: coarse`, not `pointer: coarse`: `pointer` describes the
+   PRIMARY mechanism, and an iPad with a Magic Keyboard reports `fine` while you
+   are still tapping the screen with a finger — controls would drop back to
+   13.6px on the exact device that zooms. `any-pointer` asks whether a coarse
+   pointer exists at all, which is the condition that predicts the behaviour. A
+   touchscreen laptop also gets 16px controls, which is harmless.
 
    NOT fixed with `maximum-scale=1` or `user-scalable=no` in the viewport meta,
    which is the answer the web is full of: that disables pinch-zoom for
    everyone, fails WCAG 1.4.4, and modern iOS ignores it in Safari anyway. The
    font size is the actual cause. */
-@media (pointer: coarse) {
+@media (any-pointer: coarse) {
   input,
   textarea,
   select {
-    font-size: 16px;
+    /* `max`, not a bare 16px: everything else in the app is `rem`, so it grows
+       with a raised browser default. Pinning these would leave someone on a 24px
+       default typing text smaller than its own label — non-resizable, which is
+       the very WCAG 1.4.4 concern quoted above. `max` clears the iOS threshold
+       at every root size and still scales past it. */
+    font-size: max(1rem, 16px);
   }
 }
 
@@ -308,22 +308,29 @@ textarea {
 
 /* Buttons */
 
-.primary-button,
-.secondary-button,
-.tab,
-.link-button,
-.suggestion-chips .chip,
-.manage-row__action,
-.manage-row__remove,
-.dialog-danger,
-.dialog-go,
-.shot-form__close,
-.storage-banner__go,
-.storage-banner__alt,
-.storage-banner__dismiss {
-  /* See the note on form controls: this is the double-tap gesture only. Pinch
-     to zoom is untouched, which is the line that matters — one is an accident,
-     the other is how people read. */
+/* Every interactive surface, stated once by ELEMENT rather than enumerated by
+   class. The first version of this was a list of thirteen class names, and it
+   had already missed two — the in-sheet "Export a backup" button and the skip
+   link — with every control slice B½ adds defaulting to missing. A hand-kept
+   list of the things a rule should apply to is the same smell CLAUDE.md flags
+   about lists of reasons something cannot happen: the list is never complete.
+
+   This is the double-tap gesture only. Pinch to zoom is untouched, which is the
+   line that matters — one is an accident, the other is how people read.
+
+   Deliberately NOT claimed as a fix for the old ~300ms tap delay: that was
+   already gone the moment index.html declared `width=device-width`, which every
+   modern mobile browser reads as "this page is responsive, stop waiting for a
+   second tap". The advice saying otherwise — and saying Safari lacks
+   `touch-action` — dates from 2014-16; Safari has supported it since 13. */
+button,
+a,
+label,
+summary,
+[role="button"],
+input,
+textarea,
+select {
   touch-action: manipulation;
 }
 
@@ -791,7 +798,13 @@ textarea {
   background: var(--bg-card-soft);
   color: var(--text);
   font-family: inherit;
-  font-size: 0.9rem;
+  /* No font-size of its own, deliberately. It used to say 0.9rem, and a class
+     selector beats the bare `input` in the coarse-pointer rule above (0,1,1 vs
+     0,0,1 — a media query adds no specificity), so the rename dialog kept
+     zooming on iOS after the rest of the app stopped. Worse than the original
+     bug: it happens with a modal open, and iOS does not zoom back out on blur.
+     Form-control size now has exactly ONE source, so there is no cascade left
+     to get wrong. */
   padding: 0.55rem 0.6rem;
   outline: none;
 }
