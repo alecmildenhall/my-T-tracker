@@ -367,6 +367,25 @@ const App: React.FC = () => {
     else setLoggingNew(true);
   };
 
+  /**
+   * Tapping a row in the Home teaser: go to History with that shot already open
+   * for editing.
+   *
+   * Both halves matter. Opening the sheet alone would leave Home behind it, so
+   * closing it would drop you back on a screen with no sign of what you just
+   * did; going to History alone would make you find the row again in a list you
+   * did not choose to be in. The roadmap's line is "tapping through to edit
+   * happens in the History tab", and this is that trip taken for you.
+   *
+   * `navigate` first, so the tab change's clean-up (retiring the
+   * acknowledgement, resetting scroll) happens before the sheet exists rather
+   * than underneath it.
+   */
+  const openShotFromTeaser = (shot: ShotEntry) => {
+    navigate("history");
+    openSheet(shot);
+  };
+
   // Dismissing the sheet (Escape, the Android Back gesture, ✕) keeps whatever was
   // typed and restores it next time — chosen over a "discard?" confirm so an
   // accidental edge-swipe costs nothing and there is no extra decision to
@@ -596,6 +615,7 @@ const App: React.FC = () => {
           <RecentShots
             shots={shots}
             onSeeAll={() => navigate("history")}
+            onOpenShot={openShotFromTeaser}
             justLoggedId={washId}
             onWashEnd={() => setWashId(null)}
           />

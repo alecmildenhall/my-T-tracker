@@ -421,6 +421,40 @@ textarea {
   outline-offset: 2px;
 }
 
+/* The teaser row as a control. Strips the button chrome back to nothing so it
+   reads as the row it replaced — the affordance is the press feedback and the
+   focus ring, not a border. `width: 100%` and `text-align: left` because a
+   button centres and shrink-wraps by default, which would silently re-lay-out
+   every row the moment it became tappable. */
+.shot-list-item__open {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: inherit;
+  transition: transform 0.08s ease;
+}
+
+@media (hover: hover) {
+  .shot-list-item__open:hover .shot-list-item__date {
+    color: var(--accent);
+  }
+}
+
+.shot-list-item__open:active {
+  transform: scale(0.99);
+}
+
+.shot-list-item__open:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .shot-list-item__header {
   display: flex;
   justify-content: space-between;

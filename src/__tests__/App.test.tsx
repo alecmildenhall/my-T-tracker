@@ -710,6 +710,51 @@ describe("App — editing from History", () => {
     }
   });
 
+  it("opens a teaser row in History, with the editor already up", () => {
+    // The roadmap's "tapping through to edit happens in the History tab",
+    // finally built: the rows looked exactly like the ones you can open a tab
+    // away, and pressing them did nothing.
+    seedShots([
+      { id: "older", date: "2026-06-01", notes: "older entry" },
+      { id: "newest", date: "2026-06-08", notes: "the one tapped" },
+    ]);
+    renderApp();
+
+    fireEvent.click(screen.getByRole("button", { name: /the one tapped/ }));
+
+    // The editor is up, on the shot that was pressed...
+    const sheet = within(screen.getByRole("dialog"));
+    expect(sheet.getByRole("heading", { name: "Edit shot" })).toBeInTheDocument();
+    expect(sheet.getByPlaceholderText(/remember for later/i)).toHaveValue(
+      "the one tapped"
+    );
+    // ...and History is what is behind it, so closing lands somewhere that
+    // shows what you just did rather than back on Home.
+    expect(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "History" })
+    ).toHaveAttribute("aria-current", "page");
+  });
+
+  it("edits through from the teaser and the change sticks", () => {
+    seedShots([{ id: "a", date: "2026-06-01", notes: "before" }]);
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: /before/ }));
+    fireEvent.change(
+      within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i),
+      { target: { value: "after" } }
+    );
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Update shot" })
+    );
+    return sheetGone().then(() => {
+      const stored: ShotEntry[] = JSON.parse(
+        localStorage.getItem(STORAGE_KEYS.shots) ?? "[]"
+      );
+      expect(stored[0].notes).toBe("after");
+      expect(screen.getByText("after")).toBeInTheDocument();
+    });
+  });
+
   it("the Home teaser is read-only — no edit or delete there", () => {
     seedShots([{ id: "a", date: "2026-06-01", notes: "only shot" }]);
     renderApp();
