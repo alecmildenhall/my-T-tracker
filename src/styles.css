@@ -199,6 +199,34 @@ select {
   background: var(--bg-card-soft);
   color: var(--text);
   outline: none;
+  /* Kills the double-tap-to-zoom gesture without touching pinch-zoom.
+     Deliberately NOT claimed as a fix for the old ~300ms tap delay: that was
+     already gone the moment index.html declared `width=device-width`, which
+     every modern mobile browser treats as "this page is responsive, stop
+     waiting for a second tap". The guidance saying otherwise — and saying
+     Safari lacks `touch-action` — dates from 2014-16; Safari has supported it
+     since 13. What this buys is the gesture itself, on controls where a
+     stray second tap should do nothing. */
+  touch-action: manipulation;
+}
+
+/* iOS Safari ZOOMS THE PAGE whenever you focus a form control whose text is
+   under 16px — it is not configurable and not a preference, it is what the
+   browser does. At 0.85rem (13.6px) that meant tapping any field on a phone
+   jumped the whole layout, on the app's primary platform, in its primary flow.
+   16px exactly at the threshold, and only where the pointer is coarse, so the
+   desktop layout keeps its smaller type.
+
+   NOT fixed with `maximum-scale=1` or `user-scalable=no` in the viewport meta,
+   which is the answer the web is full of: that disables pinch-zoom for
+   everyone, fails WCAG 1.4.4, and modern iOS ignores it in Safari anyway. The
+   font size is the actual cause. */
+@media (pointer: coarse) {
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
 }
 
 input::placeholder,
@@ -279,6 +307,25 @@ textarea {
 }
 
 /* Buttons */
+
+.primary-button,
+.secondary-button,
+.tab,
+.link-button,
+.suggestion-chips .chip,
+.manage-row__action,
+.manage-row__remove,
+.dialog-danger,
+.dialog-go,
+.shot-form__close,
+.storage-banner__go,
+.storage-banner__alt,
+.storage-banner__dismiss {
+  /* See the note on form controls: this is the double-tap gesture only. Pinch
+     to zoom is untouched, which is the line that matters — one is an accident,
+     the other is how people read. */
+  touch-action: manipulation;
+}
 
 .primary-button,
 .secondary-button {

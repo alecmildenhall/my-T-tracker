@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ShotForm, type ShotDraft } from "../ShotForm";
@@ -294,6 +295,29 @@ describe("ShotForm field mapping", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
     expect(onAddShot).toHaveBeenCalledTimes(1);
     expect(onAddShot.mock.calls[0][0].date).toBe("2026-06-15");
+  });
+
+  it("keeps form text at 16px on a touch screen, so iOS does not zoom", () => {
+    // Not a style preference. iOS Safari zooms the whole page whenever you focus
+    // a control whose text is under 16px — not configurable, not a setting, just
+    // what the browser does. At 0.85rem (13.6px) that meant tapping any field on
+    // a phone jumped the layout, on the app's primary platform in its primary
+    // flow. jsdom has no layout and no media-query evaluation, so this is
+    // asserted against the real stylesheet.
+    const css = readFileSync(`${process.cwd()}/src/styles.css`, "utf8").replace(
+      /\/\*[\s\S]*?\*\//g,
+      ""
+    );
+    const coarse = /@media\s*\(pointer:\s*coarse\)\s*\{([\s\S]*?)\n\}/.exec(css)?.[1];
+    expect(coarse).toBeDefined();
+    expect(coarse).toMatch(/input[\s\S]*textarea[\s\S]*select[\s\S]*font-size:\s*16px/);
+
+    // And the viewport meta must NOT have been "fixed" by disabling zoom, which
+    // is the answer the web is full of: it fails WCAG 1.4.4 for everyone, to
+    // work around a font size.
+    const html = readFileSync(`${process.cwd()}/index.html`, "utf8");
+    expect(html).not.toMatch(/user-scalable\s*=\s*no/);
+    expect(html).not.toMatch(/maximum-scale/);
   });
 
   it("bounds the date picker to the range it will accept", () => {
