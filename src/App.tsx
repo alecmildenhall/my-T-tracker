@@ -387,20 +387,19 @@ const App: React.FC = () => {
     openSheet(shot);
   };
 
-  // A left-to-right swipe steps one tab back — History → Home, Settings →
-  // History. Deliberately the same rule on every screen rather than a special
-  // case for the one the request named: a gesture that works here and not there
-  // reads as broken, and "one destination left" is a rule you can learn in a
-  // single try.
+  // A left-to-right swipe goes back to Home, from wherever you are.
   //
-  // Off on Home, where there is nothing to the left, and off while a sheet is
-  // open: the sheet is portalled, so a swipe across the form would otherwise
-  // navigate the screen out from under it.
-  const backTab: View | null =
-    view === "history" ? "home" : view === "settings" ? "history" : null;
-  useSwipeBack(backTab !== null && !sheetOpen, () => {
-    if (backTab) navigate(backTab);
-  });
+  // "Home", not "one tab left". The first version stepped through the tab order,
+  // which made Settings swipe to History — a PAGER, treating three destinations
+  // as a sequence. But you never arrived at Settings *from* History, so that is
+  // not going back, it is going sideways and calling it back. Home is the app's
+  // root and its primary action, so one destination is the whole rule and there
+  // is no order to memorise.
+  //
+  // Off on Home, where there is nowhere back to, and off while a sheet is open:
+  // the sheet is portalled, so a swipe across the form would otherwise navigate
+  // the screen out from under it.
+  useSwipeBack(view !== "home" && !sheetOpen, () => navigate("home"));
 
   // Dismissing the sheet (Escape, the Android Back gesture, ✕) keeps whatever was
   // typed and restores it next time — chosen over a "discard?" confirm so an

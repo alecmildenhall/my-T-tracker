@@ -710,7 +710,7 @@ describe("App — editing from History", () => {
     }
   });
 
-  it("swipes back one tab, and not from Home or under a sheet", () => {
+  it("swipes back to Home, and not from Home or under a sheet", () => {
     // The gesture is wired at the App level, so this is about WHICH screens it
     // is live on — the hook's own thresholds are covered in its unit tests.
     const swipeRight = () => {
@@ -739,9 +739,14 @@ describe("App — editing from History", () => {
     swipeRight();
     expect(current()).toBe("Home");
 
+    // Home from anywhere — not "one tab left". Stepping the tab order made
+    // Settings swipe to History, which is sideways rather than back: you never
+    // arrived at Settings from History.
     goTo("Settings");
     swipeRight();
-    expect(current()).toBe("History"); // one destination back, not all the way
+    expect(current()).toBe("Home");
+
+    goTo("History");
     swipeRight();
     expect(current()).toBe("Home");
 

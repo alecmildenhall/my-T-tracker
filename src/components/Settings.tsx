@@ -6,14 +6,13 @@ import { ManageValues } from "./ManageValues";
 import { DataManagement } from "./DataManagement";
 import { JourneySettings } from "./JourneySettings";
 
-interface SettingsProps {
-  /** Optional escape hatch. Unused once Settings is a bottom-nav destination —
-   *  the tab bar is always on screen, so a back button would be redundant
-   *  chrome — but kept for any caller that opens Settings as a sub-screen. */
-  onBack?: () => void;
-}
-
-export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
+// No `onBack` prop, and no back button. It was kept "for any caller that opens
+// Settings as a sub-screen", and in the year since the tab bar landed no such
+// caller appeared — leaving a branch nobody rendered and a stylesheet block
+// nothing used. There are two ways out of Settings already: tap another
+// destination in the tab bar, or swipe right. A third, in chrome that only
+// exists here, would be the odd one out on every screen.
+export const Settings: React.FC = () => {
   // Sourced from context rather than drilled through App, which passed these
   // four props purely to reach the panels below.
   const { shots, renameValue, clearValue, replaceAll } = useShotsContext();
@@ -26,14 +25,6 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     <section className="settings">
       {/* No "Settings" heading of its own: the app header already titles the
           view, and repeating it would put two identical headings on the page. */}
-      {onBack && (
-        <div className="settings-header">
-          <button type="button" className="secondary-button" onClick={onBack}>
-            ← Back
-          </button>
-        </div>
-      )}
-
       <div className="settings-section">
         <h2
           className="settings-section__title"
