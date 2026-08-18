@@ -731,20 +731,27 @@ describe("App — editing from History", () => {
     // Home, which is a different claim about what just happened.
     seedShots([{ id: "a", date: "2026-06-01" }]);
     renderApp();
-    const main = () => document.querySelector("main.app-main")!;
+    // The animated surface is the whole screen — title and content — not just
+    // the content: animating `.app-main` alone left the heading still while
+    // everything under it slid, which reads as widgets shifting inside a page
+    // rather than a page arriving.
+    const screen_ = () => document.querySelector(".app-screen")!;
 
     goTo("History");
     goTo("Home");
-    expect(main().className).not.toContain("app-main--back");
+    expect(screen_().className).not.toContain("app-screen--back");
 
     goTo("History");
     swipeRightGesture();
-    expect(main().className).toContain("app-main--back");
+    expect(screen_().className).toContain("app-screen--back");
+    // ...and the tab bar is outside it: a transform on an ancestor would become
+    // the containing block for a `position: fixed` bar and drag it along.
+    expect(screen_().querySelector("nav")).toBeNull();
 
     // ...and it is retired by the next navigation, so returning later is still.
     goTo("Settings");
     goTo("Home");
-    expect(main().className).not.toContain("app-main--back");
+    expect(screen_().className).not.toContain("app-screen--back");
   });
 
   it("swipes back to Home, and not from Home or under a sheet", () => {
@@ -2110,6 +2117,39 @@ describe("the post-log acknowledgement", () => {
     await sheetGone();
     expect(greeting()).not.toBe(ACK);
     expect(washedRows()).toBe(0);
+  });
+
+  it("washes an edited row without saying anything about it", async () => {
+    // The two halves of the acknowledgement part here. The wash is a locator —
+    // the Yellow Fade Technique's original job, "show me the record that just
+    // changed" — so an edit flashes: you are returned to a list, and the row you
+    // touched is the one worth finding. The LINE stays log-only.
+    seedShots([
+      { id: "a", date: "2026-06-01", notes: "before" },
+      { id: "b", date: "2026-06-08", notes: "untouched" },
+    ]);
+    renderApp();
+    goTo("History");
+    const row = screen.getByText("before").closest("li")!;
+    fireEvent.click(within(row).getByRole("button", { name: "Edit" }));
+    fireEvent.change(
+      within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i),
+      { target: { value: "after" } }
+    );
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Update shot" })
+    );
+    await sheetGone();
+
+    // Exactly the row that changed, and only that row.
+    const washing = document.querySelectorAll(".shot-list-item--washing");
+    expect(washing).toHaveLength(1);
+    expect(washing[0]).toHaveTextContent("after");
+
+    // ...and nothing was said.
+    expect(announced()).toBe("");
+    goTo("Home");
+    expect(greeting()).not.toBe(ACK);
   });
 
   it("says nothing when an existing shot is edited", async () => {

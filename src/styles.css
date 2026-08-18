@@ -937,10 +937,14 @@ select {
    Decelerate easing, entering at speed and settling, which is the curve for
    something arriving on screen.
 
-   Only the ARRIVING view moves. Sliding the outgoing one out as well needs both
-   mounted at once, which is the structural change that follow-the-finger would
-   need too — see the roadmap. */
-@keyframes view-slide-back {
+   Only the ARRIVING screen moves. Sliding the outgoing one out as well needs
+   both mounted at once, which is the structural change that follow-the-finger
+   would need too — see the roadmap.
+
+   It covers the title as well as the content: animating only `.app-main` left
+   the heading still while everything under it slid, which reads as the widgets
+   shifting inside the page rather than the page arriving. */
+@keyframes screen-slide-back {
   from {
     transform: translateX(-8%);
     opacity: 0.6;
@@ -951,8 +955,8 @@ select {
   }
 }
 
-.app-main--back {
-  animation: view-slide-back 250ms cubic-bezier(0, 0, 0.2, 1);
+.app-screen--back {
+  animation: screen-slide-back 250ms cubic-bezier(0, 0, 0.2, 1);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -960,7 +964,7 @@ select {
      of screen is not a surprise that needs softening — unlike the row wash,
      which still holds its colour because it reports something that happened
      without being asked. */
-  .app-main--back {
+  .app-screen--back {
     animation: none;
   }
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { localISODate, todayLocalISO, nowHHMM } from "../datetime";
+import { localISODate, todayLocalISO, nowHHMM, formatTimeForDisplay } from "../datetime";
 
 afterEach(() => vi.useRealTimers());
 
@@ -41,5 +41,37 @@ describe("datetime helpers", () => {
   it("nowHHMM formats local wall-clock time, zero-padded", () => {
     expect(nowHHMM(new Date("2026-07-14T09:05:00"))).toBe("09:05");
     expect(nowHHMM(new Date("2026-07-14T14:40:00"))).toBe("14:40");
+  });
+});
+
+describe("formatTimeForDisplay", () => {
+  it("renders a stored 24-hour time the way the locale writes it", () => {
+    // The test runner's locale decides which; what matters is that it goes
+    // through Intl rather than being hand-formatted, so a device that writes
+    // 15:45 keeps writing 15:45 and one that writes 3:45 PM gets that.
+    const rendered = formatTimeForDisplay("15:45");
+    const expected = new Intl.DateTimeFormat(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(new Date(2000, 0, 1, 15, 45));
+    expect(rendered).toBe(expected);
+  });
+
+  it("keeps midnight and noon distinct", () => {
+    expect(formatTimeForDisplay("00:00")).not.toBe(formatTimeForDisplay("12:00"));
+  });
+
+  it("hands back anything it cannot read, rather than inventing a time", () => {
+    // Storage is untrusted: a hand-edited or older value must show as itself
+    // instead of being coerced into a plausible-looking wrong one.
+    for (const raw of ["", "nope", "7:5", "25:00", "12:99", "08:30:00"]) {
+      expect(formatTimeForDisplay(raw)).toBe(raw);
+    }
+  });
+
+  it("does not shift the hour across timezones or DST", () => {
+    // The date it attaches is arbitrary and never shown; a fixed local noon-ish
+    // construction keeps 00:00 from becoming 23:00 somewhere.
+    expect(formatTimeForDisplay("00:00")).toContain("12");
   });
 });

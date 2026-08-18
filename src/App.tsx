@@ -121,9 +121,11 @@ const App: React.FC = () => {
   // here, covers both ends; checking only at arming time covered one.
   useEffect(() => {
     if (washId === null) return;
-    const onScreen = takeRecent(shots, TEASER_COUNT).some((s) => s.id === washId);
+    const onScreen = takeRecent(shots, TEASER_COUNT).some(
+      (s) => s.id === washId,
+    );
     if (!onScreen) setWashId(null);
-  }, [washId, shots]);
+  }, [washId, shots, view]);
 
   useEffect(() => {
     const onVisibilityChange = () => {
@@ -224,7 +226,13 @@ const App: React.FC = () => {
    * existing cleanup covers both. A second timer alongside this one is exactly
    * the shape that once left a stale exit timer to tear down the next sheet.
    */
-  const closeSheet = (options?: { confirm?: boolean; acknowledge?: string }) => {
+  const closeSheet = (options?: {
+    confirm?: boolean;
+    /** Arm the full acknowledgement for this shot: the wash AND the line. */
+    acknowledge?: string;
+    /** Arm the wash ALONE, for a shot that was changed rather than logged. */
+    wash?: string;
+  }) => {
     if (closingRef.current) return; // already on the way out
     // Set synchronously, before any wait: a second Save during the ✓ window is
     // dropped by the guard that already exists rather than by a new one.
@@ -281,9 +289,17 @@ const App: React.FC = () => {
         // the user sees on unlocking their phone is "Logged for you." over the
         // milestone it is meant to defer to. The shot is saved either way; there
         // is just nobody to say it to.
-        if (options?.acknowledge && !hiddenWhilePending.current) {
-          setAcknowledgedId(options.acknowledge);
-          setWashId(options.acknowledge);
+        // The wash and the line are separable, and this is where they part.
+        // The wash is a LOCATOR — the Yellow Fade Technique's original job, which
+        // was "show me the record that just changed", not "celebrate a new one" —
+        // so an edited shot flashes too: you are returned to a list and the row
+        // you touched is the one worth finding. The line stays log-only, because
+        // "Logged for you." is about logging a shot and not about correcting one.
+        const washFor = options?.acknowledge ?? options?.wash;
+        if (washFor && !hiddenWhilePending.current) {
+          setWashId(washFor);
+          if (options?.acknowledge) setAcknowledgedId(options.acknowledge);
+          else setAcknowledgedId(null);
         } else {
           // Closing WITHOUT a shot to acknowledge — dismissed, or an edit saved
           // — is what retires the previous one. It used to happen at `openSheet`
@@ -314,7 +330,7 @@ const App: React.FC = () => {
     () => () => {
       if (closeTimer.current) clearTimeout(closeTimer.current);
     },
-    []
+    [],
   );
 
   // Every route to an open sheet goes through here, so none of them can inherit a
@@ -548,13 +564,13 @@ const App: React.FC = () => {
     // The same ✓ beat a new shot gets, and for the reason CONFIRM_MS exists at
     // all: a sheet that vanishes the instant you press it leaves you unsure the
     // press registered. That is a fact about the write landing, which an edit
-    // needs exactly as much — this path had been left without one by omission
-    // rather than by decision.
+    // needs exactly as much.
     //
-    // The ACKNOWLEDGEMENT is a different thing and stays withheld: no
-    // `acknowledge`, so no wash and no "Logged for you." — that line is about
-    // logging a shot, not correcting one.
-    closeSheet({ confirm: true });
+    // `wash`, not `acknowledge`: the row flashes so you can find what you just
+    // changed in the list you are dropped back into, and "Logged for you." stays
+    // withheld, because that line is about logging a shot rather than correcting
+    // one.
+    closeSheet({ confirm: true, wash: shot.id });
     // Symmetric with handleAddShot: the premise of this whole path is that a
     // caller can ask what the save did, so the success case has to answer too.
     return "saved";
@@ -591,19 +607,27 @@ const App: React.FC = () => {
         Skip to navigation
       </a>
 
-      <header className="app-header">
-        {/* Focusable only as a programmatic target: where focus lands if the
+      {/* The screen that slides on a swipe back: title and content together, so
+          it reads as one surface arriving rather than the contents shifting
+          inside a page whose heading stayed put.
+          The tab bar is deliberately OUTSIDE it — and not only for looks. A
+          transform on an ancestor becomes the containing block for
+          `position: fixed` descendants, so animating a wrapper that held the tab
+          bar would drag the bar along with the screen for the duration. */}
+      <div className={`app-screen${arrivedBySwipe ? " app-screen--back" : ""}`}>
+        <header className="app-header">
+          {/* Focusable only as a programmatic target: where focus lands if the
             sheet closes because its shot vanished, so the opener no longer
             exists to restore to (WAI-ARIA APG — never drop focus to <body>). */}
-        <h1 className="app-title" ref={titleRef} tabIndex={-1}>
-          {VIEW_TITLES[view]}
-        </h1>
-      </header>
+          <h1 className="app-title" ref={titleRef} tabIndex={-1}>
+            {VIEW_TITLES[view]}
+          </h1>
+        </header>
 
-      {/* Above every view, not inside the log sheet: writes fail from logging,
+        {/* Above every view, not inside the log sheet: writes fail from logging,
           editing, deleting and Settings alike, and an in-sheet message would
           leave three of those silent. */}
-      {/* The acknowledgement, for assistive tech.
+        {/* The acknowledgement, for assistive tech.
           Portaled to <body> so it sits OUTSIDE #root, which an open sheet marks
           `inert` — and `inert` removes a subtree from the accessibility tree
           entirely. The line in the greeting slot is set while the sheet is still
@@ -625,89 +649,92 @@ const App: React.FC = () => {
           Not verified with a real screen reader; the mechanism is sound and the
           DOM change is asserted below, but this belongs on the device pass with
           the other two announcement claims. */}
-      {createPortal(
-        <p className="visually-hidden" role="status">
-          {acknowledgedId !== null ? (
-            <span key={acknowledgedId}>{ACKNOWLEDGEMENT}</span>
-          ) : (
-            ""
-          )}
-        </p>,
-        document.body
-      )}
+        {createPortal(
+          <p className="visually-hidden" role="status">
+            {acknowledgedId !== null ? (
+              <span key={acknowledgedId}>{ACKNOWLEDGEMENT}</span>
+            ) : (
+              ""
+            )}
+          </p>,
+          document.body,
+        )}
 
-      <StorageBanner returnFocusRef={titleRef} />
+        <StorageBanner returnFocusRef={titleRef} />
 
-      {view === "home" && (
-        <main className={`app-main${arrivedBySwipe ? " app-main--back" : ""}`}>
-          <Greeting acknowledged={acknowledgedId !== null} />
-          <button
-            type="button"
-            className="primary-button log-cta"
-            onClick={() => openSheet()}
-          >
-            + Log a shot
-          </button>
-          <RecentShots
-            shots={shots}
-            onSeeAll={() => navigate("history")}
-            onEditShot={openShotFromTeaser}
-            justLoggedId={washId}
-            onWashEnd={() => setWashId(null)}
-          />
-        </main>
-      )}
+        {view === "home" && (
+          <main className="app-main">
+            <Greeting acknowledged={acknowledgedId !== null} />
+            <button
+              type="button"
+              className="primary-button log-cta"
+              onClick={() => openSheet()}
+            >
+              + Log a shot
+            </button>
+            <RecentShots
+              shots={shots}
+              onSeeAll={() => navigate("history")}
+              onEditShot={openShotFromTeaser}
+              justLoggedId={washId}
+              onWashEnd={() => setWashId(null)}
+            />
+          </main>
+        )}
 
-      {view === "history" && (
-        <main className="app-main">
-          <HistoryView
-            shots={shots}
-            query={historyQuery}
-            onQueryChange={setHistoryQuery}
-            onEditShot={openSheet}
-            onDeleteShot={deleteShot}
-          />
-        </main>
-      )}
+        {view === "history" && (
+          <main className="app-main">
+            <HistoryView
+              shots={shots}
+              query={historyQuery}
+              onQueryChange={setHistoryQuery}
+              onEditShot={openSheet}
+              onDeleteShot={deleteShot}
+              justChangedId={washId}
+              onWashEnd={() => setWashId(null)}
+            />
+          </main>
+        )}
 
-      {/* Same <main> wrapper as the other destinations, so every tab exposes a
+        {/* Same <main> wrapper as the other destinations, so every tab exposes a
           main landmark for landmark navigation. */}
-      {view === "settings" && (
-        <main className="app-main">
-          <Settings />
-        </main>
-      )}
+        {view === "settings" && (
+          <main className="app-main">
+            <Settings />
+          </main>
+        )}
 
-      {sheetOpen && (
-        <Modal
-          labelledBy={SHEET_HEADING_ID}
-          onClose={dismissSheet}
-          variant="sheet"
-          closing={closing}
-          initialFocusRef={dateFieldRef}
-          fallbackFocusRef={titleRef}
-        >
-          <ShotForm
-            // Remount on a change of subject, so the form re-seeds from the new
-            // shot (or from a fresh/draft state) rather than needing an effect
-            // to sync it — see the note in ShotForm.
-            key={activeEditingShot?.id ?? `new-${openCount}`}
-            headingId={SHEET_HEADING_ID}
-            onAddShot={handleAddShot}
-            onUpdateShot={handleUpdateShot}
-            onExportBackup={exportBackup}
-            confirming={confirming}
-            editingShot={activeEditingShot}
-            onDismiss={dismissSheet}
-            shots={shots}
-            draft={
-              activeEditingShot ? draftForShot(activeEditingShot) : draft
-            }
-            liveDraftRef={liveDraft}
-            firstFieldRef={dateFieldRef}
-          />
-        </Modal>
-      )}
+        {sheetOpen && (
+          <Modal
+            labelledBy={SHEET_HEADING_ID}
+            onClose={dismissSheet}
+            variant="sheet"
+            closing={closing}
+            initialFocusRef={dateFieldRef}
+            fallbackFocusRef={titleRef}
+          >
+            <ShotForm
+              // Remount on a change of subject, so the form re-seeds from the new
+              // shot (or from a fresh/draft state) rather than needing an effect
+              // to sync it — see the note in ShotForm.
+              key={activeEditingShot?.id ?? `new-${openCount}`}
+              headingId={SHEET_HEADING_ID}
+              onAddShot={handleAddShot}
+              onUpdateShot={handleUpdateShot}
+              onExportBackup={exportBackup}
+              confirming={confirming}
+              editingShot={activeEditingShot}
+              onDismiss={dismissSheet}
+              shots={shots}
+              draft={
+                activeEditingShot ? draftForShot(activeEditingShot) : draft
+              }
+              liveDraftRef={liveDraft}
+              firstFieldRef={dateFieldRef}
+            />
+          </Modal>
+        )}
+      </div>
 
       <footer className="app-footer">
         <small>

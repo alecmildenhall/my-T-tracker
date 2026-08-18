@@ -1,6 +1,7 @@
 // src/components/ShotListItem.tsx
 import React from "react";
 import type { ShotEntry } from "../types/shot";
+import { formatTimeForDisplay } from "../utils/datetime";
 
 /** Name of the wash keyframes, shared with styles.css. */
 const WASH_ANIMATION = "shot-wash";
@@ -25,7 +26,8 @@ export const ShotListItem: React.FC<ShotListItemProps> = ({
   onWashEnd,
 }) => {
   const dateLabel = shot.date;
-  const timeLabel = shot.time || "—";
+  // Shown the way this device writes times; stored as 24-hour HH:MM either way.
+  const timeLabel = shot.time ? formatTimeForDisplay(shot.time) : "—";
 
   // The row is NOT itself a control, deliberately. Making the whole card
   // activate put a card-sized tap target a thumb's width from the button you

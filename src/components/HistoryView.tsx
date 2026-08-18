@@ -41,6 +41,12 @@ interface HistoryViewProps {
   onEditShot: (shot: ShotEntry) => void;
   /** Returns whether the deletion reached storage. */
   onDeleteShot: (id: string) => boolean;
+  /** id of the shot just changed, if its wash is still owed. History shows the
+   *  wash for the same reason Home does: you are returned to a list and the row
+   *  you touched is the one worth finding. */
+  justChangedId?: string | null;
+  /** Fired when that wash finishes, so the parent can retire the state. */
+  onWashEnd?: () => void;
 }
 
 export const HistoryView: React.FC<HistoryViewProps> = ({
@@ -49,6 +55,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   onQueryChange,
   onEditShot,
   onDeleteShot,
+  justChangedId = null,
+  onWashEnd,
 }) => {
   // Same bounds the log sheet's date field carries, so a filter cannot ask for a
   // range no shot could ever have been saved in. Per render — it reads the clock.
@@ -393,6 +401,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
             <ShotListItem
               key={shot.id}
               shot={shot}
+              justLogged={shot.id === justChangedId}
+              onWashEnd={onWashEnd}
               onEdit={onEditShot}
               onDelete={(id) =>
                 setPendingDelete(page.items.find((s) => s.id === id) ?? null)
