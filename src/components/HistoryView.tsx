@@ -28,7 +28,7 @@ import { toShotDate, shotDateRange } from "../utils/civilDate";
 import { suggestionsFor, normalizeValue } from "../utils/suggestions";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { ShotListItem } from "./ShotListItem";
-import { Modal } from "./Modal";
+import { useDeleteShotConfirm } from "../hooks/useDeleteShotConfirm";
 import { handOffFocus } from "../utils/focus";
 
 /** Pause in typing before the search re-runs. Short — the work is in-memory. */
@@ -67,9 +67,6 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   // row of a dense phone list, there is no undo, and there is no server copy, so
   // one mis-tap permanently loses a logged entry. A confirm is throwaway work and
   // worth it against that.
-  const [pendingDelete, setPendingDelete] = useState<ShotEntry | null>(null);
-  const [deleteFailed, setDeleteFailed] = useState(false);
-  const cancelDeleteRef = useRef<HTMLButtonElement>(null);
   const sectionRef = useRef<HTMLElement>(null);
   const filtersToggleRef = useRef<HTMLButtonElement>(null);
   // Local, not lifted: see HistoryQuery. Owning it here is also what makes the
@@ -163,6 +160,17 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
     [shots, query.filter, limit, debouncedText]
   );
 
+  // Shared with the Home teaser — see useDeleteShotConfirm. Focus goes to the
+  // row that takes the deleted one's place; the hook falls back to the section
+  // when the list is now empty.
+  const { requestDelete, deleteDialog } = useDeleteShotConfirm({
+    onDeleteShot,
+    fallbackFocusRef: sectionRef,
+    onDeleted: (id) => {
+      focusRowAt.current = page.items.findIndex((s) => s.id === id);
+    },
+  });
+
   // Typing must not reset the page window on every keystroke: the list is still
   // showing results for the *old* search until the debounce settles, so an
   // immediate reset collapses 60 visible rows to 20 of the previous results,
@@ -210,24 +218,6 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   // to <body> and strand a keyboard or screen-reader user at the top of a long
   // list. Hand focus to the neighbouring row (or the count line, when the list
   // empties) — the same care the sheet and "Load more" already take.
-  const handleDelete = (id: string) => {
-    // After removal, this index holds what was the next row down.
-    const next = page.items.findIndex((s) => s.id === id);
-    // A refused delete commits nothing, so the shot is still in the list. Closing
-    // the dialog anyway was the worst version of this: it dismissed as though it
-    // had worked, the row stayed put with nothing said, and a later "Try again"
-    // force-wrote the UNCHANGED list, succeeded, and cleared the banner — a green
-    // all-clear over a delete that never happened. Hold the dialog open and say
-    // so, exactly as the log sheet does.
-    if (!onDeleteShot(id)) {
-      setDeleteFailed(true);
-      return;
-    }
-    focusRowAt.current = next;
-    setDeleteFailed(false);
-    setPendingDelete(null);
-  };
-
   return (
     // tabIndex -1 so this can actually receive focus when the delete confirm
     // falls back to it (its row having vanished underneath). Without it,
@@ -404,9 +394,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
               justLogged={shot.id === justChangedId}
               onWashEnd={onWashEnd}
               onEdit={onEditShot}
-              onDelete={(id) =>
-                setPendingDelete(page.items.find((s) => s.id === id) ?? null)
-              }
+              onDelete={() => requestDelete(shot)}
             />
           ))}
         </ul>
@@ -429,49 +417,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
         </button>
       )}
 
-      {pendingDelete && (
-        <Modal
-          labelledBy="delete-shot-title"
-          onClose={() => {
-            setDeleteFailed(false);
-            setPendingDelete(null);
-          }}
-          initialFocusRef={cancelDeleteRef}
-          fallbackFocusRef={sectionRef}
-        >
-          <h3 id="delete-shot-title">Delete this shot?</h3>
-          {deleteFailed && (
-            <p className="dialog-error" role="alert">
-              Couldn’t delete it — this device isn’t accepting changes right now.
-              The shot is still here, and nothing has been altered.
-            </p>
-          )}
-          <p className="dialog-text">
-            The entry from <b>{pendingDelete.date}</b> will be removed from this
-            device. There is no undo, and no copy anywhere else.
-          </p>
-          <div className="dialog-actions">
-            <button
-              ref={cancelDeleteRef}
-              type="button"
-              className="secondary-button"
-              onClick={() => {
-                setDeleteFailed(false);
-                setPendingDelete(null);
-              }}
-            >
-              Keep it
-            </button>
-            <button
-              type="button"
-              className="dialog-danger"
-              onClick={() => handleDelete(pendingDelete.id)}
-            >
-              Delete
-            </button>
-          </div>
-        </Modal>
-      )}
+      {deleteDialog}
     </section>
   );
 };

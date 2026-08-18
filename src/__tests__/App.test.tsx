@@ -872,17 +872,39 @@ describe("App — editing from History", () => {
     });
   });
 
-  it("the Home teaser carries no delete", () => {
+  it("deletes from the Home teaser, through the same confirm History uses", () => {
+    // Delete was kept off this screen because a mis-tap could lose an entry.
+    // The confirm is what makes it two deliberate acts — and one dialog serves
+    // both lists, so a refused write behaves identically wherever you delete
+    // from.
     seedShots([{ id: "a", date: "2026-06-01", notes: "only shot" }]);
     renderApp();
 
-    // Edit is on the teaser now; Delete stays History-only. Editing is
-    // recoverable, deleting is not, and this is the screen you touch most.
-    expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    expect(
+      JSON.parse(localStorage.getItem(STORAGE_KEYS.shots) ?? "[]")
+    ).toHaveLength(1); // the press asks; it does not delete
 
-    goTo("History");
-    expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" })
+    );
+    expect(
+      JSON.parse(localStorage.getItem(STORAGE_KEYS.shots) ?? "[]")
+    ).toHaveLength(0);
+    expect(screen.getByText(/No shots logged yet/i)).toBeInTheDocument();
+  });
+
+  it("does not strand focus when the deleted row was the last one", async () => {
+    // The row that had focus removes itself. CLAUDE.md calls this class
+    // non-negotiable, and the teaser needed its own landing place — the section
+    // — since History's "focus the next row" has nothing to aim at here.
+    seedShots([{ id: "a", date: "2026-06-01", notes: "only shot" }]);
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" })
+    );
+    await expectFocusSettled("after deleting the last teaser row");
   });
 
   it("drops the in-progress edit when the edited shot disappears", () => {

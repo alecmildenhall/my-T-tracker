@@ -676,6 +676,7 @@ const App: React.FC = () => {
               shots={shots}
               onSeeAll={() => navigate("history")}
               onEditShot={openShotFromTeaser}
+            onDeleteShot={deleteShot}
               justLoggedId={washId}
               onWashEnd={() => setWashId(null)}
             />
