@@ -2,16 +2,27 @@
 import React from "react";
 import type { ShotEntry } from "../types/shot";
 
+/** Name of the wash keyframes, shared with styles.css. */
+const WASH_ANIMATION = "shot-wash";
+
 interface ShotListItemProps {
   shot: ShotEntry;
   onDelete?: (id: string) => void;
   onEdit?: (shot: ShotEntry) => void;
+  /** This is the shot that was just logged: play the wash once. */
+  justLogged?: boolean;
+  /** Called when the wash finishes, so the parent can retire the state that
+   *  armed it. Driven by the animation's own end rather than a timer, so the
+   *  2.2s lives only in CSS. */
+  onWashEnd?: () => void;
 }
 
 export const ShotListItem: React.FC<ShotListItemProps> = ({
   shot,
   onDelete,
   onEdit,
+  justLogged = false,
+  onWashEnd,
 }) => {
   const dateLabel = shot.date;
   const timeLabel = shot.time || "—";
@@ -20,7 +31,16 @@ export const ShotListItem: React.FC<ShotListItemProps> = ({
     // tabIndex -1 makes the row a programmatic focus target only (never in the
     // tab order): "Load more" sends focus to the first newly revealed row, since
     // the button it was on may have just unmounted itself.
-    <li className="shot-list-item" tabIndex={-1}>
+    <li
+      className={`shot-list-item${justLogged ? " shot-list-item--washing" : ""}`}
+      tabIndex={-1}
+      // `animationName`, not just "an animation ended": React's onAnimationEnd
+      // bubbles, so any future animation on a descendant would otherwise retire
+      // the wash early. One value, one meaning.
+      onAnimationEnd={(e) => {
+        if (e.animationName === WASH_ANIMATION) onWashEnd?.();
+      }}
+    >
       <header className="shot-list-item__header">
         <div>
           <div className="shot-list-item__date">{dateLabel}</div>

@@ -11,7 +11,10 @@ import type { Backup } from "./shotSchema";
 import { compareShotsChrono } from "./sortShots";
 import { pickProfileFields, pickShotFields } from "./backupDto";
 
-/** Oldest-first, matching how shots are stored and how a reader expects a log. */
+/** Oldest-first, matching how shots are stored and how a reader expects a log.
+ *  Ties (same date, and time is optional) keep the order they were logged in:
+ *  the comparator returns 0 for them and Array#sort is stable, so the stored
+ *  order carries through. */
 function chronological(shots: ShotEntry[]): ShotEntry[] {
   return [...shots].sort(compareShotsChrono);
 }

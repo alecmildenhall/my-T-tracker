@@ -10,6 +10,7 @@ import { toCsv, toJson } from "../utils/exportData";
 import { parseBackup } from "../utils/importData";
 import { backupFilename, tryDownloadTextFile } from "../utils/download";
 import { pluralizeEntries } from "../utils/format";
+import type { SkippedEntry } from "../utils/importData";
 import { hasProfileData, pickProfileFields } from "../utils/backupDto";
 import { Modal } from "./Modal";
 
@@ -29,13 +30,46 @@ interface DataManagementProps {
 type Status =
   | { kind: "idle" }
   | { kind: "error"; message: string }
-  | { kind: "success"; message: string };
+  // `skipped` lists what a restore could not use; `note` closes off underneath
+  // it. They are separate because the note is NOT one of the skipped entries —
+  // rendered into the same list it read as a fourth bullet claiming to be one.
+  | { kind: "success"; message: string; skipped?: string[]; note?: string };
 
 /** Pending import awaiting the user's confirmation to replace existing data. */
 interface PendingImport {
   incoming: ShotEntry[];
   incomingProfile: Profile;
   currentCount: number;
+  /** Entries the file held that the restore cannot use — see parseBackup. */
+  skipped: SkippedEntry[];
+  /** Entries the file held in total, from the parser rather than re-derived. */
+  total: number;
+  /** The file's profile was unreadable, so this device's own is kept. */
+  profileUnreadable: boolean;
+}
+
+/**
+ * How many skipped entries to name before summarising the rest. Enough to be
+ * useful for the realistic case (a typo or two), few enough that a badly corrupt
+ * file cannot bury the count that matters under a wall of bullets.
+ */
+const MAX_LISTED_SKIPS = 5;
+
+/**
+ * One skipped entry, in a sentence. Named by the date the user typed where that
+ * is readable, because that is what they recognise; by position only when the
+ * date is the unreadable part.
+ */
+const describeSkipped = (entry: SkippedEntry): string =>
+  entry.date
+    ? `An entry dated ${entry.date} — ${entry.reason}.`
+    : `The ${ordinal(entry.position)} entry in the file — ${entry.reason}.`;
+
+/** 1st, 2nd, 3rd… for naming an entry with no readable date. */
+function ordinal(n: number): string {
+  const rest = n % 100;
+  if (rest >= 11 && rest <= 13) return `${n}th`;
+  return `${n}${["th", "st", "nd", "rd"][n % 10] ?? "th"}`;
 }
 
 const EXPORT_ERROR =
@@ -82,9 +116,12 @@ export const DataManagement: React.FC<DataManagementProps> = ({
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Clear any pending flash timer on unmount.
-  useEffect(() => () => {
-    if (flashTimer.current) clearTimeout(flashTimer.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (flashTimer.current) clearTimeout(flashTimer.current);
+    },
+    [],
+  );
 
   const flash = (which: "json" | "csv") => {
     setFlashed(which);
@@ -97,7 +134,7 @@ export const DataManagement: React.FC<DataManagementProps> = ({
       !tryDownloadTextFile(
         toJson(shots, profile),
         backupFilename("t-shot-backup", "json"),
-        "application/json"
+        "application/json",
       )
     ) {
       setStatus({ kind: "error", message: EXPORT_ERROR });
@@ -112,7 +149,7 @@ export const DataManagement: React.FC<DataManagementProps> = ({
       !tryDownloadTextFile(
         toCsv(shots),
         backupFilename("t-shot-export", "csv"),
-        "text/csv"
+        "text/csv",
       )
     ) {
       setStatus({ kind: "error", message: EXPORT_ERROR });
@@ -123,7 +160,7 @@ export const DataManagement: React.FC<DataManagementProps> = ({
   };
 
   const handleFileChosen = async (
-    event: React.ChangeEvent<HTMLInputElement>
+    event: React.ChangeEvent<HTMLInputElement>,
   ) => {
     const file = event.target.files?.[0];
     // Reset the input so choosing the same file again still fires onChange.
@@ -152,6 +189,9 @@ export const DataManagement: React.FC<DataManagementProps> = ({
       incoming: result.shots,
       incomingProfile: result.profile,
       currentCount: shots.length,
+      skipped: result.skipped,
+      total: result.total,
+      profileUnreadable: result.profileUnreadable,
     });
   };
 
@@ -167,7 +207,7 @@ export const DataManagement: React.FC<DataManagementProps> = ({
       !tryDownloadTextFile(
         toJson(shots, profile),
         backupFilename("t-shot-backup-before-import", "json"),
-        "application/json"
+        "application/json",
       )
     ) {
       setStatus({ kind: "error", message: IMPORT_BACKUP_ERROR });
@@ -183,7 +223,14 @@ export const DataManagement: React.FC<DataManagementProps> = ({
       setPending(null);
       return;
     }
-    if (!onReplaceProfile(pending.incomingProfile)) {
+    // Only when the file actually carried a readable one. A profile is a single
+    // object, so there is nothing partial to salvage — replacing it with `{}`
+    // would clear the name and shot day this device already holds, in exchange
+    // for nothing. Keeping them is the lesser wrong, and it is said out loud.
+    if (
+      !pending.profileUnreadable &&
+      !onReplaceProfile(pending.incomingProfile)
+    ) {
       setStatus({ kind: "error", message: IMPORT_PARTIAL_ERROR });
       setPending(null);
       return;
@@ -204,15 +251,47 @@ export const DataManagement: React.FC<DataManagementProps> = ({
     // under the single generic "profile was updated" message; there is no
     // per-field messaging.
     const profileChanged =
+      !pending.profileUnreadable &&
       JSON.stringify(knownCurrent) !== JSON.stringify(pending.incomingProfile);
 
-    let message = `Restored ${pluralizeEntries(pending.incoming.length)} from backup.`;
+    const restored = pending.incoming.length;
+    // "43 of 44" only when the two differ. Saying "restored 44 of 44" on every
+    // clean import would invite the reader to look for a problem that isn't
+    // there.
+    let message =
+      pending.skipped.length === 0
+        ? `Restored ${pluralizeEntries(restored)} from backup.`
+        : `Restored ${restored} of ${pending.total} entries from backup.`;
     if (profileChanged) {
       message += incomingHasData
         ? " Your profile was updated."
         : " Your saved profile was cleared.";
     }
-    setStatus({ kind: "success", message });
+    if (pending.profileUnreadable) {
+      message +=
+        " The saved profile in the file couldn’t be read, so the one on this device was kept.";
+    }
+
+    // The count alone is what makes leniency safe rather than data quietly
+    // vanishing, so what was skipped is named — and the file is untouched, which
+    // is the fact that decides whether any of this matters.
+    const extra = pending.skipped.length - MAX_LISTED_SKIPS;
+    const skippedLines =
+      pending.skipped.length === 0
+        ? undefined
+        : [
+            ...pending.skipped.slice(0, MAX_LISTED_SKIPS).map(describeSkipped),
+            ...(extra > 0
+              ? [`…and ${extra} more ${extra === 1 ? "entry" : "entries"}.`]
+              : []),
+          ];
+    const note =
+      pending.skipped.length === 0
+        ? undefined
+        : `Your backup file is unchanged, so nothing is lost — you can add ${
+            pending.skipped.length === 1 ? "that shot" : "those shots"
+          } again whenever you like.`;
+    setStatus({ kind: "success", message, skipped: skippedLines, note });
     setPending(null);
   };
 
@@ -253,21 +332,57 @@ export const DataManagement: React.FC<DataManagementProps> = ({
       </div>
 
       <p className="data-warning">
-        Backups are <b>not encrypted</b> — anyone who opens the file can read your
-        entries and your profile (including your name, if you set one). Save them
-        somewhere private, and only import files you exported yourself.
+        Backups are <b>not encrypted</b> — anyone who opens the file can read
+        your entries and your profile (including your name, if you set one).
+        Save them somewhere private, and only import files you exported
+        yourself.
       </p>
 
-      {status.kind !== "idle" && (
-        <p
-          className={
-            status.kind === "error" ? "data-status--error" : "data-status--ok"
-          }
-          role="status"
-        >
-          {status.message}
-        </p>
-      )}
+      {/* ALWAYS mounted, empty while idle. A live region announces CHANGES to
+          its contents, not a region that appears already populated — so mounting
+          it together with its text meant a screen-reader user could press
+          Replace and hear nothing about the entries that were skipped, which is
+          the one piece of information the leniency depends on surfacing.
+          `handleFileChosen` sets `idle` before opening the confirm dialog, so
+          the region was guaranteed absent right up to the moment it was filled.
+          Same rule the acknowledgement's portalled region follows in App.tsx —
+          written down there, and then not followed here.
+
+          One region around both parts: the message and the list of skipped
+          entries are one announcement, and splitting them would either read the
+          list without its headline or announce twice. */}
+      <div role="status">
+        {status.kind !== "idle" && (
+          <>
+            <p
+              className={
+                status.kind === "error"
+                  ? "data-status--error"
+                  : "data-status--ok"
+              }
+            >
+              {status.message}
+            </p>
+            {status.kind === "success" && status.skipped && (
+              <ul className="data-status__details">
+                {/* Keyed by index, not by the text: two entries can fail the
+                    same way on the same date and produce an identical sentence,
+                    and React treats duplicate keys as a bug — it warns, and its
+                    reconciliation for those children is undefined. (It does
+                    still render both, so this is a correctness-of-the-contract
+                    fix, not a visibly missing bullet.) The list is built once
+                    and never reordered, so the index is stable. */}
+                {status.skipped.map((line, i) => (
+                  <li key={i}>{line}</li>
+                ))}
+              </ul>
+            )}
+            {status.kind === "success" && status.note && (
+              <p className="data-status__note">{status.note}</p>
+            )}
+          </>
+        )}
+      </div>
 
       {pending && (
         <Modal
@@ -280,10 +395,23 @@ export const DataManagement: React.FC<DataManagementProps> = ({
           <p className="dialog-text">
             This replaces your current{" "}
             <b>{pluralizeEntries(pending.currentCount)}</b> with{" "}
-            <b>{pluralizeEntries(pending.incoming.length)}</b> from the backup. A
-            backup of your current data downloads first — keep that file so you
-            can undo this.
+            <b>{pluralizeEntries(pending.incoming.length)}</b> from the backup.
+            A backup of your current data downloads first — keep that file so
+            you can undo this.
           </p>
+          {pending.skipped.length > 0 && (
+            // Said before the destructive step, not only in the report after it.
+            // "Replace 12 entries with 43" is a different decision from "replace
+            // 12 with 43, and one in the file cannot be restored", and the second
+            // is the one actually on offer.
+            <p className="dialog-text">
+              <b>
+                {pluralizeEntries(pending.skipped.length)} in the backup can’t
+                be restored
+              </b>{" "}
+              and will be skipped. Your backup file isn’t changed.
+            </p>
+          )}
           <div className="dialog-actions">
             <button
               ref={cancelRef}

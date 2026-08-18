@@ -10,6 +10,10 @@
   --accent: #0ea5e9;
   --accent-soft: rgba(14, 165, 233, 0.15);
   --danger: #f97373;
+  /* The affirming green. Same hue the primary button already ends on, so the
+     acknowledgement reads as the app's own voice rather than a new signal. */
+  --success: #4ade80;
+  --success-wash: rgba(74, 222, 128, 0.16);
   /* Subtle neutral surface, defined once. Used for the resting suggestion chip
      and for the hover/press ("engaged") fill of neutral buttons, so those
      surfaces stay in sync and can never drift apart. */
@@ -28,6 +32,43 @@
 *::before,
 *::after {
   box-sizing: border-box;
+}
+
+html {
+  /* Tells the browser this page is dark, which is not decoration: it is what
+     paints the surfaces the page does not own — the canvas behind an elastic
+     overscroll bounce, the scrollbar track, and native form controls. Left at
+     `normal` the browser assumes light, which is why scrolling up past the top
+     revealed a white band above a black app. */
+  color-scheme: dark;
+
+  /* A real base COLOUR, not just the gradient.
+     `body` carried only a radial-gradient — a background *image* — and an image
+     paints nothing outside the element's own box. The canvas underneath was
+     therefore transparent, so anything the browser exposed beyond the document
+     came out white. Measured by letting the document stop short of the viewport:
+     the remainder rendered #fff.
+     Setting a colour here stops `body`'s gradient propagating to the canvas
+     (propagation only happens while the root has no background of its own), which
+     is exactly what we want: the canvas gets this flat colour and `body` paints
+     its gradient on its own box, so the page itself looks unchanged.
+     Same first stop as the gradient, so the seam at the top — where overscroll
+     actually happens — is invisible.
+     This is the second time a gradient's missing base colour has cost a bug; the
+     first was the row wash, which animated a background-color underneath an
+     opaque background-image and was invisible for its whole 2.2s. */
+  background-color: #020617;
+
+  /* Reserve the scrollbar's space whether or not a scrollbar is showing, so that
+     hiding it never changes the layout width. Modal locks the page with
+     `overflow: hidden` while a sheet is open; without this, the desktop
+     scrollbar vanishes, the layout gains ~15px, and everything centred by
+     `margin: 0 auto` — the app itself and the sheet inside its overlay — jumps
+     right on open and back on close. Measured at 1280x600: 172.5px → 180px.
+     It also settles the same jump between tabs when one scrolls and another
+     doesn't. No effect where scrollbars are overlays (phones, macOS by
+     default), since there is no width to reserve. */
+  scrollbar-gutter: stable;
 }
 
 body {
@@ -79,6 +120,13 @@ body {
   font-weight: 600;
   color: var(--text);
   text-wrap: balance;
+}
+
+/* "Logged for you." — the acknowledgement takes over the greeting slot. Colour
+   only; the words carry the meaning, so nothing depends on seeing the green
+   (WCAG 1.4.1). */
+.greeting--acknowledged {
+  color: var(--success);
 }
 
 .app-footer {
@@ -329,6 +377,8 @@ textarea {
 /* Shot list */
 
 .shot-list-item {
+  /* Anchors the wash overlay in ::after — see the acknowledgement block. */
+  position: relative;
   padding: 0.75rem 0.85rem;
   border-radius: var(--radius-md);
   border: 1px solid rgba(31, 41, 55, 0.9);
@@ -362,7 +412,11 @@ textarea {
 .history:focus-visible,
 .manage-values:focus-visible,
 .shot-form__title:focus-visible,
-.app-title:focus-visible {
+.app-title:focus-visible,
+/* Where "Remove start date" hands focus once it removes itself — added with
+   that control, because a hand-off target with no ring is a keyboard user
+   losing their place silently (WCAG 2.4.7). */
+.settings-section__title:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -796,6 +850,31 @@ textarea {
   color: var(--danger);
 }
 
+/* What a restore could not use. Muted rather than red: nothing here went wrong
+   with the app or the device — some entries in the file are unusable, the rest
+   were restored, and the file itself is untouched. Alarm colour would overstate
+   it and pull the eye off the headline count, which is the part that matters. */
+.data-status__details {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.data-status__details li {
+  margin-bottom: 0.25rem;
+}
+
+/* Closes off the list rather than joining it: this is the reassurance, not
+   another thing that went wrong. */
+.data-status__note {
+  margin: 0.35rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
 /* Bottom tab bar */
 
 /* Drawn INSIDE the bar. `.tabbar` is fixed to the left, right and bottom edges
@@ -1135,7 +1214,7 @@ textarea {
    Durations/curves follow Material's emphasized set:
      enter  300ms decelerate (fast off the mark, gentle settle — reads as weight
             arriving rather than stopping dead)
-     exit   200ms accelerate (deliberately quicker: entering teaches you where
+     exit   240ms accelerate (deliberately quicker: entering teaches you where
             the sheet lives, leaving you have already decided)
    Only `transform` and `opacity` animate, so the whole thing is composited and
    never triggers layout. Transitions are interruptible for free: close mid-open
@@ -1158,13 +1237,13 @@ textarea {
 }
 
 .dialog-overlay--sheet.is-closing {
-  transition-duration: 200ms;
+  transition-duration: 240ms;
 }
 
 /* A sheet on its way out takes no more input. The handlers also guard on
    `closing`, but this stops the press landing at all — the sheet is portaled
    outside the inert app root, so its own Save button would otherwise stay
-   clickable for the whole 200ms slide. */
+   clickable for the whole 240ms slide. */
 .dialog-overlay--sheet.is-closing {
   pointer-events: none;
 }
@@ -1175,7 +1254,7 @@ textarea {
    exit would snap instead of fading. */
 .dialog--sheet.is-closing {
   transition-property: transform;
-  transition-duration: 200ms;
+  transition-duration: 240ms;
   transition-timing-function: cubic-bezier(0.3, 0, 0.8, 0.15);
 }
 
@@ -1423,4 +1502,100 @@ textarea {
   color: var(--text);
   font-size: 0.8rem;
   line-height: 1.45;
+}
+
+
+/* ---- Post-log acknowledgement ------------------------------------------- */
+
+/* The Yellow Fade Technique: the row that just arrived is tinted, then the tint
+   decays. The HOLD is what makes it read as a flash rather than a slow wash —
+   fading from the first frame does not land. 20% of 2.2s is ~440ms at full tint.
+
+   Painted by an ::after overlay, NOT by animating the row's background-color.
+   `.shot-list-item` sets `background: radial-gradient(...)`, and a background
+   IMAGE always paints over background-color — so an animated colour underneath
+   it is invisible for the whole 2.2s while `getComputedStyle().backgroundColor`
+   reports it changing perfectly. Verified by screenshot, which is the only thing
+   that can answer "can you see it".
+
+   Animating opacity also keeps this on the compositor instead of repainting the
+   gradient 60 times a second. */
+@keyframes shot-wash {
+  0%,
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.shot-list-item--washing::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--success-wash);
+  pointer-events: none;
+  /* `forwards` is load-bearing, not tidiness. Without a fill mode the animation
+     stops applying the instant it ends and opacity reverts to its underlying
+     value — 1, since nothing else sets it — so the overlay snapped back to FULL
+     tint and held there until React's onAnimationEnd re-render dropped the
+     class a frame or more later. The last thing you saw was a green flash,
+     which is the exact opposite of a fade. */
+  animation: shot-wash 2200ms ease-out forwards;
+  /* Animation events from a pseudo-element are dispatched to the originating
+     element, so the row's onAnimationEnd still hears this and can retire the
+     state that armed it. */
+}
+
+/* Reduced motion: the tint stays, the decay goes. Still an ANIMATION, not a
+   static class — `step-end` holds it for the full duration and then ends, so
+   `animationend` still fires and there is one retirement path rather than two.
+   Dropping the animation entirely would leave the row tinted forever, because
+   nothing would ever tell React the wash was over. */
+@media (prefers-reduced-motion: reduce) {
+  @keyframes shot-wash {
+    0% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 1;
+    }
+  }
+
+  .shot-list-item--washing::after {
+    /* `forwards` again, and it has to be repeated: this is the `animation`
+       SHORTHAND, so it resets fill-mode to `none` and would reintroduce the
+       revert-to-opacity-1 above. Here the last keyframe is the held tint, so
+       forwards simply keeps it until the class goes. */
+    animation: shot-wash 2200ms step-end forwards;
+  }
+}
+
+/* The ✓ beat between a successful save and the sheet leaving. Flat success
+   green, no gradient and no transform: anything that springs or overshoots reads
+   as the screen acting under its own power rather than answering you.
+
+   `transition: none` because `.primary-button` transitions background-color over
+   150ms. The gradient (a background-IMAGE) drops instantly while the colour
+   interpolates from transparent, so for most of a 200ms beat the button was a
+   hole showing the card behind it with near-invisible text on top. The ✓ has to
+   land flat, not fade in. */
+.shot-form__save--confirmed {
+  background: var(--success);
+  color: #052e16;
+  transition: none;
+  cursor: default;
+}
+
+/* The press feedback goes with the press. `.primary-button:active` squeezes to
+   0.97 and brightens, and those kept applying through the ✓ — so a second tap on
+   "✓ Saved" answered like a live button while the submit was being dropped,
+   which is the one thing this beat must not do: it is there to say the save
+   landed, not to look like it is taking another one. `cursor: default` was
+   already saying so and the animation was contradicting it. */
+.shot-form__save--confirmed:active {
+  transform: none;
+  filter: none;
 }

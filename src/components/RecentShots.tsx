@@ -15,9 +15,18 @@ export const TEASER_COUNT = 3;
 interface RecentShotsProps {
   shots: ShotEntry[];
   onSeeAll: () => void;
+  /** id of the shot just logged, if its wash is still owed. */
+  justLoggedId?: string | null;
+  /** Fired when that wash finishes. */
+  onWashEnd?: () => void;
 }
 
-export const RecentShots: React.FC<RecentShotsProps> = ({ shots, onSeeAll }) => {
+export const RecentShots: React.FC<RecentShotsProps> = ({
+  shots,
+  onSeeAll,
+  justLoggedId = null,
+  onWashEnd,
+}) => {
   const recent = takeRecent(shots, TEASER_COUNT);
 
   return (
@@ -38,7 +47,12 @@ export const RecentShots: React.FC<RecentShotsProps> = ({ shots, onSeeAll }) => 
       ) : (
         <ul>
           {recent.map((shot) => (
-            <ShotListItem key={shot.id} shot={shot} />
+            <ShotListItem
+              key={shot.id}
+              shot={shot}
+              justLogged={shot.id === justLoggedId}
+              onWashEnd={onWashEnd}
+            />
           ))}
         </ul>
       )}

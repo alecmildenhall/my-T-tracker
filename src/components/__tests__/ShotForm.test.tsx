@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { ShotForm, type ShotDraft } from "../ShotForm";
 import type { ShotEntry } from "../../types/shot";
 import { todayLocalISO } from "../../utils/datetime";
+import { isShotDateInRange, shotDateRange } from "../../utils/civilDate";
 
 beforeEach(() => {
   localStorage.clear();
@@ -40,53 +41,87 @@ describe("ShotForm suggestion chips", () => {
     expect(screen.queryByRole("button", { name: "cottonseed" })).toBeNull();
   });
 
-  it("keeps only dose/type/oil filled after adding, and clears injection site", () => {
+  // These two used to save and then assert on the SAME mounted form, because the
+  // form cleared its own fields after a successful save. That reset is gone: it
+  // was only ever reachable while the sheet was leaving, and with the ✓ beat
+  // holding the sheet still for 440ms the user watched their entry empty itself
+  // under a message saying it had been saved.
+  //
+  // The behaviour they were guarding is unchanged and still worth guarding —
+  // it is just delivered by the next MOUNT, seeded from history through
+  // carryForward, which is what the sheet actually does on every open. So they
+  // now save, then render the form again with the saved shot in history.
+  const saveAndReopen = (onAddShot: ReturnType<typeof vi.fn>) => {
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+    expect(onAddShot).toHaveBeenCalledTimes(1);
+    return onAddShot.mock.calls[0][0] as ShotEntry;
+  };
+
+  it("carries dose/type/oil into the next shot, but not the injection site", () => {
     const onAddShot = vi.fn();
-    render(<ShotForm onAddShot={onAddShot} shots={history} />);
+    const first = render(<ShotForm onAddShot={onAddShot} shots={history} />);
 
     fireEvent.click(screen.getByRole("button", { name: "50" }));
     fireEvent.click(screen.getByRole("button", { name: "cypionate" }));
     fireEvent.click(screen.getByRole("button", { name: "cottonseed" }));
     fireEvent.click(screen.getByRole("button", { name: "thigh" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+    const saved = saveAndReopen(onAddShot);
+    first.unmount();
 
-    expect(onAddShot).toHaveBeenCalledTimes(1);
-
-    const doseInput = screen.getByPlaceholderText("e.g. 50") as HTMLInputElement;
-    const siteInput = screen.getByPlaceholderText(
-      /thigh, glute, stomach/i
-    ) as HTMLInputElement;
+    render(<ShotForm onAddShot={vi.fn()} shots={[...history, saved]} />);
 
     // Values that stay the same shot-to-shot persist, so a repeat needs no re-entry.
-    expect(doseInput.value).toBe("50");
+    expect((screen.getByPlaceholderText("e.g. 50") as HTMLInputElement).value).toBe("50");
     expect(esterInput().value).toBe("cypionate");
     expect(oilInput().value).toBe("cottonseed");
-    // Injection site clears — it's commonly rotated.
-    expect(siteInput.value).toBe("");
+    // Injection site does not — it's commonly rotated.
+    expect(
+      (screen.getByPlaceholderText(/thigh, glute, stomach/i) as HTMLInputElement).value
+    ).toBe("");
   });
 
-  it("clears per-shot fields (site, position, pain, mood, notes) after adding", () => {
+  it("starts the next shot with per-shot fields empty (site, position, pain, mood, notes)", () => {
     const onAddShot = vi.fn();
-    render(<ShotForm onAddShot={onAddShot} shots={history} />);
+    const first = render(<ShotForm onAddShot={onAddShot} shots={history} />);
 
-    const site = screen.getByPlaceholderText(/thigh, glute, stomach/i) as HTMLInputElement;
-    const position = screen.getByPlaceholderText(/left, right, upper left/i) as HTMLInputElement;
-    const pain = screen.getByPlaceholderText("e.g. 3") as HTMLInputElement;
-    const mood = screen.getByPlaceholderText(/low, okay, good/i) as HTMLInputElement;
-    const notes = screen.getByPlaceholderText(/remember for later/i) as HTMLTextAreaElement;
-    fireEvent.change(site, { target: { value: "bicep" } });
-    fireEvent.change(position, { target: { value: "left" } });
-    fireEvent.change(pain, { target: { value: "4" } });
-    fireEvent.change(mood, { target: { value: "good" } });
-    fireEvent.change(notes, { target: { value: "felt fine" } });
+    fireEvent.change(screen.getByPlaceholderText(/thigh, glute, stomach/i), {
+      target: { value: "bicep" },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/left, right, upper left/i), {
+      target: { value: "left" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("e.g. 3"), { target: { value: "4" } });
+    fireEvent.change(screen.getByPlaceholderText(/low, okay, good/i), {
+      target: { value: "good" },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/remember for later/i), {
+      target: { value: "felt fine" },
+    });
 
-    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+    // Still on screen at the moment of saving: the sheet is visibly there for the
+    // ✓ and the slide, and blanking the entry under a success message reads as
+    // losing it.
+    const saved = saveAndReopen(onAddShot);
+    expect(
+      (screen.getByPlaceholderText(/remember for later/i) as HTMLTextAreaElement).value
+    ).toBe("felt fine");
+    first.unmount();
 
-    expect(site.value).toBe("");
-    expect(position.value).toBe("");
-    expect(pain.value).toBe("");
-    expect(mood.value).toBe("");
-    expect(notes.value).toBe("");
+    render(<ShotForm onAddShot={vi.fn()} shots={[...history, saved]} />);
+
+    expect(
+      (screen.getByPlaceholderText(/thigh, glute, stomach/i) as HTMLInputElement).value
+    ).toBe("");
+    expect(
+      (screen.getByPlaceholderText(/left, right, upper left/i) as HTMLInputElement).value
+    ).toBe("");
+    expect((screen.getByPlaceholderText("e.g. 3") as HTMLInputElement).value).toBe("");
+    expect(
+      (screen.getByPlaceholderText(/low, okay, good/i) as HTMLInputElement).value
+    ).toBe("");
+    expect(
+      (screen.getByPlaceholderText(/remember for later/i) as HTMLTextAreaElement).value
+    ).toBe("");
   });
 
   it("offers a dose chip from history and fills the dose field when tapped", () => {
@@ -214,6 +249,61 @@ describe("ShotForm field mapping", () => {
     // Typing a date clears the message as you go, not only on the next submit.
     fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-06-15" } });
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("refuses a mistyped year, and says it is the year", () => {
+    // The failure this exists for: browsers auto-fill the segments you have not
+    // typed, so `08` into a cleared field yields `0008-08-05` — the year read as
+    // a day. `0999` and `9999` reached storage in a browser pass, and from there
+    // History, the CSV a provider reads, and (once charts land) an axis spanning
+    // a millennium.
+    //
+    // Out of range gets its OWN message: "not a real calendar date" is both
+    // wrong — 0999-01-01 is a real date — and no help in spotting the year as
+    // the thing that slipped.
+    const onAddShot = vi.fn();
+    render(<ShotForm onAddShot={onAddShot} />);
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: "0999-01-01" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+
+    expect(onAddShot).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent(/Check the year/);
+    expect(screen.getByLabelText("Date")).toHaveAttribute("aria-invalid", "true");
+
+    // The message names the boundary DATES, not their years. It used to say
+    // "1900 to 2027" while the real bound was 2027-08-13 — so a date late in
+    // the final year was refused by a message listing the very year that had
+    // just been typed, leaving nothing to work out.
+    const { min, max } = shotDateRange();
+    expect(screen.getByRole("alert")).toHaveTextContent(min);
+    expect(screen.getByRole("alert")).toHaveTextContent(max);
+
+    // No sibling assertion for the "not a real calendar date" message here: an
+    // `input[type=date]` cannot hold one. Setting "2026-02-30" leaves the value
+    // EMPTY (jsdom and browsers alike refuse it), so that path answers with the
+    // blank-date message instead — which is correct, and is why the impossible-
+    // date branch is only reachable from a restored draft string, not the
+    // picker. Asserting it through this input would have been testing jsdom.
+
+    // Correcting the year saves.
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: "2026-06-15" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+    expect(onAddShot).toHaveBeenCalledTimes(1);
+    expect(onAddShot.mock.calls[0][0].date).toBe("2026-06-15");
+  });
+
+  it("bounds the date picker to the range it will accept", () => {
+    // The attributes are a hint, not the check (the form carries `noValidate`),
+    // but a picker that offers a date the form then refuses is worse than no
+    // bound at all — so they must agree with isShotDateInRange.
+    render(<ShotForm onAddShot={vi.fn()} />);
+    const date = screen.getByLabelText("Date");
+    expect(isShotDateInRange(date.getAttribute("min")!)).toBe(true);
+    expect(isShotDateInRange(date.getAttribute("max")!)).toBe(true);
   });
 
   it("carries forward from the newest shot whatever order the array is in", () => {
@@ -822,5 +912,36 @@ describe("the in-sheet export button", () => {
     fireEvent.click(screen.getByRole("button", { name: "Export a backup" }));
 
     expect(screen.getByRole("alert")).not.toHaveTextContent(/download didn.t start/i);
+  });
+});
+
+describe("the confirm beat", () => {
+  it("refuses to submit again while the ✓ is showing", () => {
+    // `aria-disabled` is advisory — it tells assistive tech the control is
+    // inert and does nothing functionally, so something has to make it true.
+    // Not `disabled`, which would blur the focused button and drop focus to
+    // <body> for the whole confirm plus exit.
+    const onAddShot = vi.fn(() => "saved" as const);
+    render(<ShotForm onAddShot={onAddShot} confirming shots={[]} />);
+
+    // "Saved", not "✓ Saved": the tick is aria-hidden, so it stays out of the
+    // accessible name instead of announcing as "check mark Saved".
+    const button = screen.getByRole("button", { name: "Saved" });
+    expect(button).toHaveTextContent("✓"); // ...still on screen, though
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    expect(button).not.toBeDisabled(); // still focusable
+
+    fireEvent.click(button);
+
+    expect(onAddShot).not.toHaveBeenCalled();
+  });
+
+  it("submits normally once the beat has passed", () => {
+    const onAddShot = vi.fn(() => "saved" as const);
+    render(<ShotForm onAddShot={onAddShot} shots={[]} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+
+    expect(onAddShot).toHaveBeenCalledTimes(1);
   });
 });

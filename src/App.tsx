@@ -1,10 +1,12 @@
 // src/App.tsx
 import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ShotForm, type ShotDraft } from "./components/ShotForm";
 import { Settings } from "./components/Settings";
-import { Greeting } from "./components/Greeting";
+import { Greeting, ACKNOWLEDGEMENT } from "./components/Greeting";
 import { TabBar } from "./components/TabBar";
-import { RecentShots } from "./components/RecentShots";
+import { RecentShots, TEASER_COUNT } from "./components/RecentShots";
+import { takeRecent } from "./utils/shotQuery";
 import { HistoryView } from "./components/HistoryView";
 import { emptyHistoryQuery, type HistoryQuery } from "./utils/historyQuery";
 import { Modal, SHEET_EXIT_MS } from "./components/Modal";
@@ -17,6 +19,15 @@ import type { SaveOutcome } from "./components/ShotForm";
 import type { View } from "./types/view";
 
 const SHEET_HEADING_ID = "shot-sheet-title";
+
+/**
+ * How long the ✓ shows before the sheet starts leaving.
+ *
+ * Inside the 100–300ms band that reads as an answer to what you just did rather
+ * than a pause. Save to sheet-gone is therefore CONFIRM_MS + SHEET_EXIT_MS,
+ * which is the point: the sheet used to vanish before the press had registered.
+ */
+export const CONFIRM_MS = 200;
 
 const VIEW_TITLES: Record<View, string> = {
   home: "T-Shot Tracker",
@@ -38,6 +49,13 @@ const App: React.FC = () => {
   // forget the scroll reset — "See all" used to, and opened History at whatever
   // offset Home was scrolled to.
   const navigate = (next: View) => {
+    // Leaving Home is a deliberate action, so the acknowledgement has done its
+    // job: the greeting or milestone comes back. This also retires the wash,
+    // which matters because Home UNMOUNTS when you leave it — a wash still armed
+    // would replay from the start on every return, the same nuisance the
+    // milestone celebration avoids by firing once on the crossing.
+    setAcknowledgedId(null);
+    setWashId(null);
     setView(next);
     // Each tab is a separate destination, so it starts at its own top. Without
     // this you land mid-page in the new view — scrolled deep into History,
@@ -49,6 +67,75 @@ const App: React.FC = () => {
   // only: deliberately not persisted, so a fresh launch is never pre-filtered.
   const [historyQuery, setHistoryQuery] =
     useState<HistoryQuery>(emptyHistoryQuery);
+
+  // The post-log acknowledgement, in two pieces because they have two lifetimes.
+  //
+  // `acknowledgedId` drives the line in the greeting slot and waits for the next
+  // deliberate action. `washId` drives the row's colour wash and retires when the
+  // animation itself ends — the 2.2s lives in CSS only, so there is no duration
+  // to keep in sync. Both are in-memory: reopening the app is one of the things
+  // that should bring the greeting back.
+  //
+  // Ids rather than booleans: the wash has to know WHICH row, and the same value
+  // then tells the line that a save has just happened.
+  const [acknowledgedId, setAcknowledgedId] = useState<string | null>(null);
+  const [washId, setWashId] = useState<string | null>(null);
+  // Whether the app has been hidden since the save that is currently waiting to
+  // acknowledge. Recorded when it happens rather than asked for later, because
+  // by the time the pending callback runs the answer has changed back. Declared
+  // here, with the state it governs and above the effect that writes it.
+  const hiddenWhilePending = useRef(false);
+
+  // The third thing that retires the acknowledgement, alongside opening the form
+  // and changing tab: coming back to the app.
+  //
+  // A reload would clear it for free, since both pieces are in memory — but
+  // "reopening the app" mostly is not a reload. Switching apps and returning, or
+  // leaving the tab open overnight, keeps this component mounted, and the line
+  // has no timer. Log a shot the evening before a milestone and the next morning
+  // Home still reads "Logged for you." with "Congrats on 1 year on T" waiting
+  // behind it — the one message the acknowledgement is supposed to defer to, not
+  // eclipse.
+  //
+  // `visibilitychange` only fires on a change, so becoming visible means it had
+  // been hidden. The wash goes too, for the reason navigate() retires it: it may
+  // have been paused mid-animation while the tab was in the background, and a
+  // half-played wash finishing on return is a flash with nothing behind it.
+  // A wash only exists as an animation on a teaser row, so it is retired the
+  // moment no teaser row carries it. `animationend` is the ONLY other thing that
+  // retires it, and there are two ways a row never sends one:
+  //
+  //   - it never mounts. A backdated entry logged behind three newer ones is not
+  //     in the teaser at all.
+  //   - it unmounts mid-animation. Another tab deleting a shot, or a backup
+  //     import, arrives through the storage listener at any moment.
+  //
+  // Either way the id sat armed, waiting for the teaser to change underneath it
+  // — and when it did, that weeks-old entry slid into view and played a full
+  // 2.2s wash for something nobody had just logged. Asking the question once,
+  // here, covers both ends; checking only at arming time covered one.
+  useEffect(() => {
+    if (washId === null) return;
+    const onScreen = takeRecent(shots, TEASER_COUNT).some((s) => s.id === washId);
+    if (!onScreen) setWashId(null);
+  }, [washId, shots]);
+
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== "visible") {
+        // Going away cancels an acknowledgement that has not landed yet, as well
+        // as retiring one that has. Both are the same rule — the line waits for
+        // your next deliberate action, and leaving is one.
+        hiddenWhilePending.current = true;
+        return;
+      }
+      setAcknowledgedId(null);
+      setWashId(null);
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () =>
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, []);
   const titleRef = useRef<HTMLHeadingElement>(null);
   // Initial focus goes to the first field, not the sheet's own Close button —
   // landing on Close means a stray Enter dismisses the form you just opened.
@@ -101,6 +188,11 @@ const App: React.FC = () => {
   // out. The sheet stays mounted (and marked `closing`) for exactly the
   // transition's length, then goes.
   const [closing, setClosing] = useState(false);
+  // Bumped by every openSheet, and part of the new-shot form's key, so opening
+  // always gets a form seeded from scratch — see openSheet.
+  const [openCount, setOpenCount] = useState(0);
+  // True for the ✓ beat between a successful save and the sheet leaving.
+  const [confirming, setConfirming] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // The same fact as `closing`, held in a ref because the guards below need it
   // SYNCHRONOUSLY. State updates are async, so a rapid double-tap fires both
@@ -109,18 +201,108 @@ const App: React.FC = () => {
   // (`pointer-events: none` on the closing sheet has the same problem: the class
   // only lands on the next render.)
   const closingRef = useRef(false);
+  // Set while the ✓ is showing and the exit has not started: calling it skips the
+  // rest of the beat and starts the slide now. Null at every other moment, which
+  // is also the answer to "are we in the confirm phase" — one carrier, so the
+  // phase and the way to leave it cannot disagree.
+  const skipConfirm = useRef<(() => void) | null>(null);
 
-  const closeSheet = () => {
+  /**
+   * Close the sheet, optionally confirming first.
+   *
+   * `confirm` holds the sheet in place for {@link CONFIRM_MS} showing a ✓ before
+   * the exit begins — the moment of "yes, that landed" that a sheet vanishing
+   * instantly does not give you. Only the save path passes it; ✕, Escape and
+   * Back have nothing to confirm.
+   *
+   * Both phases reuse ONE timer ref, so at most one is ever pending and the
+   * existing cleanup covers both. A second timer alongside this one is exactly
+   * the shape that once left a stale exit timer to tear down the next sheet.
+   */
+  const closeSheet = (options?: { confirm?: boolean; acknowledge?: string }) => {
     if (closingRef.current) return; // already on the way out
+    // Set synchronously, before any wait: a second Save during the ✓ window is
+    // dropped by the guard that already exists rather than by a new one.
     closingRef.current = true;
-    setClosing(true);
+    // The window this close is about starts now, so what happened before it is
+    // not this save's business.
+    hiddenWhilePending.current = false;
+
+    const beginExit = () => {
+      // Whether we got here by the beat finishing or by the user cutting it
+      // short, the confirm phase is over.
+      if (closeTimer.current) clearTimeout(closeTimer.current);
+      skipConfirm.current = null;
+      setClosing(true);
+      closeTimer.current = setTimeout(() => {
+        closeTimer.current = null;
+        closingRef.current = false;
+        setLoggingNew(false);
+        setEditingShot(null);
+        setClosing(false);
+        // Retired here rather than when the exit STARTS. Clearing it at the top
+        // of beginExit put "Save shot" back on a button that had been reading
+        // "✓ Saved" a moment earlier, while the sheet was still visibly on
+        // screen — measured mid-slide in a browser — so the confirmation
+        // appeared to be taken back before the sheet had finished leaving. The
+        // ✓ now holds for the whole exit and goes with the sheet.
+        setConfirming(false);
+        // Both halves of the acknowledgement are armed HERE, once the sheet is
+        // out of the way, and for two different reasons that happen to share a
+        // moment:
+        //
+        // The wash, because it starts when the row becomes VISIBLE, not when
+        // the shot was saved. Measured in a browser: the sheet covers the screen
+        // for the ✓ plus the slide, which is ~440ms — almost exactly the 20% the
+        // wash spends holding at full tint. Armed at save time, the entire hold
+        // happened behind the sheet and what you actually saw was a tint already
+        // fading, which is the thing the hold exists to prevent.
+        //
+        // The line, because the live region it feeds must change while the
+        // screen reader is listening. Portaling it out of `#root` dodges the
+        // `inert` the sheet applies, but the dialog also carries
+        // `aria-modal="true"`, which tells assistive tech to ignore everything
+        // outside it — so setting this at save time mutated the region while
+        // some readers were still treating it as hidden. Waiting for the dialog
+        // to be gone removes the question.
+        // Not armed at all if the app went away between the save and here.
+        //
+        // The question is "was it hidden while this was pending", NOT "is it
+        // hidden now" — an earlier version asked the second and was worthless.
+        // Timers are suspended rather than throttled on iOS Safari and anything
+        // restored from bfcache, so this callback runs on RESUME, by which time
+        // the page is visible again and the visibilitychange sweep has already
+        // been and gone. Both cheap questions say "visible, go ahead", and what
+        // the user sees on unlocking their phone is "Logged for you." over the
+        // milestone it is meant to defer to. The shot is saved either way; there
+        // is just nobody to say it to.
+        if (options?.acknowledge && !hiddenWhilePending.current) {
+          setAcknowledgedId(options.acknowledge);
+          setWashId(options.acknowledge);
+        } else {
+          // Closing WITHOUT a shot to acknowledge — dismissed, or an edit saved
+          // — is what retires the previous one. It used to happen at `openSheet`
+          // instead, and you could watch it: open the form just after logging
+          // and "Logged for you." flipped back to the greeting *behind* the
+          // sheet as it slid up. The greeting slot now only ever changes while
+          // the sheet is gone, so whatever it settles on is what you find when
+          // you look at it.
+          setAcknowledgedId(null);
+          setWashId(null);
+        }
+      }, SHEET_EXIT_MS);
+    };
+
+    if (!options?.confirm) {
+      beginExit();
+      return;
+    }
+    setConfirming(true);
+    skipConfirm.current = beginExit;
     closeTimer.current = setTimeout(() => {
       closeTimer.current = null;
-      closingRef.current = false;
-      setClosing(false);
-      setLoggingNew(false);
-      setEditingShot(null);
-    }, SHEET_EXIT_MS);
+      beginExit();
+    }, CONFIRM_MS);
   };
 
   useEffect(
@@ -148,7 +330,39 @@ const App: React.FC = () => {
       closeTimer.current = null;
     }
     closingRef.current = false;
+    skipConfirm.current = null;
     setClosing(false);
+    // `confirming` is part of the same half-finished exit this function exists to
+    // retire. Left set, the next sheet would mount with its submit permanently
+    // reading "✓ Saved" and refusing to save anything.
+    setConfirming(false);
+    // The acknowledgement is deliberately NOT retired here, though it used to be.
+    // Clearing it as the sheet opens is visible: the greeting slot flips from
+    // "Logged for you." back to the greeting behind a sheet that is still sliding
+    // up, which reads as the app undoing itself while you watch. It is retired
+    // when the sheet has finished LEAVING instead — see closeSheet — so the slot
+    // only ever changes while nothing is covering it.
+    //
+    // The wash goes with it for the same reason it is armed on exit rather than
+    // on save: its row is behind the sheet the whole time either way.
+    // Force a fresh ShotForm. An edit already remounts (the key is the shot's
+    // id), but a new shot's key is the constant "new", so opening the sheet
+    // while a save was still exiting reused the mounted form — showing the
+    // entry that had just been saved, with `confirming` cleared and Save live,
+    // one press away from writing a duplicate with no undo until slice C. The
+    // only thing making that unreachable is `#root` being `inert`, which is a
+    // list of reasons it can't happen rather than a reason it can't.
+    setOpenCount((n) => n + 1);
+    // Retire the PREVIOUS subject before naming the new one. The exit timer
+    // cleared above is the one that would have done this, so skipping it left an
+    // interrupted edit still current: opening "Log a shot" during an edit's exit
+    // reopened the sheet titled "Edit shot" — and because the key is that shot's
+    // id, `openCount` did not force a remount either — so Save routed through
+    // handleUpdateShot and OVERWROTE that entry instead of adding a new one.
+    // Only `#root` being inert makes it hard to reach, which is the same list of
+    // reasons `openCount` exists not to rely on.
+    setEditingShot(null);
+    setLoggingNew(false);
     if (shot) setEditingShot(shot);
     else setLoggingNew(true);
   };
@@ -172,7 +386,29 @@ const App: React.FC = () => {
     // saving a backdated shot restored the entry that was already saved (the
     // post-save reset keeps the date, so the form still reads as dirty),
     // inviting a duplicate.
-    if (closingRef.current) return;
+    //
+    // "Must not re-decide the draft" is not the same as "must do nothing",
+    // though, and treating them as one thing left the sheet's whole dismissal
+    // window dead — 440ms once the ✓ was added, and motionless for the first 200
+    // of them. Press Save then immediately Back and the sheet just sat there.
+    // During the ✓ a dismissal is an ordinary, answerable request — the shot is
+    // saved, the beat is a courtesy — so skip the rest of it and start the
+    // slide. Once the slide is running there is nothing left to ask for.
+    //
+    // WHAT THIS DOES NOT FIX, stated plainly because an earlier version of this
+    // comment implied otherwise. On Android the first Back consumes the
+    // overlay's history entry; a second one inside the *slide* finds nothing
+    // left to skip, so it is swallowed here while the browser pops a real entry
+    // and navigates away with the sheet still painted over it. That window is
+    // 240ms of visibly moving sheet — exactly what it was before the ✓ existed,
+    // so this restores the old bound rather than closing the hole. Closing it
+    // means `useBackToClose` owning a history entry for the sheet's whole
+    // lifetime including the exit, which is its own change with its own risk of
+    // leaving entries behind.
+    if (closingRef.current) {
+      skipConfirm.current?.();
+      return;
+    }
     const live = liveDraft.current;
     // Each mode keeps its own work. Writing an edit into `draft` would wipe an
     // unfinished NEW shot parked earlier, so edits go to their own per-shot slot.
@@ -190,24 +426,31 @@ const App: React.FC = () => {
     closeSheet();
   };
 
-  // Saving clears the draft *and* the live values behind it. The sheet stays
-  // mounted through the exit animation with its Escape and Back listeners live,
-  // and the post-save reset deliberately keeps the date — so on a backdated shot
-  // the form still counts as dirty and would republish. An impatient Back press
-  // in that window would then restore the entry that was just saved, inviting a
-  // duplicate.
+  // Saving clears the parked draft. It deliberately does NOT try to clear
+  // `liveDraft` as well, which it used to.
+  //
+  // That assignment could not hold and had stopped meaning anything: the form
+  // republishes its live values on every render, `setConfirming(true)` causes one
+  // immediately, and the fields still hold the entry that was just saved (they
+  // stay visible under the ✓ now, which is the point). So `liveDraft` was null
+  // for a single render and then full again for the whole 440ms exit — a
+  // guarantee stated in code that the next render undid.
+  //
+  // What actually stops a stray Escape or Back in that window re-parking the
+  // saved entry as a draft, and offering it back to be logged twice, is
+  // `dismissSheet` bailing while the sheet is closing. One real guard is worth
+  // more than a real one plus a decorative one, which is what this was.
   const clearDraft = () => {
-    liveDraft.current = null;
     setDraft(null);
   };
 
   // Both save paths bail once the sheet is closing, for the same reason
-  // dismissSheet does: the sheet stays mounted through its 200ms exit animation
+  // dismissSheet does: the sheet stays mounted through its exit animation
   // and only `#root` is inert, so its own Save button is still live. Without this
   // a double-tap inside that window wrote the shot twice — the second a blank
   // duplicate, since the post-save reset had already cleared the fields — and a
   // Save landing just after ✕/Escape saved a shot the user had just dismissed.
-  // 200ms is precisely a double-tap, and there is no undo until slice C.
+  // The exit window is precisely a double-tap, and there is no undo until slice C.
   // A failed save must not ALSO lose what was typed. The sheet closes on save
   // and the draft is cleared, so without this a write that throws left the user
   // with nothing on screen and nothing in storage — the worst of both.
@@ -225,21 +468,38 @@ const App: React.FC = () => {
     if (closingRef.current) return "ignored";
     if (!addShot(shot)) return "refused"; // sheet stays put, fields kept, and it says why
     clearDraft();
-    closeSheet();
+    // Only a shot that actually reached storage is acknowledged. A refused save
+    // has nothing to affirm, and a retry that succeeds is an ordinary success —
+    // it gets the full acknowledgement, not a quieter one, which falls out of
+    // hanging this off the "saved" outcome rather than off "no error happened".
+    closeSheet({ confirm: true, acknowledge: shot.id });
     return "saved";
   };
 
   const handleUpdateShot = (shot: ShotEntry): SaveOutcome => {
     if (closingRef.current) return "ignored"; // see handleAddShot
     if (!updateShot(shot.id, shot)) return "refused"; // sheet holds; see handleAddShot
-    // Saved, so there is nothing in progress left to restore for this shot.
-    liveDraft.current = null;
+    // No `liveDraft.current = null` here, for the reason clearDraft no longer
+    // does it either: the form republishes its live values on every render and
+    // `setConfirming(true)` causes one immediately, so the assignment held for a
+    // single render and was undone for the whole 440ms exit. What actually stops
+    // a stray dismissal re-parking this shot is `dismissSheet` bailing while the
+    // sheet is closing. One real guard beats a real one plus a decorative one.
     setEditDrafts((prev) => {
       const next = { ...prev };
       delete next[shot.id];
       return next;
     });
-    closeSheet();
+    // The same ✓ beat a new shot gets, and for the reason CONFIRM_MS exists at
+    // all: a sheet that vanishes the instant you press it leaves you unsure the
+    // press registered. That is a fact about the write landing, which an edit
+    // needs exactly as much — this path had been left without one by omission
+    // rather than by decision.
+    //
+    // The ACKNOWLEDGEMENT is a different thing and stays withheld: no
+    // `acknowledge`, so no wash and no "Logged for you." — that line is about
+    // logging a shot, not correcting one.
+    closeSheet({ confirm: true });
     // Symmetric with handleAddShot: the premise of this whole path is that a
     // caller can ask what the save did, so the success case has to answer too.
     return "saved";
@@ -288,11 +548,44 @@ const App: React.FC = () => {
       {/* Above every view, not inside the log sheet: writes fail from logging,
           editing, deleting and Settings alike, and an in-sheet message would
           leave three of those silent. */}
+      {/* The acknowledgement, for assistive tech.
+          Portaled to <body> so it sits OUTSIDE #root, which an open sheet marks
+          `inert` — and `inert` removes a subtree from the accessibility tree
+          entirely. The line in the greeting slot is set while the sheet is still
+          up, so its mutation happens inside that hidden subtree; by the time
+          inert lifts the text has already changed and there is no second
+          mutation left to announce. Spoken to nobody, in other words, for the
+          one feature whose whole point is the words.
+          Persistent rather than mounted on demand: a live region does not
+          announce its INITIAL content, only changes to it.
+
+          And keyed on the shot, which is the same rule read one step further: a
+          live region announces a CHANGE, and two shots in a row produce the
+          identical string. Since the acknowledgement no longer clears when the
+          sheet reopens, React saw the same text, touched nothing, and the second
+          save was announced to nobody — log three backdated entries and only the
+          first is spoken. The key replaces the node instead, so each shot is its
+          own insertion into the region.
+
+          Not verified with a real screen reader; the mechanism is sound and the
+          DOM change is asserted below, but this belongs on the device pass with
+          the other two announcement claims. */}
+      {createPortal(
+        <p className="visually-hidden" role="status">
+          {acknowledgedId !== null ? (
+            <span key={acknowledgedId}>{ACKNOWLEDGEMENT}</span>
+          ) : (
+            ""
+          )}
+        </p>,
+        document.body
+      )}
+
       <StorageBanner returnFocusRef={titleRef} />
 
       {view === "home" && (
         <main className="app-main">
-          <Greeting />
+          <Greeting acknowledged={acknowledgedId !== null} />
           <button
             type="button"
             className="primary-button log-cta"
@@ -300,7 +593,12 @@ const App: React.FC = () => {
           >
             + Log a shot
           </button>
-          <RecentShots shots={shots} onSeeAll={() => navigate("history")} />
+          <RecentShots
+            shots={shots}
+            onSeeAll={() => navigate("history")}
+            justLoggedId={washId}
+            onWashEnd={() => setWashId(null)}
+          />
         </main>
       )}
 
@@ -337,11 +635,12 @@ const App: React.FC = () => {
             // Remount on a change of subject, so the form re-seeds from the new
             // shot (or from a fresh/draft state) rather than needing an effect
             // to sync it — see the note in ShotForm.
-            key={activeEditingShot?.id ?? "new"}
+            key={activeEditingShot?.id ?? `new-${openCount}`}
             headingId={SHEET_HEADING_ID}
             onAddShot={handleAddShot}
             onUpdateShot={handleUpdateShot}
             onExportBackup={exportBackup}
+            confirming={confirming}
             editingShot={activeEditingShot}
             onDismiss={dismissSheet}
             shots={shots}

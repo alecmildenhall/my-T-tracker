@@ -3,10 +3,11 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import type { ShotEntry } from "../types/shot";
 import { suggestionsFor } from "../utils/suggestions";
 import { todayLocalISO, nowHHMM } from "../utils/datetime";
-import { toCivilDate } from "../utils/civilDate";
+import { toShotDate, isRealDate, shotDateRange } from "../utils/civilDate";
 import { newId } from "../utils/id";
 import { SuggestionChips } from "./SuggestionChips";
 import { handOffFocus } from "../utils/focus";
+import { sortShots } from "../utils/shotQuery";
 
 /**
  * The fields worth pre-filling on a new shot: dose, type of T, and carrier oil
@@ -22,18 +23,16 @@ function carryForward(shots: ShotEntry[]): {
   testosteroneEster: string;
   carrierOil: string;
 } {
-  // Compared on date+time ONLY, deliberately not via compareShotsChrono: that
-  // comparator breaks ties on `id`, a random UUID. Time is optional, so two
-  // shots logged the same day with no time are indistinguishable to it and the
-  // "latest" would be a coin flip — and whatever it picked would be pre-filled
-  // and then saved into the new entry. `>=` keeps the last tying element: the
-  // most recently added, which is the one the user just logged.
-  const stamp = (s: ShotEntry) => `${s.date}T${s.time ?? "00:00"}`;
-  const latest = shots.reduce<ShotEntry | undefined>(
-    (best, shot) =>
-      best === undefined || stamp(shot) >= stamp(best) ? shot : best,
-    undefined
-  );
+  // This used to hand-roll its own date+time comparison, with a comment saying
+  // it deliberately avoided compareShotsChrono because that comparator broke
+  // ties on `id` — a random UUID — so the "latest" of two same-day shots was a
+  // coin flip, and whatever it picked got pre-filled and saved into the new
+  // entry. Routing around the shared comparator left it right here and wrong
+  // everywhere else, which is how a just-logged shot ended up missing from the
+  // Home teaser. The comparator now reports a tie as a tie and `sortShots`
+  // breaks it by the order shots were logged — the same rule this reduce was
+  // implementing by hand with `>=`, so there is nothing left to avoid.
+  const latest = sortShots(shots, "newest")[0];
   return {
     doseMg: latest?.doseMg !== undefined ? String(latest.doseMg) : "",
     testosteroneEster: latest?.testosteroneEster ?? "",
@@ -143,6 +142,9 @@ interface ShotFormProps {
    * supplies it, and an App test proves it.
    */
   onExportBackup?: () => boolean;
+  /** True for the beat between a successful save and the sheet leaving: the
+   *  submit button confirms in green with a ✓ rather than vanishing instantly. */
+  confirming?: boolean;
   editingShot?: ShotEntry | null;
   /** Close the sheet. Never destructive: the parent keeps whatever was entered
    *  and restores it next time this same form is opened, for a new shot or an
@@ -173,6 +175,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   onAddShot,
   onUpdateShot,
   onExportBackup,
+  confirming = false,
   editingShot,
   onDismiss,
   shots = [],
@@ -187,6 +190,9 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   // between saves) means they also survive closing the form, switching tabs, and
   // reloading the app — the form is now a sheet that unmounts on every save, so
   // in-component stickiness would silently do nothing.
+  // Per render, not per module load: it reads the clock, and a sheet in a session
+  // left open across New Year would otherwise bound the picker to last year.
+  const dateRange = shotDateRange();
   const carried = useMemo(() => carryForward(shots), [shots]);
   // Held in a ref so resetForm can stay identity-stable: if it changed whenever
   // `shots` changed, the editing-sync effect below would re-run and wipe fields
@@ -323,6 +329,10 @@ export const ShotForm: React.FC<ShotFormProps> = ({
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
+    // The ✓ is showing and the sheet is already leaving: this press is the second
+    // half of a double-tap. Blocked here rather than by `disabled`, which would
+    // cost the focus this button is holding.
+    if (confirming) return;
 
     // Every field is validated here, and the form carries `noValidate`, so the
     // browser never silently refuses to submit. It used to: a decimal dose or
@@ -330,7 +340,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // constraints, which cancels the submit event outright — the button appeared
     // to do nothing at all, with no message and nothing saved. Whatever we reject
     // now, we say why, next to the field.
-    const parsedDate = toCivilDate(date);
+    const parsedDate = toShotDate(date);
     const parsedDose = doseMg === "" ? undefined : Number(doseMg);
     const parsedPain = painScore === "" ? undefined : Number(painScore);
 
@@ -339,11 +349,26 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // that person their date is not a real calendar date is answering a question
     // they did not ask. The date is required precisely because a shot always
     // happened on some day, so the fix is to ask for it, not to let it through.
+    //
+    // Out of range is a THIRD mistake, and it gets its own words for the same
+    // reason. It is nearly always a mistyped year — browsers auto-fill the
+    // segments you have not typed, so `0999` and `9999` are a slip, not a
+    // belief — and telling that person their date is not a real calendar date
+    // is both wrong (it is one) and no help in fixing it.
+    //
+    // The message names the actual boundary DATES, not their years. It used to
+    // say "1900 to 2027" while the real bound was 2027-08-13, so entering
+    // 2027-12-01 was refused by a message listing the very year that had just
+    // been typed — nothing left to work out. Read fresh here rather than at
+    // module load, so it cannot name last year's bound in a session left open.
+    const range = shotDateRange();
     const nextDateError = parsedDate
       ? null
       : date.trim() === ""
         ? "Add the date this shot was taken."
-        : "Please enter a real calendar date (YYYY-MM-DD).";
+        : isRealDate(date)
+          ? `Check the year — dates run from ${range.min} to ${range.max}.`
+          : "Please enter a real calendar date (YYYY-MM-DD).";
     // Mirrors the storage schema: a finite, non-negative number. Fractional doses
     // are fine (62.5mg while titrating is ordinary).
     const nextDoseError =
@@ -413,19 +438,20 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     }
     setSaveFailed(false);
 
-    // Clear the per-shot fields. The carried-forward ones (dose, type of T,
-    // carrier oil) are deliberately left alone: they re-derive from the shot just
-    // saved via carryForward the next time the form mounts. Normally the parent
-    // closes the sheet right after a save and this reset is moot, but it keeps
-    // the form correct for any caller that keeps it mounted.
-    if (!editingShot) {
-      setTime("");
-      setInjectionSite("");
-      setInjectionSitePosition("");
-      setPainScore("");
-      setMood("");
-      setNotes("");
-    }
+    // No post-save field reset, deliberately. There used to be one here, on the
+    // reasoning that the parent closes the sheet immediately so it was moot. The
+    // ✓ beat ended that: the sheet now holds still for CONFIRM_MS and then takes
+    // SHEET_EXIT_MS to leave, so for ~440ms the user was watching the entry they
+    // had just typed empty itself under a message saying it was saved.
+    // Screenshotted at 390px — the site and notes fields were back to their
+    // placeholders while "✓ Saved" was still on the button.
+    //
+    // Nothing needs the reset. This form unmounts with the sheet and is remounted
+    // fresh (keyed on the subject) the next time, seeded from the parent's draft
+    // — which a successful save has just cleared. Carried-forward values re-derive
+    // through carryForward on that mount. And a stray Escape or Back inside the
+    // exit window cannot resurrect these values as a draft: `dismissSheet` bails
+    // while the sheet is closing, which is the guard that actually prevents it.
   };
 
   const current: ShotDraft = {
@@ -522,6 +548,12 @@ export const ShotForm: React.FC<ShotFormProps> = ({
                 if (dateError) setDateError(null);
               }}
               required
+              // Keeps the native picker inside the range the form will accept,
+              // so a mistyped year is harder to produce in the first place.
+              // These are a hint, not the check — the form carries `noValidate`
+              // and `toShotDate` is what actually decides. See shotDateRange.
+              min={dateRange.min}
+              max={dateRange.max}
               aria-invalid={dateError ? true : undefined}
               aria-describedby={dateError ? "date-error" : undefined}
             />
@@ -721,7 +753,27 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             RENDERED — never what is parked or saved — so unlike the dirtiness
             rules it is safe to judge against the live clock. */}
         {hasUnsavedInput && !editingShot && !looksFresh && (
-          <button type="button" className="link-button" onClick={resetForm}>
+          <button
+            type="button"
+            className="link-button"
+            // Dead during the ✓, for the same reason the submit is. The sheet is
+            // fully on screen and motionless for CONFIRM_MS after a successful
+            // save, and this is the one control there that CHANGES what you are
+            // looking at: it blanks every field and moves focus to the heading —
+            // the entry emptying itself under a message saying it was saved,
+            // which is the defect the post-save reset was deleted to prevent.
+            // Editing a field in that window is harmless by comparison (nothing
+            // more is stored and the form is about to unmount), and the ✕ leads
+            // where it always did, so neither needs blocking.
+            //
+            // Guarded rather than un-rendered: pulling a control out from under
+            // a thumb mid-press is its own bug, and it could be holding focus.
+            aria-disabled={confirming}
+            onClick={() => {
+              if (confirming) return;
+              resetForm();
+            }}
+          >
             Clear form
           </button>
         )}
@@ -782,8 +834,37 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             being edited inside a sheet that unmounts on close — so a new entry, a
             different shot, "Clear form" and a reload each get a fresh one. There
             is nothing to persist and nothing to time out. */}
-        <button type="submit" className="primary-button shot-form__save">
-          {`${editingShot ? "Update" : "Save"} ${saveFailed ? "again" : "shot"}`}
+        {/* The ✓ replaces the label rather than sitting beside it, so the button
+            does not resize under the thumb at the moment it is pressed.
+            `aria-live="polite"` on the button would fight the greeting slot's
+            own announcement, so this stays silent and the line does the talking. */}
+        <button
+          type="submit"
+          className={`primary-button shot-form__save${
+            confirming ? " shot-form__save--confirmed" : ""
+          }`}
+          // `aria-disabled`, NOT `disabled`. Disabling the focused button blurs
+          // it, and the browser drops focus to <body> for the whole confirm +
+          // exit — the class CLAUDE.md calls non-negotiable, with nothing handing
+          // focus on. It also falsified the Tab trap's assumption that the
+          // sheet's Save button is "last and always enabled". The submit guard
+          // below does the actual blocking.
+          aria-disabled={confirming}
+        >
+          {/* The ✓ mirrors the verb that was pressed — "Update shot" is answered
+              by "✓ Updated", not by a word the user did not use. Same fact
+              either way: the write landed. */}
+          {confirming ? (
+            <>
+              {/* aria-hidden so the glyph stays out of the accessible NAME:
+                  unwrapped it announced as "check mark Saved" (or worse, "white
+                  heavy check mark"), which is the decoration reading itself
+                  aloud. The word carries the meaning; the tick is the beat. */}
+              <span aria-hidden="true">✓</span> {editingShot ? "Updated" : "Saved"}
+            </>
+          ) : (
+            `${editingShot ? "Update" : "Save"} ${saveFailed ? "again" : "shot"}`
+          )}
         </button>
       </div>
     </form>

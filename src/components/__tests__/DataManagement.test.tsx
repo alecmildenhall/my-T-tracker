@@ -4,6 +4,7 @@ import { DataManagement } from "../DataManagement";
 import type { ShotEntry } from "../../types/shot";
 import * as downloadModule from "../../utils/download";
 import { toJson } from "../../utils/exportData";
+import { APP_NAME, FORMAT_VERSION } from "../../appMeta";
 
 // Stub the download layer: no real Blob/anchor, and predictable filenames.
 vi.mock("../../utils/download", () => ({
@@ -19,6 +20,18 @@ const shots: ShotEntry[] = [
   { id: "s1", date: "2026-06-01", doseMg: 50, injectionSite: "thigh" },
   { id: "s2", date: "2026-06-08", doseMg: 50, injectionSite: "glute" },
 ];
+
+/** A backup envelope around arbitrary raw rows — `toJson` can only produce valid
+ *  ones, and the point of these tests is what happens when a row is not. */
+const withShots = (rows: unknown[], profile?: unknown) =>
+  JSON.stringify({
+    app: APP_NAME,
+    formatVersion: FORMAT_VERSION,
+    appVersion: "0.0.0",
+    exportedAt: new Date().toISOString(),
+    shots: rows,
+    ...(profile === undefined ? {} : { profile }),
+  });
 
 const uploadText = (content: string) => {
   const input = screen.getByLabelText("Import backup file");
@@ -122,6 +135,37 @@ describe("DataManagement", () => {
   });
 
   describe("import", () => {
+    it("keeps the live region mounted, so its content is a CHANGE when it lands", async () => {
+      // A live region announces changes to itself, not a region that appears
+      // already populated — so mounting it with its text meant a screen-reader
+      // user could press Replace and hear nothing about the skipped entries,
+      // which is the one thing the leniency depends on surfacing. Same rule the
+      // acknowledgement's portalled region follows, written down there and then
+      // not followed here.
+      render(
+        <DataManagement
+          shots={shots}
+          onReplaceAll={vi.fn(() => true)}
+          profile={{}}
+          onReplaceProfile={vi.fn(() => true)}
+        />
+      );
+      // Present before anything happens, and empty.
+      const region = screen.getByRole("status");
+      expect(region).toBeInTheDocument();
+      expect(region).toBeEmptyDOMElement();
+
+      uploadText(withShots([{ id: "good", date: "2026-05-01" }, { id: "b" }]));
+      fireEvent.click(
+        within(await screen.findByRole("dialog")).getByRole("button", {
+          name: "Replace",
+        })
+      );
+      // ...and it is the SAME element, now changed — not a new one.
+      expect(screen.getByRole("status")).toBe(region);
+      expect(region).toHaveTextContent("Restored 1 of 2 entries from backup.");
+    });
+
     it("shows a generic error for a malformed file and never replaces", async () => {
       const onReplaceAll = vi.fn(() => true);
       render(
@@ -170,6 +214,234 @@ describe("DataManagement", () => {
       expect(onReplaceAll).toHaveBeenCalledWith(incoming);
       expect(screen.getByRole("status")).toHaveTextContent(
         "Restored 1 entry from backup."
+      );
+    });
+
+    it("restores what it can, and names what it skipped", async () => {
+      // The whole point of row-level leniency, and the condition that makes it
+      // safe rather than data quietly vanishing: the count is honest and the
+      // skipped entry is named. A backup is usually the only copy left by the
+      // time it is imported, so refusing all of it over one bad date is the
+      // worse answer.
+      const onReplaceAll = vi.fn(() => true);
+      render(
+        <DataManagement
+          shots={shots}
+          onReplaceAll={onReplaceAll}
+          profile={{}}
+          onReplaceProfile={vi.fn(() => true)}
+        />
+      );
+
+      uploadText(
+        withShots([
+          { id: "good-1", date: "2026-05-01" },
+          { id: "bad", date: "9999-01-01" },
+          { id: "good-2", date: "2026-05-08" },
+        ])
+      );
+
+      // Said BEFORE the destructive step, not only in the report after it.
+      const dialog = await screen.findByRole("dialog");
+      expect(dialog).toHaveTextContent(/1 entry in the backup can.t be restored/i);
+
+      fireEvent.click(within(dialog).getByRole("button", { name: "Replace" }));
+
+      expect(onReplaceAll).toHaveBeenCalledWith([
+        { id: "good-1", date: "2026-05-01" },
+        { id: "good-2", date: "2026-05-08" },
+      ]);
+      const status = screen.getByRole("status");
+      expect(status).toHaveTextContent("Restored 2 of 3 entries from backup.");
+      // Named by the date the user typed — the thing they recognise.
+      expect(status).toHaveTextContent(/An entry dated 9999-01-01/);
+      expect(status).toHaveTextContent(/backup file is unchanged/i);
+      // The closing note is not one of the skipped entries, so it must not be
+      // rendered into their list — as a bullet it read as a fourth thing that
+      // had gone wrong.
+      const bullets = within(status).getAllByRole("listitem");
+      expect(bullets).toHaveLength(1);
+      expect(bullets[0]).toHaveTextContent(/An entry dated 9999-01-01/);
+      // ...and it agrees with the count: one skipped shot, not "those shots".
+      expect(status).toHaveTextContent(/add that shot again/i);
+    });
+
+    it("lists two identical failures as two entries, with no key collision", async () => {
+      // They produce the same sentence. React renders both either way, so the
+      // count is asserted AND the duplicate-key warning is caught — the warning
+      // is the actual symptom, and asserting only the count let a text-keyed
+      // list pass. React reports it through console.error.
+      const keyWarning = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
+      render(
+        <DataManagement
+          shots={shots}
+          onReplaceAll={vi.fn(() => true)}
+          profile={{}}
+          onReplaceProfile={vi.fn(() => true)}
+        />
+      );
+      uploadText(
+        withShots([
+          { id: "good", date: "2026-05-01" },
+          { id: "b1", date: "9999-01-01" },
+          { id: "b2", date: "9999-01-01" },
+        ])
+      );
+      fireEvent.click(
+        within(await screen.findByRole("dialog")).getByRole("button", {
+          name: "Replace",
+        })
+      );
+      const status = screen.getByRole("status");
+      expect(status).toHaveTextContent("Restored 1 of 3 entries from backup.");
+      expect(within(status).getAllByRole("listitem")).toHaveLength(2);
+      expect(keyWarning.mock.calls.flat().join(" ")).not.toMatch(/same key/i);
+      keyWarning.mockRestore();
+    });
+
+    it("summarises the tail rather than listing every bad entry", async () => {
+      // A badly corrupt file would otherwise bury the count that matters under
+      // a wall of bullets.
+      render(
+        <DataManagement
+          shots={shots}
+          onReplaceAll={vi.fn(() => true)}
+          profile={{}}
+          onReplaceProfile={vi.fn(() => true)}
+        />
+      );
+      uploadText(
+        withShots([
+          { id: "good", date: "2026-05-01" },
+          ...[...Array(8)].map((_, i) => ({ id: `b${i}`, date: "9999-01-01" })),
+        ])
+      );
+      fireEvent.click(
+        within(await screen.findByRole("dialog")).getByRole("button", {
+          name: "Replace",
+        })
+      );
+      const status = screen.getByRole("status");
+      expect(status).toHaveTextContent("Restored 1 of 9 entries from backup.");
+      // Five named, plus one line accounting for the rest.
+      expect(within(status).getAllByRole("listitem")).toHaveLength(6);
+      expect(status).toHaveTextContent(/…and 3 more entries\./);
+    });
+
+    it("does not put a megabyte of untrusted text on screen", async () => {
+      // The date is rendered from the file. A real one is ten characters.
+      render(
+        <DataManagement
+          shots={shots}
+          onReplaceAll={vi.fn(() => true)}
+          profile={{}}
+          onReplaceProfile={vi.fn(() => true)}
+        />
+      );
+      uploadText(
+        withShots([
+          { id: "good", date: "2026-05-01" },
+          { id: "huge", date: "9".repeat(5000) },
+        ])
+      );
+      fireEvent.click(
+        within(await screen.findByRole("dialog")).getByRole("button", {
+          name: "Replace",
+        })
+      );
+      const line = within(screen.getByRole("status")).getAllByRole("listitem")[0];
+      expect(line.textContent!.length).toBeLessThan(120);
+      expect(line).toHaveTextContent(/…/);
+    });
+
+    it("names an entry by position when its date is the unreadable part", async () => {
+      render(
+        <DataManagement
+          shots={shots}
+          onReplaceAll={vi.fn(() => true)}
+          profile={{}}
+          onReplaceProfile={vi.fn(() => true)}
+        />
+      );
+      uploadText(
+        withShots([{ id: "good", date: "2026-05-01" }, { id: "no-date" }])
+      );
+      fireEvent.click(
+        within(await screen.findByRole("dialog")).getByRole("button", {
+          name: "Replace",
+        })
+      );
+      expect(screen.getByRole("status")).toHaveTextContent(/The 2nd entry in the file/);
+    });
+
+    it("says nothing about skipping when every entry restored", async () => {
+      // "Restored 3 of 3" on a clean import would invite the reader to look for
+      // a problem that isn't there.
+      render(
+        <DataManagement
+          shots={shots}
+          onReplaceAll={vi.fn(() => true)}
+          profile={{}}
+          onReplaceProfile={vi.fn(() => true)}
+        />
+      );
+      uploadText(toJson([{ id: "a", date: "2026-05-01" }]));
+      const dialog = await screen.findByRole("dialog");
+      expect(dialog).not.toHaveTextContent(/can.t be restored/i);
+      fireEvent.click(within(dialog).getByRole("button", { name: "Replace" }));
+      const status = screen.getByRole("status");
+      expect(status).toHaveTextContent("Restored 1 entry from backup.");
+      expect(status).not.toHaveTextContent(/of 1 entries/);
+      expect(status).not.toHaveTextContent(/skipped|unchanged/i);
+    });
+
+    it("refuses a file in which nothing can be read, and changes nothing", async () => {
+      const onReplaceAll = vi.fn(() => true);
+      render(
+        <DataManagement
+          shots={shots}
+          onReplaceAll={onReplaceAll}
+          profile={{}}
+          onReplaceProfile={vi.fn(() => true)}
+        />
+      );
+      uploadText(withShots([{ id: "a", date: "9999-01-01" }]));
+
+      const status = await screen.findByRole("status");
+      expect(status).toHaveTextContent(/None of the 1 entry in this file/i);
+      // Not the wrong-file message: they DID pick a backup from this app, and
+      // sending them to look for another one is a dead end.
+      expect(status).not.toHaveTextContent(/exported from this app/i);
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(onReplaceAll).not.toHaveBeenCalled();
+      expect(downloadMock).not.toHaveBeenCalled();
+    });
+
+    it("keeps this device's profile when the file's own cannot be read", async () => {
+      // A profile is one object — there is no "43 of 44" to salvage — so an
+      // unreadable one must not clear the name and shot day already here.
+      const onReplaceProfile = vi.fn(() => true);
+      render(
+        <DataManagement
+          shots={shots}
+          onReplaceAll={vi.fn(() => true)}
+          profile={{ preferredName: "Lou" }}
+          onReplaceProfile={onReplaceProfile}
+        />
+      );
+      uploadText(
+        withShots([{ id: "a", date: "2026-05-01" }], { startDate: "not-a-date" })
+      );
+      fireEvent.click(
+        within(await screen.findByRole("dialog")).getByRole("button", {
+          name: "Replace",
+        })
+      );
+      expect(onReplaceProfile).not.toHaveBeenCalled();
+      expect(screen.getByRole("status")).toHaveTextContent(
+        /saved profile in the file couldn.t be read/i
       );
     });
 

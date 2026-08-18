@@ -1,7 +1,8 @@
+import { readFileSync } from "node:fs";
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, act, configure } from "@testing-library/react";
 import { useRef, useState } from "react";
-import { Modal } from "../Modal";
+import { Modal, SHEET_EXIT_MS } from "../Modal";
 
 // Harness: a modal with Cancel + Confirm, optionally given an initial-focus ref.
 const Harness = ({
@@ -749,5 +750,104 @@ describe("Modal", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
 
     expect(screen.getByRole("heading", { name: "Title" })).toHaveFocus();
+  });
+});
+
+/**
+ * The scroll lock and the reserved scrollbar gutter are a pair, held in two
+ * files. Modal hides the page's overflow while a dialog is open; on a desktop
+ * browser with classic scrollbars that removes the scrollbar, which widens the
+ * layout by its width, which slides everything centred by `margin: 0 auto` —
+ * the app and the sheet inside its own overlay — sideways on open and back on
+ * close. Measured at 1280x600 before the fix: the title sat at 172.5px closed
+ * and 180px open. `scrollbar-gutter: stable` reserves the space either way, so
+ * hiding the scrollbar costs no width.
+ *
+ * jsdom has no layout and no scrollbars, so it cannot see the shift itself —
+ * only that both halves are still present. Losing either one brings the jump
+ * back, and it is invisible to every other test.
+ */
+describe("locking the page costs no layout width", () => {
+  it("hides the page's overflow while open and restores it on close", () => {
+    document.body.style.overflow = "scroll"; // a pre-existing value to restore
+    const { unmount } = render(<Harness />);
+
+    expect(document.body.style.overflow).toBe("hidden");
+
+    unmount();
+    expect(document.body.style.overflow).toBe("scroll");
+    document.body.style.overflow = "";
+  });
+
+  it("paints the canvas dark, so nothing outside the document is white", () => {
+    // The surface an elastic overscroll bounce exposes, and the one `body`'s
+    // background does NOT cover: a radial-gradient is a background *image*, and
+    // an image paints nothing beyond its element's box. With no colour anywhere,
+    // scrolling up past the top of a black app revealed a white band — measured
+    // by letting the document stop short of the viewport, which rendered #fff.
+    //
+    // Asserted on the stylesheet because jsdom has no canvas to sample. Both
+    // halves matter: the colour is what gets painted, `color-scheme` is what
+    // stops the browser assuming a light page for its own surfaces (scrollbars,
+    // form controls, the overscroll area on mobile).
+    const css = readFileSync(`${process.cwd()}/src/styles.css`, "utf8");
+    const htmlRule = /(^|\})\s*html\s*\{([^}]*)\}/.exec(css)?.[2];
+
+    expect(htmlRule).toBeDefined();
+    expect(htmlRule).toMatch(/background-color:\s*#020617/);
+    expect(htmlRule).toMatch(/color-scheme:\s*dark/);
+  });
+
+  it("reserves the scrollbar's space in styles.css so hiding it shifts nothing", () => {
+    const css = readFileSync(`${process.cwd()}/src/styles.css`, "utf8");
+    const htmlRule = /(^|\})\s*html\s*\{([^}]*)\}/.exec(css)?.[2];
+
+    expect(htmlRule).toBeDefined();
+    expect(htmlRule).toMatch(/scrollbar-gutter:\s*stable/);
+  });
+});
+
+/**
+ * `SHEET_EXIT_MS` and the stylesheet's exit durations are one value in three
+ * places. If JS is shorter than CSS the sheet unmounts mid-slide; if it is
+ * longer the dialog lingers invisible, delaying the focus restore. The README
+ * has said "they are a set and must move together" since they were written —
+ * this makes that a check rather than a hope.
+ */
+describe("the sheet exit duration is one value in three places", () => {
+  const css = readFileSync(`${process.cwd()}/src/styles.css`, "utf8");
+
+  it("is never shorter than the longest exit in styles.css", () => {
+    // Every rule whose selector LIST mentions a closing sheet, wherever it sits.
+    //
+    // Two ways this has been wrong, both of which left it green while blind. It
+    // first matched `...--sheet\.is-closing\s*\{`, so grouping the rule with any
+    // other selector hid it. Rewriting that fixed the grouping and broke nesting:
+    // a body of `[^}]*` swallows the first rule inside an `@media` block, so the
+    // prelude becomes the "selector" and the rule inside is never matched — which
+    // lost the reduced-motion exit this file has always had. `[^{}]*` for the
+    // BODY is what makes it innermost-rules-only, and therefore nesting-proof:
+    // a body containing `{` is not a body.
+    const durations = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+      .filter(([, selectors]) =>
+        selectors
+          .split(",")
+          .some((s) => /\.dialog(-overlay)?--sheet\.is-closing\b/.test(s))
+      )
+      .map(([, , body]) => /transition-duration:\s*(\d+)ms/.exec(body)?.[1])
+      .filter((d): d is string => d !== undefined)
+      .map(Number);
+
+    // Both top-level exits AND the media-scoped one. A bare "> 0" is what let the
+    // nesting blindness above pass unnoticed: it kept finding the two top-level
+    // rules and reported a healthy maximum while the `@media` rule was invisible.
+    expect(durations).toHaveLength(3);
+
+    // Equal to the longest, not to every one: the reduced-motion block shortens
+    // the exit deliberately, and a CSS exit *shorter* than the JS wait is
+    // harmless (the sheet has finished moving and waits, invisible, to unmount).
+    // The failure mode this guards is the other direction — any CSS exit LONGER
+    // than SHEET_EXIT_MS unmounts the sheet mid-slide.
+    expect(Math.max(...durations)).toBe(SHEET_EXIT_MS);
   });
 });

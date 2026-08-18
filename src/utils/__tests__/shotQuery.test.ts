@@ -154,6 +154,31 @@ describe("sortShots", () => {
     ]);
   });
 
+  it("breaks a tie by the order shots were logged, in both directions", () => {
+    // Time is optional, so same-day shots tie routinely, and the comparator now
+    // reports a tie rather than ranking two random UUIDs. The stored order is
+    // the order they were logged (addShot appends), so the last element is the
+    // most recently logged — and newest-first must put it FIRST. Leaning on
+    // Array#sort's stability alone would not: stability preserves the input
+    // order in both directions, so newest-first would have listed the
+    // earliest-logged of the tied group first.
+    const first = shot({ id: "logged-1st", date: "2026-07-20", notes: "1st" });
+    const second = shot({ id: "logged-2nd", date: "2026-07-20", notes: "2nd" });
+    const third = shot({ id: "logged-3rd", date: "2026-07-20", notes: "3rd" });
+    const stored = [first, second, third];
+
+    expect(sortShots(stored, "newest").map((s) => s.notes)).toEqual([
+      "3rd",
+      "2nd",
+      "1st",
+    ]);
+    expect(sortShots(stored, "oldest").map((s) => s.notes)).toEqual([
+      "1st",
+      "2nd",
+      "3rd",
+    ]);
+  });
+
   it("does not mutate its input", () => {
     const shots = [shot({ date: "2026-07-01" }), shot({ date: "2026-07-20" })];
     const before = shots.map((s) => s.date);
@@ -170,6 +195,23 @@ describe("takeRecent", () => {
       shot({ date: "2026-07-20" }),
     ];
     expect(takeRecent(shots, 2).map((s) => s.date)).toEqual(["2026-07-20", "2026-07-10"]);
+  });
+
+  it("includes a shot logged on a day that already has a full teaser's worth", () => {
+    // The Home teaser is the only place the just-logged row can appear, so an
+    // arbitrary tiebreak could push it out entirely — three same-day shots and
+    // the newest one is invisible.
+    const stored = [
+      shot({ id: "zzz1", date: "2026-08-12", notes: "older A" }),
+      shot({ id: "zzz2", date: "2026-08-12", notes: "older B" }),
+      shot({ id: "zzz3", date: "2026-08-12", notes: "older C" }),
+      shot({ id: "aaa-new", date: "2026-08-12", notes: "just logged" }),
+    ];
+    expect(takeRecent(stored, 3).map((s) => s.notes)).toEqual([
+      "just logged",
+      "older C",
+      "older B",
+    ]);
   });
 
   it("returns [] for n <= 0 and all shots when n exceeds the count", () => {

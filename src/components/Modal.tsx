@@ -79,8 +79,23 @@ interface ModalProps {
 }
 
 /** How long the sheet's exit transition runs — must match styles.css. Exported
- *  so the parent can hold the dialog mounted for exactly that long. */
-export const SHEET_EXIT_MS = 200;
+ *  so the parent can hold the dialog mounted for exactly that long.
+ *
+ *  240, not 200: across a full-screen surface, 200ms means the sheet is moving
+ *  fastest at the instant it disappears, which reads as dropped rather than
+ *  dismissed. Material's own scale steps 200 → 250 and this sits between them
+ *  deliberately — 230/240/245 were compared and 240 was the one that stopped
+ *  looking dropped without starting to feel slow. Don't "correct" it to a token.
+ *
+ *  KNOWN, AND DEFERRED ON PURPOSE: waiting this out with a `setTimeout` is a
+ *  proxy for "the transition ended", which is the habit CLAUDE.md warns about.
+ *  Observing `transitionend` instead cannot simply replace it — that event does
+ *  not fire for a 0s duration, for a transition that never starts, or where
+ *  transitions are disabled, and a missed one leaves the sheet mounted forever
+ *  over an inert `#root`. So the timer stays as the net either way, and the
+ *  gain is precision rather than one less constant. See the UI-overhaul item in
+ *  README.md for when to do it and what shape it takes. */
+export const SHEET_EXIT_MS = 240;
 
 export const Modal: React.FC<ModalProps> = ({
   labelledBy,
@@ -247,7 +262,7 @@ export const Modal: React.FC<ModalProps> = ({
   // listen, and the outer one would see focus as "outside" and haul it back out
   // of the inner dialog. Not reachable today — the log sheet, the delete
   // confirm, and the saved-values and import dialogs are mutually exclusive, and
-  // `#root` stays inert across the whole 200ms closing window. The
+  // `#root` stays inert across the whole closing window. The
   // `defaultPrevented` check below makes a second listener harmless rather than
   // additive, which is most of the danger; a full fix still wants the listener
   // to no-op unless its own dialog is the last one mounted.
