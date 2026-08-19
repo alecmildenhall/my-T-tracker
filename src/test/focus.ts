@@ -33,12 +33,16 @@ const isNowhere = (el: Element | null): boolean =>
  *
  * @param context what just happened, e.g. "after deleting the last row"
  */
-export function expectFocusSomewhereUseful(context: string): void {
+function expectFocusLanded(context: string): void {
   expect(
     isNowhere(document.activeElement),
     `Focus was left on <body> ${context}. The element that had focus went away ` +
       `without handing focus on — use handOffFocus() from src/utils/focus.ts.`
   ).toBe(false);
+}
+
+export function expectFocusSomewhereUseful(context: string): void {
+  expectFocusLanded(context);
   // ...and that you can SEE where it went. These were two halves of one defect
   // in slice B — focus moving correctly with nothing on screen changing — but
   // only the first half was checked across every flow, while the ring guard was
@@ -86,6 +90,13 @@ export function withFocusGuard(context: string, interaction: () => void): void {
  * {@link expectFocusSomewhereUseful} is still right after an interaction that
  * moves focus without unmounting anything.
  */
-export function expectFocusSettled(context: string): Promise<void> {
-  return waitFor(() => expectFocusSomewhereUseful(context));
+export async function expectFocusSettled(context: string): Promise<void> {
+  // Only the LANDING is retried. The ring question is answered by the
+  // stylesheet, so it has the same answer on every attempt — putting it inside
+  // `waitFor` turned a deterministic "this class has no rule" into a ~1s hang
+  // before the message appeared, and left it able to pass if focus happened to
+  // move on to a ringed element while the retries ran. Asked once, after the
+  // thing that is genuinely asynchronous has settled.
+  await waitFor(() => expectFocusLanded(context));
+  expectVisibleFocusRing(context);
 }

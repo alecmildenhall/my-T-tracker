@@ -34,8 +34,9 @@ export const ShotListItem: React.FC<ShotListItemProps> = ({
   // press most, and what it opened was a modal editor rather than a detail
   // view — tapping a row to reach a destination is ordinary, tapping one to
   // start editing by accident is not. It also announced the row's entire text
-  // as the control's name, where "Edit" names the action. The teaser passes
-  // `onEdit` like History does; only `onDelete` stays History-only.
+  // as the control's name, where "Edit" names the action. Both lists pass both
+  // handlers now — see the note in RecentShots for why Delete stopped being
+  // History-only.
   const content = (
     <>
       <header className="shot-list-item__header">
@@ -79,11 +80,11 @@ export const ShotListItem: React.FC<ShotListItemProps> = ({
     >
       {content}
 
-      {/* Only when there is something to put in it. The Home teaser passes
-          neither handler, where an unconditional wrapper is an empty flex row
-          still carrying its top margin — 8px per row, 24px of nothing on the one
-          screen whose whole point is fitting greeting, button and teaser above
-          the fold. */}
+      {/* Only when there is something to put in it. Both current callers pass
+          both handlers, so this guard has no live caller — it is kept because an
+          unconditional wrapper is an empty flex row still carrying its top
+          margin, and the next read-only list (a print or doctor-facing summary
+          is the obvious one) would otherwise pay 8px a row for nothing. */}
       {(onEdit || onDelete) && (
         <div className="shot-list-item__actions">
           {onEdit && (

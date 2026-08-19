@@ -43,6 +43,15 @@ export function useRowFocusAfterRemoval(
 
   return {
     aimAt: (index: number) => {
+      // A `findIndex` miss returns -1, and passing that through would make it a
+      // SECOND value meaning "no aim" alongside null — the overloading rule this
+      // codebase pays for most. It is reachable: `deleteShot` is a filter, so it
+      // reports success for an id that was already gone (another tab deleting
+      // the same shot, or a backup import landing, while the confirm is open),
+      // and the caller's findIndex then misses. `rows?.[-1]` is undefined so the
+      // old behaviour was survivable rather than wrong — focus fell to the
+      // fallback — but "survivable" is how the sentinel bugs here always start.
+      if (index < 0) return;
       focusRowAt.current = index;
     },
   };

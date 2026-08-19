@@ -1,8 +1,17 @@
 // src/components/RecentShots.tsx
 // The Home teaser: the few most recent shots plus a link to the full History.
-// Read-only on purpose — editing and deleting live in History, so Home stays
-// focused on its primary action (logging) and a destructive control is never one
-// stray tap from the button you press most often.
+//
+// It was read-only at first, on the reasoning that a destructive control should
+// never sit one stray tap from the button you press most often. Both Edit and
+// Delete are here now, and the argument that changed it is that the confirm
+// dialog already makes deleting two deliberate acts — so the risk being guarded
+// against was a mis-tap that cannot actually destroy anything, while the cost
+// was a row offering Edit and not Delete beside an identical row, one tab away,
+// offering both. There is no difference there a user can see a reason for.
+//
+// What that spends is vertical space: three rows of actions on the one screen
+// whose whole point is fitting the greeting, the log button and the teaser above
+// the fold. Worth knowing before anything else is added here.
 import React, { useEffect, useRef } from "react";
 import type { ShotEntry } from "../types/shot";
 import { takeRecent } from "../utils/shotQuery";

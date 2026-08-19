@@ -2,6 +2,13 @@
 // The "Delete this shot?" confirm, owned once and used by every list that
 // offers deleting — History, and the Home teaser.
 //
+// INTERIM — slice C replaces it with an undo snackbar, which is the end state
+// the roadmap chose (undo over confirm). Until then Delete sits beside Edit on
+// every row of a dense phone list, there is no undo, and there is no server
+// copy, so one mis-tap permanently loses a logged entry. A confirm is throwaway
+// work and worth it against that. This note moved here from HistoryView with
+// the state it describes.
+//
 // Extracted rather than copied when the teaser gained a Delete button. The
 // dialog carries decisions that took several rounds to get right — holding open
 // on a refused write, saying so rather than dismissing as though it worked,

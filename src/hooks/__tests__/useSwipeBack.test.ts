@@ -162,13 +162,40 @@ describe("useSwipeBack — regressions found in review", () => {
     dialog.remove();
   });
 
-  it("ignores a drag that is selecting text", () => {
+  it("ignores a drag that selects text as it goes", () => {
     // Long-press a note, drag the selection handle right, and you would be
-    // navigated to Home mid-selection.
+    // navigated to Home mid-selection. The selection has to CHANGE during the
+    // gesture — the previous version of this test established one beforehand and
+    // never touched it again, which passes against "is anything selected" and so
+    // could not tell the two rules apart.
     const onBack = vi.fn();
     renderHook(() => useSwipeBack(true, onBack));
     const p = document.createElement("p");
     p.textContent = "a note worth selecting";
+    document.body.appendChild(p);
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+
+    fire("touchstart", [touch(40, 400)]);
+    const range = document.createRange();
+    range.selectNodeContents(p);
+    sel.addRange(range); // the drag is what selected it
+    fire("touchend", [], [touch(300, 405)]);
+    expect(onBack).not.toHaveBeenCalled();
+
+    sel.removeAllRanges();
+    p.remove();
+  });
+
+  it("still swipes when text was already selected and the drag left it alone", () => {
+    // The other half, and the one that was wrong: a selection you made earlier
+    // — long-pressing a word in a note to read it — swallowed every swipe for as
+    // long as it survived. That reads as the gesture being broken, not as the
+    // app protecting anything, because nothing about the swipe touched it.
+    const onBack = vi.fn();
+    renderHook(() => useSwipeBack(true, onBack));
+    const p = document.createElement("p");
+    p.textContent = "a note read earlier";
     document.body.appendChild(p);
     const range = document.createRange();
     range.selectNodeContents(p);
@@ -177,7 +204,7 @@ describe("useSwipeBack — regressions found in review", () => {
     sel.addRange(range);
 
     swipe(40, 400, 300, 405);
-    expect(onBack).not.toHaveBeenCalled();
+    expect(onBack).toHaveBeenCalledOnce();
 
     sel.removeAllRanges();
     p.remove();

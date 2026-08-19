@@ -54,12 +54,19 @@ const IGNORED = "input, textarea, select, [contenteditable]";
  */
 const anyDialogOpen = () => document.querySelector('[role="dialog"]') !== null;
 
-/** True when the user is dragging a selection rather than the screen. Long-press
- *  a note, drag the handle sideways, and that is not navigation. */
-const isSelectingText = () => {
-  const selection = window.getSelection();
-  return selection !== null && !selection.isCollapsed;
-};
+/**
+ * What is selected right now, as a comparable value.
+ *
+ * Compared across the gesture rather than tested at the end of it. "Is anything
+ * selected?" is a different question from "did this drag select something", and
+ * only the second is a reason not to navigate: long-press a word in a note to
+ * read it, then swipe anywhere on screen, and the first answer swallows the
+ * gesture for as long as the selection survives — which reads as the swipe
+ * being broken, not as the app protecting a selection. Dragging a handle
+ * sideways changes what is selected, so the comparison still catches the case
+ * this was written for, and stops catching the case it wasn't.
+ */
+const selectionSnapshot = () => String(window.getSelection() ?? "");
 
 /**
  * Calls `onBack` when the user swipes left-to-right.
@@ -94,6 +101,7 @@ export function useSwipeBack(enabled: boolean, onBack: () => void): void {
     let startX = 0;
     let startY = 0;
     let startedAt = 0;
+    let startSelection = "";
     let tracking = false;
 
     const cancel = () => {
@@ -110,6 +118,7 @@ export function useSwipeBack(enabled: boolean, onBack: () => void): void {
       startX = touch.clientX;
       startY = touch.clientY;
       startedAt = performance.now();
+      startSelection = selectionSnapshot();
       tracking = true;
     };
 
@@ -130,7 +139,9 @@ export function useSwipeBack(enabled: boolean, onBack: () => void): void {
       if (performance.now() - startedAt > MAX_DURATION_MS) return;
       // Re-asked at the END too: a dialog can open mid-gesture, and the check
       // that matters is the state of the screen when the gesture would act.
-      if (anyDialogOpen() || isSelectingText()) return;
+      if (anyDialogOpen()) return;
+      // The drag changed what was selected, so it was a text drag.
+      if (selectionSnapshot() !== startSelection) return;
       onBackRef.current();
     };
 

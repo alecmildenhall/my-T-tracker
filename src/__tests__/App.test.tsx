@@ -65,8 +65,6 @@ const sheetGone = () =>
     timeout: 3000,
   });
 
-/** Background the app, or bring it back. jsdom reports "visible" and never
- *  changes it, so both halves have to be driven by hand. */
 /** One left-to-right swipe, dispatched as the browser would. */
 const swipeRightGesture = () => {
   const t = (x: number) =>
@@ -82,6 +80,8 @@ const swipeRightGesture = () => {
   fire("touchend", [], [t(260)]);
 };
 
+/** Background the app, or bring it back. jsdom reports "visible" and never
+ *  changes it, so both halves have to be driven by hand. */
 const setVisibility = (state: DocumentVisibilityState) => {
   Object.defineProperty(document, "visibilityState", {
     value: state,

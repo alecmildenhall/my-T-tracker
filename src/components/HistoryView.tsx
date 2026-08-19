@@ -63,11 +63,6 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   // range no shot could ever have been saved in. Per render — it reads the clock.
   const dateRange = shotDateRange();
   const [filtersOpen, setFiltersOpen] = useState(false);
-  // INTERIM — slice C replaces this with an undo snackbar (undo-over-confirm is
-  // the end state the roadmap chose). Until then Delete sits beside Edit on every
-  // row of a dense phone list, there is no undo, and there is no server copy, so
-  // one mis-tap permanently loses a logged entry. A confirm is throwaway work and
-  // worth it against that.
   const sectionRef = useRef<HTMLElement>(null);
   const filtersToggleRef = useRef<HTMLButtonElement>(null);
   // Local, not lifted: see HistoryQuery. Owning it here is also what makes the
