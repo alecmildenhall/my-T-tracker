@@ -34,7 +34,7 @@ describe("useFocusTrap", () => {
         <Trap label="only">
           <button>first</button>
           <button>last</button>
-        </Trap>
+        </Trap>,
       );
       screen.getByText("last").focus();
 
@@ -49,7 +49,7 @@ describe("useFocusTrap", () => {
       render(
         <Trap label="only" onEscape={onEscape}>
           <button>ok</button>
-        </Trap>
+        </Trap>,
       );
       fireEvent.keyDown(window, { key: "Escape" });
       expect(onEscape).toHaveBeenCalledOnce();
@@ -62,7 +62,7 @@ describe("useFocusTrap", () => {
       render(
         <Trap label="only">
           <button>inside</button>
-        </Trap>
+        </Trap>,
       );
       const outside = document.createElement("button");
       document.body.appendChild(outside);
@@ -81,7 +81,7 @@ describe("useFocusTrap", () => {
       render(
         <Trap label="only">
           <button>inside</button>
-        </Trap>
+        </Trap>,
       );
       const host = screen.getByTestId("only");
       const parent = host.parentNode as HTMLElement;
@@ -140,6 +140,31 @@ describe("useFocusTrap", () => {
       expect(screen.getByText("inner control")).toHaveFocus();
     });
 
+    it("a dialog beside another does not steal focus from the one on top", () => {
+      // SIBLINGS, not nested — which is the shape that actually ships, since
+      // Modal portals every dialog to <body>. It matters because the nested
+      // harness above cannot exercise this: an inner dialog is *contained* by
+      // the outer one, so the outer's net returns early on containment alone
+      // and the topmost check is never reached. Rendered side by side, the
+      // first dialog sees focus in the second as "outside me" and would haul it
+      // back — which is the stacked-dialog bug in its focus form rather than
+      // its keyboard form.
+      render(
+        <>
+          <Trap label="under">
+            <button>under control</button>
+          </Trap>
+          <Trap label="over">
+            <button>over control</button>
+          </Trap>
+        </>,
+      );
+
+      screen.getByText("over control").focus();
+
+      expect(screen.getByText("over control")).toHaveFocus();
+    });
+
     it("hands the keyboard back to the outer dialog when the inner one closes", () => {
       const { rerender } = render(
         <Trap label="outer" onEscape={() => {}}>
@@ -147,7 +172,7 @@ describe("useFocusTrap", () => {
           <Trap label="inner" onEscape={() => {}}>
             <button>inner control</button>
           </Trap>
-        </Trap>
+        </Trap>,
       );
 
       // Inner unmounts, as it would on confirm/cancel.
@@ -155,7 +180,7 @@ describe("useFocusTrap", () => {
       rerender(
         <Trap label="outer" onEscape={onOuter}>
           <button>outer control</button>
-        </Trap>
+        </Trap>,
       );
 
       fireEvent.keyDown(window, { key: "Escape" });

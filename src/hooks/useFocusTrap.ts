@@ -58,9 +58,8 @@ const isTopmost = (dialog: HTMLElement | null): boolean =>
       other === dialog ||
       !other.isConnected ||
       !(
-        dialog.compareDocumentPosition(other) &
-        Node.DOCUMENT_POSITION_FOLLOWING
-      )
+        dialog.compareDocumentPosition(other) & Node.DOCUMENT_POSITION_FOLLOWING
+      ),
   );
 
 interface Options {
@@ -70,7 +69,7 @@ interface Options {
 
 export function useFocusTrap(
   dialogRef: RefObject<HTMLElement | null>,
-  { onEscape }: Options
+  { onEscape }: Options,
 ): void {
   // Hold the latest callback so the listeners subscribe once per mount rather
   // than re-adding whenever the caller passes a fresh inline closure.
@@ -186,7 +185,7 @@ export function useFocusTrap(
         const nextIdx = list.findIndex(
           (el) =>
             active.compareDocumentPosition(el) &
-            Node.DOCUMENT_POSITION_FOLLOWING
+            Node.DOCUMENT_POSITION_FOLLOWING,
         );
         const after = nextIdx === -1 ? [] : list.slice(nextIdx);
         // `list.slice()`, not `list`. `.reverse()` mutates in place, so
@@ -230,7 +229,17 @@ export function useFocusTrap(
   useEffect(() => {
     const onFocusIn = (e: FocusEvent) => {
       const dialog = dialogRef.current;
+      // Belt and braces: `handOffFocus` refuses disconnected candidates anyway,
+      // so removing this changes no observable behaviour. It is here to avoid
+      // the pointless `tabbablesIn` walk over a dead subtree on every focus
+      // move during teardown.
       if (!dialog?.isConnected) return;
+      // This one, by contrast, is load-bearing, and not only for correctness.
+      // Modal portals every dialog to <body>, so two open dialogs are SIBLINGS:
+      // each one sees focus in the other as "outside me" and pulls it back, and
+      // the two nets then fight for focus forever. Measured, not theorised —
+      // deleting this line hung the test run until it was killed at ten
+      // minutes, rather than failing.
       if (!isTopmost(dialog)) return;
       const target = e.target;
       if (!(target instanceof Node) || dialog.contains(target)) return;
