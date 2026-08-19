@@ -175,8 +175,6 @@ interface ShotFormProps {
    *  dismissal keeps or discards. A ref rather than a change callback: the parent
    *  asks, instead of being told and having to remember why. */
   liveDraftRef?: React.RefObject<ShotDraft | null>;
-  /** Attached to the first field, so a containing dialog can put initial focus
-   *  on data entry rather than on its own Close button. */
 }
 
 export const ShotForm: React.FC<ShotFormProps> = ({

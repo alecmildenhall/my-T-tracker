@@ -5,8 +5,7 @@ import { ShotForm, type ShotDraft } from "./components/ShotForm";
 import { Settings } from "./components/Settings";
 import { Greeting, ACKNOWLEDGEMENT } from "./components/Greeting";
 import { TabBar } from "./components/TabBar";
-import { RecentShots, TEASER_COUNT } from "./components/RecentShots";
-import { takeRecent } from "./utils/shotQuery";
+import { RecentShots } from "./components/RecentShots";
 import { HistoryView } from "./components/HistoryView";
 import { emptyHistoryQuery, type HistoryQuery } from "./utils/historyQuery";
 import { Modal, SHEET_EXIT_MS } from "./components/Modal";
@@ -106,38 +105,25 @@ const App: React.FC = () => {
   // been hidden. The wash goes too, for the reason navigate() retires it: it may
   // have been paused mid-animation while the tab was in the background, and a
   // half-played wash finishing on return is a flash with nothing behind it.
-  // A wash only exists as an animation on a teaser row, so it is retired the
-  // moment no teaser row carries it. `animationend` is the ONLY other thing that
-  // retires it, and there are two ways a row never sends one:
+  // A wash only exists as an animation on a row, so it is retired the moment no
+  // row on screen carries it. `animationend` is the ONLY other thing that
+  // retires it, and there are ways a row never sends one: it never mounts (a
+  // backdated entry logged behind three newer ones is not in the teaser at
+  // all), it unmounts mid-animation (another tab deleting a shot, or a backup
+  // import, arrives through the storage listener at any moment), or a History
+  // filter hides it. Left armed, the id waits for the list to change underneath
+  // it and then plays a full 2.2s wash for something nobody just did.
   //
-  //   - it never mounts. A backdated entry logged behind three newer ones is not
-  //     in the teaser at all.
-  //   - it unmounts mid-animation. Another tab deleting a shot, or a backup
-  //     import, arrives through the storage listener at any moment.
-  //
-  // Either way the id sat armed, waiting for the teaser to change underneath it
-  // — and when it did, that weeks-old entry slid into view and played a full
-  // 2.2s wash for something nobody had just logged. Asking the question once,
-  // here, covers both ends; checking only at arming time covered one.
-  useEffect(() => {
-    if (washId === null) return;
-    // Which list is actually on screen decides this. Asking the Home question
-    // everywhere killed an edit's wash within a frame: handleUpdateShot arms it
-    // for a row edited in History, and this effect then found that id absent
-    // from the newest three and cleared it — so the behaviour worked only for
-    // shots that happened to be in the teaser, which is exactly why the test
-    // covering it passed while seeding two.
-    //
-    // Residual, knowingly: in History a shot hidden by a filter or below the
-    // page limit has no row to animate, so nothing sends `animationend` and the
-    // wash sits armed until the next navigate or openSheet clears it. Invisible
-    // while it lasts, since no row is showing it, and bounded by those two.
-    const onScreen =
-      view === "history"
-        ? shots.some((s) => s.id === washId)
-        : takeRecent(shots, TEASER_COUNT).some((s) => s.id === washId);
-    if (!onScreen) setWashId(null);
-  }, [washId, shots, view]);
+  // That question is NOT asked here, deliberately, and this note is what is
+  // left of the two attempts that were. Both asked the model — "is this shot in
+  // `shots`", "is it in the newest three" — which is a proxy for "is a row on
+  // screen", and the two differ in a dimension each attempt had not thought
+  // about. The first killed an edit's wash in History within a frame. The
+  // second missed a filtered-out row, because the shot is still in `shots`
+  // while nothing is rendering it. Whoever renders the list is the only one who
+  // knows, so RecentShots and HistoryView each retire a wash they cannot show —
+  // exactly one of them is mounted at a time, and navigate() covers Settings,
+  // where neither is.
 
   useEffect(() => {
     const onVisibilityChange = () => {
@@ -753,14 +739,20 @@ const App: React.FC = () => {
             />
           </Modal>
         )}
-      </div>
 
-      <footer className="app-footer">
-        <small>
-          Stored only in this browser — no accounts, no analytics, no servers.
-          Built with trans safety and privacy in mind.
-        </small>
-      </footer>
+        {/* Inside the sliding wrapper, unlike the tab bar above it. This is page
+          content, not chrome — on Home with few shots it is on screen, and it
+          sat motionless while the header and list slid past it, which is the
+          "contents shifting inside a page that stayed put" look the wrapper
+          exists to avoid. It is static, not fixed, so it carries none of the
+          containing-block problem that keeps the tab bar out. */}
+        <footer className="app-footer">
+          <small>
+            Stored only in this browser — no accounts, no analytics, no servers.
+            Built with trans safety and privacy in mind.
+          </small>
+        </footer>
+      </div>
 
       <TabBar view={view} onNavigate={navigate} />
     </div>

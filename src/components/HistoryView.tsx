@@ -29,6 +29,7 @@ import { suggestionsFor, normalizeValue } from "../utils/suggestions";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { ShotListItem } from "./ShotListItem";
 import { useDeleteShotConfirm } from "../hooks/useDeleteShotConfirm";
+import { useRowFocusAfterRemoval } from "../hooks/useRowFocusAfterRemoval";
 import { handOffFocus } from "../utils/focus";
 
 /** Pause in typing before the search re-runs. Short — the work is in-memory. */
@@ -76,25 +77,10 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   const debouncedText = useDebouncedValue(query.text, SEARCH_DEBOUNCE_MS);
   const listRef = useRef<HTMLUListElement>(null);
   const countRef = useRef<HTMLParagraphElement>(null);
-  /** Row index to focus once the next render lands — set by "Load more" (the
-   *  first newly revealed row) and by a delete (the row that takes its place).
-   *  null when the render wasn't caused by either. */
-  const focusRowAt = useRef<number | null>(null);
-
-  // Deferred to an effect rather than done inline, because both triggers destroy
-  // the element that had focus: "Load more" unmounts its own button on the last
-  // page, and a confirmed delete unmounts the row AND the dialog — whose own
-  // focus-restore would otherwise run last and win. Effects run after the removed
-  // children's cleanup, so this is the final word.
-  useEffect(() => {
-    const at = focusRowAt.current;
-    focusRowAt.current = null;
-    if (at === null) return;
-    const rows = listRef.current?.querySelectorAll<HTMLElement>("li");
-    // Deleting the last row leaves nothing at that index; fall back to the
-    // previous row, then to the count line, rather than dropping to <body>.
-    handOffFocus(rows?.[at], rows?.[at - 1], countRef);
-  });
+  // Shared with the Home teaser, which offers the same Delete behind the same
+  // dialog and used to answer this differently. "Load more" aims at the first
+  // newly revealed row; a delete aims at the row that takes its place.
+  const { aimAt } = useRowFocusAfterRemoval(listRef, countRef);
 
   // Facet options come from the user's own logged values, so the dropdowns only
   // ever offer choices that can actually match something. The currently-selected
@@ -167,8 +153,23 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
     onDeleteShot,
     fallbackFocusRef: sectionRef,
     onDeleted: (id) => {
-      focusRowAt.current = page.items.findIndex((s) => s.id === id);
+      aimAt(page.items.findIndex((s) => s.id === id));
     },
+  });
+
+  // The wash is an animation on a row, so a wash this list cannot show has to be
+  // retired here — nothing else can see it. `page.items` is not a proxy for what
+  // is rendered; it IS what is rendered, including the filter, the search and
+  // the page limit. App used to ask `shots.some(...)` instead, which stayed true
+  // for a row a filter had hidden: editing a shot out of the active filter left
+  // the wash armed, and clearing the filter minutes later played a full 2.2s
+  // wash for an edit nobody had just made. No dependency list, so this also
+  // covers this component's OWN state — the search debounce settling and "Load
+  // more" never reach App at all.
+  useEffect(() => {
+    if (justChangedId && !page.items.some((s) => s.id === justChangedId)) {
+      onWashEnd?.();
+    }
   });
 
   // Typing must not reset the page window on every keystroke: the list is still
@@ -214,10 +215,6 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
     handOffFocus(filtersToggleRef, sectionRef);
   };
 
-  // Deleting unmounts the row holding the focused button, which would drop focus
-  // to <body> and strand a keyboard or screen-reader user at the top of a long
-  // list. Hand focus to the neighbouring row (or the count line, when the list
-  // empties) — the same care the sheet and "Load more" already take.
   return (
     // tabIndex -1 so this can actually receive focus when the delete confirm
     // falls back to it (its row having vanished underneath). Without it,
@@ -409,7 +406,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
             // focus to <body> and dump a keyboard or screen-reader user at the
             // top of the document mid-task. Send focus to the first newly
             // revealed row instead — the content they asked for.
-            focusRowAt.current = page.items.length;
+            aimAt(page.items.length);
             setLimit((current) => current + PAGE_SIZE);
           }}
         >

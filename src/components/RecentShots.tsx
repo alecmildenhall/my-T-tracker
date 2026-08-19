@@ -3,11 +3,12 @@
 // Read-only on purpose — editing and deleting live in History, so Home stays
 // focused on its primary action (logging) and a destructive control is never one
 // stray tap from the button you press most often.
-import React, { useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import type { ShotEntry } from "../types/shot";
 import { takeRecent } from "../utils/shotQuery";
 import { ShotListItem } from "./ShotListItem";
 import { useDeleteShotConfirm } from "../hooks/useDeleteShotConfirm";
+import { useRowFocusAfterRemoval } from "../hooks/useRowFocusAfterRemoval";
 
 /** How many shots the teaser shows. Small enough that the greeting, the log
  *  button, and the teaser all fit above the fold on a phone. */
@@ -40,16 +41,39 @@ export const RecentShots: React.FC<RecentShotsProps> = ({
   onWashEnd,
 }) => {
   const sectionRef = useRef<HTMLElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
   const recent = takeRecent(shots, TEASER_COUNT);
+  // The same landing History uses, from the same hook: focus goes to the row
+  // that takes the deleted one's place. Deleting from the teaser used to drop
+  // focus on the whole <section>, which a screen reader reads out entirely —
+  // for the same act, behind the same dialog, one tab away from a list that
+  // did it properly. There is usually a row to take the place here too: the
+  // teaser shows three of however many exist, so a fourth slides up.
+  const { aimAt } = useRowFocusAfterRemoval(listRef, sectionRef);
   // The same dialog History shows, not a second copy of it: it carries
   // decisions that took rounds to settle — holding open on a refused write,
   // saying so rather than dismissing as though it worked — and slice C has one
   // place to replace when the confirm becomes an undo snackbar.
   const { requestDelete, deleteDialog } = useDeleteShotConfirm({
     onDeleteShot,
-    // The deleted row is gone, so focus lands on the section heading rather
-    // than <body>.
+    // Only reached when the teaser has no row left at all — deleting the last
+    // shot. Otherwise onDeleted aims at a real row.
     fallbackFocusRef: sectionRef,
+    onDeleted: (id) => {
+      aimAt(recent.findIndex((s) => s.id === id));
+    },
+  });
+
+  // The teaser is the only thing rendering these rows while Home is up, so it
+  // is the only one that knows whether the washed row is on screen. App used to
+  // ask the model instead ("is it in the newest three"), which is a proxy: it
+  // answered no for a row History was showing, and yes for one a filter had
+  // hidden. No dependency list — a wash must be retired the moment the row goes,
+  // whatever caused the render.
+  useEffect(() => {
+    if (justLoggedId && !recent.some((s) => s.id === justLoggedId)) {
+      onWashEnd?.();
+    }
   });
 
   return (
@@ -71,7 +95,7 @@ export const RecentShots: React.FC<RecentShotsProps> = ({
           No shots logged yet. Your data stays on this device.
         </p>
       ) : (
-        <ul>
+        <ul ref={listRef}>
           {recent.map((shot) => (
             <ShotListItem
               key={shot.id}

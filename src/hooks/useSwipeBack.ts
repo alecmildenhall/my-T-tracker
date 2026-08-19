@@ -1,7 +1,14 @@
 // src/hooks/useSwipeBack.ts
-// A left-to-right swipe moves one destination back — History → Home,
-// Settings → History. Phone-only by nature: it listens for touches, so a mouse
-// never triggers it and the tab bar remains the way everything else navigates.
+// A left-to-right swipe goes to Home, from anywhere. Phone-only by nature: it
+// listens for touches, so a mouse never triggers it and the tab bar remains the
+// way everything else navigates.
+//
+// HOME FROM ANYWHERE, not "one destination back" — which is what this comment
+// used to say, describing a first version that stepped the tab order and so
+// sent Settings → History. That treats three destinations as a sequence: you
+// never arrive at Settings *from* History, so it was sideways being called
+// back. Home is the root and the primary action, one destination is the whole
+// rule, and there is no order to memorise.
 //
 // WHY A GESTURE AND NOT HISTORY ENTRIES. The other way to do this is to push a
 // `history.pushState` entry per tab change, and let the platform's own back —
@@ -57,10 +64,16 @@ const isSelectingText = () => {
 /**
  * Calls `onBack` when the user swipes left-to-right.
  *
- * `enabled` is how the caller says "there is somewhere to go back to, and
- * nothing is covering the screen" — pass false on the first tab and whenever a
- * dialog is open, since the sheet renders through a portal and would otherwise
- * catch swipes meant for the form inside it.
+ * `enabled` means only "there is somewhere to go back to" — App passes
+ * `view !== "home"` and nothing else.
+ *
+ * It is deliberately NOT where dialogs are handled, though this doc used to
+ * tell callers to pass false "whenever a dialog is open". That is a list a
+ * caller has to keep complete — the log sheet, the delete confirm, the rename
+ * dialog, whatever slice C adds — and the moment it falls behind, a swipe over
+ * an open dialog navigates the screen out from under it. The hook asks the DOM
+ * itself (`anyDialogOpen`), which cannot fall behind, so a caller enumerating
+ * dialogs here is a caller reintroducing the bug that design closed.
  */
 export function useSwipeBack(enabled: boolean, onBack: () => void): void {
   // Held in a ref so the effect subscribes ONCE. Callers pass a fresh arrow

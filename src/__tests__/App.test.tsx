@@ -916,10 +916,38 @@ describe("App — editing from History", () => {
     expect(screen.getByText(/No shots logged yet/i)).toBeInTheDocument();
   });
 
+  it("lands focus on the row that takes the deleted one's place", async () => {
+    // The same landing History gives, because it is the same hook. The teaser
+    // deleted through the shared dialog but passed no `onDeleted`, so focus
+    // fell to the whole <section> — which a screen reader reads out entirely —
+    // for the same act, one tab away from a list that aimed at a real row.
+    // Four shots so a fourth slides up into the three-row teaser.
+    seedShots([
+      { id: "a", date: "2026-06-01", notes: "fourth, waiting offscreen" },
+      { id: "b", date: "2026-06-08", notes: "third" },
+      { id: "c", date: "2026-06-15", notes: "second" },
+      { id: "d", date: "2026-06-22", notes: "newest" },
+    ]);
+    renderApp();
+    const row = screen.getByText("second").closest("li")!;
+    fireEvent.click(within(row).getByRole("button", { name: "Delete" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" })
+    );
+    await expectFocusSettled("after deleting a teaser row");
+
+    // Index 1 held "second"; "third" now does, and that is where focus is —
+    // not the section, and not the row above.
+    const landed = document.activeElement as HTMLElement;
+    expect(landed.tagName).toBe("LI");
+    expect(landed).toHaveTextContent("third");
+  });
+
   it("does not strand focus when the deleted row was the last one", async () => {
     // The row that had focus removes itself. CLAUDE.md calls this class
-    // non-negotiable, and the teaser needed its own landing place — the section
-    // — since History's "focus the next row" has nothing to aim at here.
+    // non-negotiable, and with no row left to take the place the teaser falls
+    // back to the section — History's "focus the next row" has nothing to aim
+    // at here.
     seedShots([{ id: "a", date: "2026-06-01", notes: "only shot" }]);
     renderApp();
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
@@ -2358,6 +2386,55 @@ describe("the post-log wash", () => {
       );
     });
     expect(screen.getAllByRole("listitem")).toHaveLength(1); // it IS in the teaser now
+    expect(washed()).toEqual([]);
+  });
+
+  it("retires a wash whose row a History filter hides", async () => {
+    // The third way a row never sends `animationend`, and the one the model
+    // question cannot see: the shot is still in `shots`, so "is it in the list"
+    // says yes while nothing is on screen. Edit a shot so it falls out of the
+    // active filter and the wash sits armed; clear the filter minutes later and
+    // a full 2.2s wash plays for an edit nobody just made — exactly the
+    // stale-wash regression this retirement exists to prevent.
+    seedShots([
+      {
+        id: "a",
+        date: "2026-06-01",
+        notes: "keeps this one visible",
+        injectionSite: "thigh",
+      },
+      {
+        id: "b",
+        date: "2026-06-08",
+        notes: "another thigh shot",
+        injectionSite: "thigh",
+      },
+    ]);
+    renderApp();
+    goTo("History");
+
+    // Filter to thigh, then edit one of them onto a different site.
+    fireEvent.click(screen.getByRole("button", { name: /Filters/ }));
+    fireEvent.change(screen.getByLabelText("Site"), { target: { value: "thigh" } });
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+
+    const row = screen.getByText("another thigh shot").closest("li")!;
+    fireEvent.click(within(row).getByRole("button", { name: "Edit" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(
+      within(dialog).getByPlaceholderText(/thigh, glute, stomach/i),
+      { target: { value: "glute" } }
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Update shot" }));
+    await sheetGone();
+
+    // It filtered out, so no row ever animated and nothing retired the wash.
+    expect(screen.getAllByRole("listitem")).toHaveLength(1);
+    expect(washed()).toEqual([]);
+
+    // Clearing the filter brings it back. It must arrive plain.
+    fireEvent.change(screen.getByLabelText("Site"), { target: { value: "" } });
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
     expect(washed()).toEqual([]);
   });
 

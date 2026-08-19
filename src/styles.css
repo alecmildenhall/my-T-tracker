@@ -472,6 +472,7 @@ select {
 .tabbar:focus-visible,
 .history__count:focus-visible,
 .history:focus-visible,
+.recent-shots:focus-visible,
 .manage-values:focus-visible,
 .shot-form__title:focus-visible,
 .app-title:focus-visible,
