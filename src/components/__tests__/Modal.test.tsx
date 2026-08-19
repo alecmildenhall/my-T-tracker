@@ -237,11 +237,18 @@ describe("Modal", () => {
     render(<Harness />);
     const outside = document.createElement("button");
     document.body.appendChild(outside);
-    outside.focus();
 
     // Detach the dialog without unmounting React, reproducing that window.
     const overlay = document.querySelector(".dialog-overlay") as HTMLElement;
     overlay.remove();
+
+    // Focused AFTER the detach, deliberately. Focusing it first would be a
+    // truer copy of nothing at all: the focusin net corrects focus that lands
+    // outside a LIVE dialog, so the setup would be exercising the net rather
+    // than the stale-listener window this test is about. Detached first, the
+    // net stands down and the question is only what the leftover keydown
+    // listener does.
+    outside.focus();
 
     const notPrevented = fireEvent.keyDown(window, { key: "Tab" });
     expect(notPrevented).toBe(true); // left alone entirely
