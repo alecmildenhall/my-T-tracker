@@ -51,8 +51,12 @@ export function nowHHMM(d: Date = new Date()): string {
  * own `<input type="time">` is localised by the browser on exactly the same
  * basis, so the two agree by construction.
  *
- * The date attached is arbitrary and never shown — `Intl` needs a Date, and a
- * fixed local noon avoids both DST edges and any timezone shifting the hour.
+ * The date attached is arbitrary and never shown: `Intl` needs a Date, so the
+ * time is placed on 1 January 2000 in LOCAL time, which is what keeps the hour
+ * the one that was asked for. (An earlier version of this comment said "a fixed
+ * local noon", which the code never did — it places the given hour. No IANA zone
+ * has an offset transition around local midnight on that date, so the two agree
+ * in practice; the comment was describing code that did not exist.)
  */
 export function formatTimeForDisplay(time: string): string {
   const match = /^(\d{2}):(\d{2})$/.exec(time);

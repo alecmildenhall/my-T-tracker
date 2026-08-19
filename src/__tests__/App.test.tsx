@@ -730,6 +730,23 @@ describe("App — editing from History", () => {
     }
   });
 
+  it("does not strand focus when a swipe unmounts what held it", async () => {
+    // The gesture removes the whole outgoing view. A tab TAP is safe because
+    // focus is on the tab button, which survives; a swipe has no such anchor, so
+    // focus was landing on <body> and the next Tab restarted from the top of the
+    // document.
+    seedShots([{ id: "a", date: "2026-06-01", notes: "an entry" }]);
+    renderApp();
+    goTo("History");
+    const search = screen.getByLabelText("Search notes and mood");
+    search.focus();
+    expect(search).toHaveFocus();
+
+    swipeRightGesture();
+
+    await expectFocusSettled("after swiping back from History");
+  });
+
   it("animates the arrival only when a swipe caused it", () => {
     // The motion answers the gesture. A tab tap is not a swipe and gets none —
     // otherwise the app would appear to slide sideways whenever you pressed
@@ -2151,9 +2168,15 @@ describe("the post-log acknowledgement", () => {
     // the Yellow Fade Technique's original job, "show me the record that just
     // changed" — so an edit flashes: you are returned to a list, and the row you
     // touched is the one worth finding. The LINE stays log-only.
+    // FOUR shots, and the one edited is deliberately NOT among the newest three.
+    // Seeding two made both members of the Home teaser, so the retirement effect's
+    // teaser question happened to answer yes and the test passed over a wash that
+    // was cleared within a frame for every other row.
     seedShots([
       { id: "a", date: "2026-06-01", notes: "before" },
       { id: "b", date: "2026-06-08", notes: "untouched" },
+      { id: "c", date: "2026-06-15", notes: "newer" },
+      { id: "d", date: "2026-06-22", notes: "newest" },
     ]);
     renderApp();
     goTo("History");

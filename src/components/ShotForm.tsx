@@ -177,7 +177,6 @@ interface ShotFormProps {
   liveDraftRef?: React.RefObject<ShotDraft | null>;
   /** Attached to the first field, so a containing dialog can put initial focus
    *  on data entry rather than on its own Close button. */
-  firstFieldRef?: React.RefObject<HTMLInputElement | null>;
 }
 
 export const ShotForm: React.FC<ShotFormProps> = ({
@@ -191,7 +190,6 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   headingId,
   draft,
   liveDraftRef,
-  firstFieldRef,
   headingRef: externalHeadingRef,
 }) => {
   // Values that genuinely stay the same shot-to-shot start pre-filled from the
@@ -571,7 +569,6 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             <label>
               Date
               <input
-                ref={firstFieldRef}
                 type="date"
                 value={date}
                 onChange={(e) => {

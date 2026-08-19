@@ -70,8 +70,18 @@ describe("formatTimeForDisplay", () => {
   });
 
   it("does not shift the hour across timezones or DST", () => {
-    // The date it attaches is arbitrary and never shown; a fixed local noon-ish
-    // construction keeps 00:00 from becoming 23:00 somewhere.
-    expect(formatTimeForDisplay("00:00")).toContain("12");
+    // Asserted against Intl rather than against the string "12", which assumed a
+    // 12-hour locale: on en-GB this rendered "0:00" and the suite went red for
+    // any contributor whose ICU default is not US-style. The claim worth making
+    // is that the hour survives the round trip, not which clock writes it.
+    const midnight = new Date(2000, 0, 1, 0, 0);
+    expect(formatTimeForDisplay("00:00")).toBe(
+      new Intl.DateTimeFormat(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+      }).format(midnight)
+    );
+    // ...and the hour is genuinely the one asked for, in any locale.
+    expect(midnight.getHours()).toBe(0);
   });
 });

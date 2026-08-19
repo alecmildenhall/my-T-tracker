@@ -121,9 +121,21 @@ const App: React.FC = () => {
   // here, covers both ends; checking only at arming time covered one.
   useEffect(() => {
     if (washId === null) return;
-    const onScreen = takeRecent(shots, TEASER_COUNT).some(
-      (s) => s.id === washId,
-    );
+    // Which list is actually on screen decides this. Asking the Home question
+    // everywhere killed an edit's wash within a frame: handleUpdateShot arms it
+    // for a row edited in History, and this effect then found that id absent
+    // from the newest three and cleared it — so the behaviour worked only for
+    // shots that happened to be in the teaser, which is exactly why the test
+    // covering it passed while seeding two.
+    //
+    // Residual, knowingly: in History a shot hidden by a filter or below the
+    // page limit has no row to animate, so nothing sends `animationend` and the
+    // wash sits armed until the next navigate or openSheet clears it. Invisible
+    // while it lasts, since no row is showing it, and bounded by those two.
+    const onScreen =
+      view === "history"
+        ? shots.some((s) => s.id === washId)
+        : takeRecent(shots, TEASER_COUNT).some((s) => s.id === washId);
     if (!onScreen) setWashId(null);
   }, [washId, shots, view]);
 
@@ -144,9 +156,6 @@ const App: React.FC = () => {
       document.removeEventListener("visibilitychange", onVisibilityChange);
   }, []);
   const titleRef = useRef<HTMLHeadingElement>(null);
-  // Initial focus goes to the first field, not the sheet's own Close button —
-  // landing on Close means a stray Enter dismisses the form you just opened.
-  const dateFieldRef = useRef<HTMLInputElement>(null);
   /** The sheet's heading — where focus lands when it opens. Not the date field:
    *  focusing that by script throws up the date wheel on iOS and Android. */
   const sheetHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -437,6 +446,12 @@ const App: React.FC = () => {
   // motion is answering.
   const [arrivedBySwipe, setArrivedBySwipe] = useState(false);
   useSwipeBack(view !== "home", () => {
+    // The gesture unmounts the entire outgoing view, including whatever held
+    // focus — a search field, a filter, a row. A tab TAP is safe because focus
+    // sits on the tab button, which lives outside the screen being replaced; a
+    // swipe has no such anchor, so without this focus lands on <body> and the
+    // next Tab restarts from the top of the document.
+    handOffFocus(titleRef);
     navigate("home");
     setArrivedBySwipe(true); // after navigate, which clears it
   });
@@ -734,7 +749,6 @@ const App: React.FC = () => {
                 activeEditingShot ? draftForShot(activeEditingShot) : draft
               }
               liveDraftRef={liveDraft}
-              firstFieldRef={dateFieldRef}
               headingRef={sheetHeadingRef}
             />
           </Modal>
