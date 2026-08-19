@@ -1,6 +1,13 @@
 import { readFileSync } from "node:fs";
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent, act, configure } from "@testing-library/react";
+import {
+  render,
+  screen,
+  fireEvent,
+  act,
+  cleanup,
+  configure,
+} from "@testing-library/react";
 import { useRef, useState } from "react";
 import { Modal, SHEET_EXIT_MS } from "../Modal";
 
@@ -200,6 +207,70 @@ describe("Modal", () => {
     after.focus();
     expect(fireEvent.keyDown(window, { key: "Tab" })).toBe(false);
     expect(date).toHaveFocus(); // wrapped back inside
+  });
+
+  it("lets the browser step BACKWARDS into a date field, at its last segment", () => {
+    // The mirror of the test above, and the half that was missing. `focus()`
+    // enters a segmented input at its FIRST segment, which is right going
+    // forwards and wrong going backwards — so the trap owning this Shift+Tab
+    // landed on the hour and the next Shift+Tab left the field, making minutes
+    // and AM/PM unreachable backwards. Measured in Chromium on the log sheet:
+    // one backward stop inside the dialog against four for the same control
+    // outside one.
+    //
+    // jsdom has no segments, so this pins the contract: the handler must stand
+    // aside when Shift+Tab would ENTER a segmented input that has a control
+    // before it, and the browser then enters at the last segment.
+    render(
+      <Modal labelledBy="t" onClose={() => {}}>
+        <h2 id="t">Title</h2>
+        <button type="button">Before</button>
+        <input type="date" aria-label="Date" />
+        <button type="button">After</button>
+      </Modal>
+    );
+    const after = screen.getByRole("button", { name: "After" });
+    after.focus();
+
+    // Backwards into the date: left to the browser.
+    expect(fireEvent.keyDown(window, { key: "Tab", shiftKey: true })).toBe(true);
+
+    // ...but only where the browser's own move stays inside. Wrapping BACKWARDS
+    // from the first control onto a segmented LAST control is the boundary: the
+    // browser would walk off an inert page, so the trap keeps that one and
+    // enters at the first segment. That is the residual the roadmap records,
+    // and it is now genuinely limited to an END of the tab order rather than to
+    // every segmented field with a non-segmented neighbour.
+    cleanup();
+    render(
+      <Modal labelledBy="t2" onClose={() => {}}>
+        <h2 id="t2">Title</h2>
+        <button type="button">First</button>
+        <input type="date" aria-label="Date2" />
+      </Modal>
+    );
+    screen.getByRole("button", { name: "First" }).focus();
+    expect(fireEvent.keyDown(window, { key: "Tab", shiftKey: true })).toBe(false);
+    expect(screen.getByLabelText("Date2")).toHaveFocus();
+  });
+
+  it("ignores Escape carrying an OS modifier", () => {
+    // The Ctrl/Alt/Cmd guard used to sit below the Escape branch, so it only
+    // protected Tab. Alt+Esc cycles windows on Windows and Cmd-modified
+    // Escapes are OS-level on macOS, and each still dispatches an Escape
+    // keydown here — measured, all three dismissed the log sheet. Coming back
+    // from another app to find a half-filled form gone is not a dismissal
+    // anyone asked for.
+    const onClose = vi.fn();
+    render(<Harness onClose={onClose} />);
+
+    for (const mod of ["altKey", "ctrlKey", "metaKey"]) {
+      fireEvent.keyDown(window, { key: "Escape", [mod]: true });
+    }
+    expect(onClose).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledOnce();
   });
 
   it("lets Tab out of a date field even when a DISABLED control follows it", () => {

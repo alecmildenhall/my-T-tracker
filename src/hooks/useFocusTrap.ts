@@ -135,6 +135,15 @@ export function useFocusTrap(
       // being typed into.
       if (!isTopmost(dialog)) return;
 
+      // Ctrl/Alt/Cmd combinations belong to the browser and the OS, and this
+      // guard covers the WHOLE handler — it used to sit below the Escape branch
+      // and so protected only Tab. Alt+Esc cycles windows on Windows and
+      // Cmd-modified Escapes are OS-level on macOS, and each of them dispatches
+      // an Escape keydown to the page: measured, all of Alt/Control/Meta+Escape
+      // dismissed the log sheet. Coming back from another app to find your
+      // half-filled form gone is not a dismissal anyone asked for.
+      if (e.ctrlKey || e.altKey || e.metaKey) return;
+
       if (e.key === "Escape") {
         onEscapeRef.current();
         return;
@@ -145,11 +154,6 @@ export function useFocusTrap(
       // wherever focus is, so a duplicate delivery advances twice and lands a
       // control further on than the user asked for.
       if (e.defaultPrevented) return;
-      // Ctrl/Alt/Cmd+Tab are the browser's and the OS's, not ours. They still
-      // dispatch a Tab keydown to the page, and preventDefault doesn't stop a
-      // reserved shortcut — it just meant coming back from another browser tab
-      // to find focus silently moved inside the sheet.
-      if (e.ctrlKey || e.altKey || e.metaKey) return;
 
       const list = tabbablesIn(dialog);
       if (list.length === 0) {
@@ -191,6 +195,25 @@ export function useFocusTrap(
         if (beyond) return;
       }
 
+      // The mirror of that, and the half it was missing: stepping BACKWARDS
+      // *into* a segmented input has to be the browser's move as well.
+      //
+      // `handOffFocus` moves focus with `el.focus()`, which enters a date or
+      // time field at its FIRST segment — correct going forwards, and exactly
+      // wrong going backwards, where the browser enters at the LAST. Landing on
+      // the hour meant the next Shift+Tab left the field immediately, so
+      // minutes and AM/PM could not be reached backwards at all. Measured on
+      // the log sheet: one backward stop inside the dialog against four for the
+      // same control outside one.
+      //
+      // Safe to hand over precisely when there is a control before this one
+      // (`at > 0`), because the browser's backward move then lands inside that
+      // control and cannot leave the dialog. At the boundary we still own it
+      // and still enter at the first segment — the residual the roadmap
+      // records, now genuinely limited to an END of the tab order rather than
+      // to every segmented field with a non-segmented neighbour.
+      if (e.shiftKey && at > 0 && list[at - 1].matches(SEGMENTED_INPUT)) return;
+
       let order: HTMLElement[];
       if (at !== -1) {
         // On one of the controls: rotate from it, and end back on it so that a
@@ -200,7 +223,23 @@ export function useFocusTrap(
         order = e.shiftKey
           ? [...before.reverse(), ...after.reverse(), list[at]]
           : [...after, ...before, list[at]];
-      } else if (active && dialog.contains(active)) {
+      } else if (
+        active &&
+        dialog.contains(active) &&
+        // `compareDocumentPosition` below splits the list by DOCUMENT order,
+        // while `tabbablesIn` returns TAB order — the two agree only while
+        // nothing carries a positive tabindex. The old selector was explicitly
+        // guarded by "nothing in this app uses one"; this hook's list producer
+        // dropped that constraint and this consumer quietly kept depending on
+        // it, so the halves disagreed about what the array meant.
+        //
+        // Rather than build an ordering this branch cannot express, detect the
+        // disagreement and fall through to entering from an end — which is
+        // always inside the dialog, just less precise. Nothing in the app sets
+        // a positive tabindex, so this costs nothing today and stops being
+        // wrong if anything ever does.
+        !list.some((el) => el.tabIndex > 0)
+      ) {
         // Inside the dialog but not IN the list — a `tabIndex={-1}` element,
         // which tabbable deliberately excludes. This is not a rare case: it is
         // where every hand-off inside a dialog lands, including "Clear form"

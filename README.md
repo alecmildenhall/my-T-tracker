@@ -397,6 +397,8 @@ Worth knowing what this rule is suspending, since it stops being free the day so
 
   Also still open, and unfixable this way: a segmented input at either **end** of the tab order loses in-field stepping in that direction, since nothing in the DOM says which segment you are on.
 
+  That residual used to be much larger than the sentence above admitted, and a browser pass caught it. `handOffFocus` moves focus with `focus()`, which enters a date or time field at its **first** segment — right going forwards, exactly wrong going backwards, where the browser enters at the **last**. So every Shift+Tab *into* a segmented field landed on the hour and the next one left the field: **minutes and AM/PM could not be reached backwards at all**, on the log sheet, in the primary flow. Measured against the same control outside a dialog: one backward stop against four. The trap now stands aside for that one move whenever a control precedes the field, which is exactly when the browser's own move cannot leave the dialog — so the residual really is only the ends now, and it is four stops again.
+
   **Browser-pass checklist for B½,** since B½ adds fields to the very sheet this is bounded by, and none of it is visible to jsdom:
     - Tab and Shift+Tab through the whole log sheet, both directions, and confirm focus never leaves it.
     - Tab *within* the date and time inputs and confirm the segments still step (this broke once already).
