@@ -147,6 +147,9 @@ const App: React.FC = () => {
   // Initial focus goes to the first field, not the sheet's own Close button —
   // landing on Close means a stray Enter dismisses the form you just opened.
   const dateFieldRef = useRef<HTMLInputElement>(null);
+  /** The sheet's heading — where focus lands when it opens. Not the date field:
+   *  focusing that by script throws up the date wheel on iOS and Android. */
+  const sheetHeadingRef = useRef<HTMLHeadingElement>(null);
   const [draft, setDraft] = useState<ShotDraft | null>(null);
   // In-progress edits, keyed by shot id. Closing an edit remembers the changes
   // and reopening that shot restores them, so dismissal never loses work in
@@ -711,7 +714,7 @@ const App: React.FC = () => {
             onClose={dismissSheet}
             variant="sheet"
             closing={closing}
-            initialFocusRef={dateFieldRef}
+            initialFocusRef={sheetHeadingRef}
             fallbackFocusRef={titleRef}
           >
             <ShotForm
@@ -732,6 +735,7 @@ const App: React.FC = () => {
               }
               liveDraftRef={liveDraft}
               firstFieldRef={dateFieldRef}
+              headingRef={sheetHeadingRef}
             />
           </Modal>
         )}

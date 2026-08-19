@@ -199,15 +199,20 @@ describe("App — logging via the sheet", () => {
     expect(screen.getByRole("button", { name: /See all/ })).toBeInTheDocument();
   });
 
-  it("puts initial focus on the first field, not on Close", () => {
+  it("lands focus on the heading — not the date field, not Close", () => {
     renderApp();
     fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    const sheet = within(screen.getByRole("dialog"));
 
-    // Landing on Close would mean a stray Enter dismisses the form just opened;
-    // a data-entry dialog should start on data entry.
-    expect(
-      within(screen.getByRole("dialog")).getByLabelText("Date")
-    ).toHaveFocus();
+    // The DATE FIELD is what this used to be, and on a phone that opened the
+    // sheet with the date wheel already covering half the screen: focusing an
+    // `<input type="date">` by script is what summons it. The same hazard this
+    // codebase documents for "Clear form", missed for the sheet's own opening.
+    expect(sheet.getByRole("heading", { name: "Log a shot" })).toHaveFocus();
+    expect(sheet.getByLabelText("Date")).not.toHaveFocus();
+    // And not the ✕: landing there means a stray Enter dismisses the form you
+    // just opened.
+    expect(sheet.getByRole("button", { name: "Close" })).not.toHaveFocus();
   });
 
   it("the top-bar close dismisses without saving", async () => {

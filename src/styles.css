@@ -24,8 +24,9 @@
   --radius-lg: 16px;
   --radius-md: 10px;
   --shadow-soft: 0 16px 40px rgba(0, 0, 0, 0.45);
-  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
-    "Segoe UI", sans-serif;
+  --font-sans:
+    system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+    sans-serif;
 }
 
 *,
@@ -278,8 +279,11 @@ textarea {
   padding: 0.4rem 0.85rem;
   min-height: 44px; /* Apple HIG minimum tap target */
   cursor: pointer;
-  transition: border-color 0.15s ease, background-color 0.15s ease,
-    color 0.15s ease, transform 0.08s ease;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.08s ease;
 }
 
 /* Chips keep a distinct model: hover/press only brighten the border (the
@@ -348,8 +352,12 @@ select {
   align-items: center;
   justify-content: center;
   gap: 0.3rem;
-  transition: filter 0.15s ease, background-color 0.15s ease,
-    border-color 0.15s ease, color 0.15s ease, transform 0.08s ease;
+  transition:
+    filter 0.15s ease,
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.08s ease;
 }
 
 .primary-button {
@@ -653,8 +661,11 @@ select {
   padding: 0.4rem 0.75rem;
   min-height: 36px;
   cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease,
-    background-color 0.15s ease, transform 0.08s ease;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    transform 0.08s ease;
 }
 
 /* Neutral (matches .secondary-button's engaged look) */
@@ -686,7 +697,9 @@ select {
   font-size: 1.1rem;
   line-height: 1;
   cursor: pointer;
-  transition: border-color 0.15s ease, background-color 0.15s ease,
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease,
     transform 0.08s ease;
 }
 
@@ -815,8 +828,11 @@ select {
   font-weight: 600;
   cursor: pointer;
   border: 1px solid transparent;
-  transition: filter 0.15s ease, background-color 0.15s ease,
-    border-color 0.15s ease, transform 0.08s ease;
+  transition:
+    filter 0.15s ease,
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.08s ease;
 }
 
 .dialog-danger {
@@ -1015,7 +1031,9 @@ select {
   font-size: 0.68rem;
   font-weight: 550;
   cursor: pointer;
-  transition: color 0.15s ease, background-color 0.15s ease;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
 }
 
 .tab svg {
@@ -1244,8 +1262,11 @@ select {
   line-height: 1;
   cursor: pointer;
   font-family: inherit;
-  transition: color 0.15s ease, border-color 0.15s ease,
-    background-color 0.15s ease, transform 0.08s ease;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    transform 0.08s ease;
 }
 
 @media (hover: hover) {
@@ -1278,6 +1299,48 @@ select {
   flex-direction: column;
   gap: 0.8rem;
   padding: 1rem 0.9rem 1.25rem;
+
+  /* SCROLL SHADOWS: a soft edge appears at the top or bottom exactly when there
+     is more form in that direction, and only then.
+
+     The form is ten fields in a sheet the keyboard shrinks to a few hundred
+     pixels, and iOS hides scrollbars until you are already scrolling — so the
+     one moment you need to know there is more is the one moment nothing says
+     so. Reported from a phone: the sheet reads as the whole form, cut off.
+
+     Four layers, and the trick is which of them scroll. The two COVER layers
+     are `background-attachment: local`, so they travel with the content and sit
+     over the shadows while you are at that end; the two SHADOW layers are
+     `scroll`, so they stay pinned to the box. Scroll away from an edge and its
+     cover moves off, revealing the shadow underneath. No JS, no scroll
+     listener, and nothing to keep in sync — the browser does the arithmetic.
+
+     Cover colour must match what is behind the region (the sheet's own card),
+     or the covers read as bands of the wrong colour at rest.
+
+     The shadow is LIGHT, not dark. The usual recipe casts a black haze, which on
+     a near-black sheet is a black gradient on black — measured invisible in a
+     screenshot, which is the only way to answer "can you see it" and the same
+     mistake the row wash made. On a dark surface the edge has to read as a lift.
+     Content being visibly cut off does the rest of the work, and the two
+     together are what say "there is more of this". */
+  background:
+    linear-gradient(var(--bg-card) 30%, rgba(17, 24, 39, 0)) top / 100% 14px
+      no-repeat local,
+    linear-gradient(rgba(17, 24, 39, 0), var(--bg-card) 70%) bottom / 100% 14px
+      no-repeat local,
+    radial-gradient(
+        farthest-side at 50% 0,
+        rgba(148, 163, 184, 0.5),
+        rgba(148, 163, 184, 0)
+      )
+      top / 100% 10px no-repeat scroll,
+    radial-gradient(
+        farthest-side at 50% 100%,
+        rgba(148, 163, 184, 0.5),
+        rgba(148, 163, 184, 0)
+      )
+      bottom / 100% 10px no-repeat scroll;
 }
 
 .shot-form__save {
@@ -1597,7 +1660,6 @@ select {
   font-size: 0.8rem;
   line-height: 1.45;
 }
-
 
 /* ---- Post-log acknowledgement ------------------------------------------- */
 
