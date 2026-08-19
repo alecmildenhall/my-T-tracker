@@ -1,5 +1,11 @@
 // src/components/ShotForm.tsx
-import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+  useCallback,
+} from "react";
 import type { ShotEntry } from "../types/shot";
 import { suggestionsFor } from "../utils/suggestions";
 import { todayLocalISO, nowHHMM } from "../utils/datetime";
@@ -146,6 +152,9 @@ interface ShotFormProps {
    *  submit button confirms in green with a ✓ rather than vanishing instantly. */
   confirming?: boolean;
   editingShot?: ShotEntry | null;
+  /** The sheet's heading, so the parent can land focus there on open rather
+   *  than on the date field — see the note on the <h2>. */
+  headingRef?: React.RefObject<HTMLHeadingElement | null>;
   /** Close the sheet. Never destructive: the parent keeps whatever was entered
    *  and restores it next time this same form is opened, for a new shot or an
    *  edit alike. Renders the ✕ in the top bar — omit it and the bar shows just
@@ -166,9 +175,6 @@ interface ShotFormProps {
    *  dismissal keeps or discards. A ref rather than a change callback: the parent
    *  asks, instead of being told and having to remember why. */
   liveDraftRef?: React.RefObject<ShotDraft | null>;
-  /** Attached to the first field, so a containing dialog can put initial focus
-   *  on data entry rather than on its own Close button. */
-  firstFieldRef?: React.RefObject<HTMLInputElement | null>;
 }
 
 export const ShotForm: React.FC<ShotFormProps> = ({
@@ -182,7 +188,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   headingId,
   draft,
   liveDraftRef,
-  firstFieldRef,
+  headingRef: externalHeadingRef,
 }) => {
   // Values that genuinely stay the same shot-to-shot start pre-filled from the
   // last shot, so their field is already filled and their chip already selected.
@@ -233,7 +239,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // Mount-time seed only; the component is remounted (via `key`) when the shot
     // being edited changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
+    [],
   );
 
   // A restored draft wins over both, and is restored as-is — no field is
@@ -241,12 +247,15 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   const start: ShotDraft = useMemo(
     () => draft ?? opened,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
+    [],
   );
 
   const [date, setDate] = useState<string>(start.date);
   const [dateBaseline, setDateBaseline] = useState<string>(start.dateBaseline);
-  const headingRef = useRef<HTMLHeadingElement>(null);
+  // The sheet's landing spot. Owned by the parent when it supplies one, because
+  // Modal needs it as `initialFocusRef` — see the note on the <h2> below.
+  const ownHeadingRef = useRef<HTMLHeadingElement>(null);
+  const headingRef = externalHeadingRef ?? ownHeadingRef;
   const [dateError, setDateError] = useState<string | null>(null);
   const [saveFailed, setSaveFailed] = useState(false);
   const [exportFailed, setExportFailed] = useState(false);
@@ -254,12 +263,14 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   const [painError, setPainError] = useState<string | null>(null);
   const [time, setTime] = useState<string>(start.time);
   const [doseMg, setDoseMg] = useState<string>(start.doseMg);
-  const [injectionSite, setInjectionSite] = useState<string>(start.injectionSite);
+  const [injectionSite, setInjectionSite] = useState<string>(
+    start.injectionSite,
+  );
   const [injectionSitePosition, setInjectionSitePosition] = useState<string>(
-    start.injectionSitePosition
+    start.injectionSitePosition,
   );
   const [testosteroneEster, setTestosteroneEster] = useState<string>(
-    start.testosteroneEster
+    start.testosteroneEster,
   );
   const [carrierOil, setCarrierOil] = useState<string>(start.carrierOil);
   const [painScore, setPainScore] = useState<string>(start.painScore);
@@ -276,7 +287,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       ester: suggestionsFor(shots, "testosteroneEster").slice(0, 6),
       oil: suggestionsFor(shots, "carrierOil").slice(0, 6),
     }),
-    [shots]
+    [shots],
   );
 
   // A fresh, empty "Log a Shot" form. The single source of truth for what the
@@ -318,7 +329,12 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // for. The heading summons no keyboard and no picker, names the region that
     // just changed for a screen reader, and keeps focus inside the trap.
     handOffFocus(headingRef);
-  }, []);
+    // `headingRef` is now either the parent's ref or this component's own, so it
+    // is a value rather than a constant — and resetForm must stay
+    // identity-stable, or the editing-sync effect below re-runs and wipes fields
+    // mid-typing. Both candidates are refs, so the identity never changes in
+    // practice; listing it satisfies the rule without changing behaviour.
+  }, [headingRef]);
 
   // NOTE: there is deliberately no "sync the form to editingShot" effect. The
   // state above is seeded once at mount, and the parent gives this component a
@@ -372,7 +388,8 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // Mirrors the storage schema: a finite, non-negative number. Fractional doses
     // are fine (62.5mg while titrating is ordinary).
     const nextDoseError =
-      parsedDose !== undefined && (!Number.isFinite(parsedDose) || parsedDose < 0)
+      parsedDose !== undefined &&
+      (!Number.isFinite(parsedDose) || parsedDose < 0)
         ? "Dose must be a positive number."
         : null;
     // INTERIM — retires with the numeric pain input in slice B½, which replaces
@@ -516,7 +533,20 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             ✕
           </button>
         )}
-        {/* Focusable only as the target "Clear form" hands to — see resetForm. */}
+        {/* Where focus LANDS when the sheet opens, and where "Clear form" hands
+            it back to.
+
+            Not the date field, which is what it used to be. `<input type="date">`
+            focused by script is exactly what makes iOS Safari and Android Chrome
+            throw up the date wheel — so opening the log sheet on a phone covered
+            half the screen with a picker nobody had asked for, before you had
+            even decided what to type. The same hazard this file already
+            documented for "Clear form", not applied to the sheet's own opening.
+
+            The heading summons no keyboard and no picker, names the region that
+            just appeared for a screen reader, and keeps focus inside the trap.
+            Not the ✕ either: landing there means a stray Enter dismisses the
+            form you just opened. */}
         <h2
           id={headingId}
           className="shot-form__title"
@@ -528,220 +558,241 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       </div>
 
       <div className="shot-form__scroll">
-
-      <div className="form-row">
-        {/* The error is a SIBLING of the label, never inside it: text inside a
+        <div className="form-row">
+          {/* The error is a SIBLING of the label, never inside it: text inside a
             <label> becomes part of the field's accessible name, so an error
             message there would rename the field to "Date <the whole error>".
             aria-describedby is how it reaches assistive tech. */}
-        <div className="field-cell">
-          <label>
-            Date
-            <input
-              ref={firstFieldRef}
-              type="date"
-              value={date}
-              onChange={(e) => {
-                setDate(e.target.value);
-// Nothing to record here: the baseline already says what
-                // "untouched" means, so the comparison below answers it.
-                if (dateError) setDateError(null);
-              }}
-              required
-              // Keeps the native picker inside the range the form will accept,
-              // so a mistyped year is harder to produce in the first place.
-              // These are a hint, not the check — the form carries `noValidate`
-              // and `toShotDate` is what actually decides. See shotDateRange.
-              min={dateRange.min}
-              max={dateRange.max}
-              aria-invalid={dateError ? true : undefined}
-              aria-describedby={dateError ? "date-error" : undefined}
-            />
-          </label>
-          {dateError && (
-            <span id="date-error" className="field-error" role="alert">
-              {dateError}
-            </span>
-          )}
-        </div>
+          <div className="field-cell">
+            <label>
+              Date
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => {
+                  setDate(e.target.value);
+                  // Nothing to record here: the baseline already says what
+                  // "untouched" means, so the comparison below answers it.
+                  if (dateError) setDateError(null);
+                }}
+                required
+                // Keeps the native picker inside the range the form will accept,
+                // so a mistyped year is harder to produce in the first place.
+                // These are a hint, not the check — the form carries `noValidate`
+                // and `toShotDate` is what actually decides. See shotDateRange.
+                min={dateRange.min}
+                max={dateRange.max}
+                aria-invalid={dateError ? true : undefined}
+                aria-describedby={dateError ? "date-error" : undefined}
+              />
+            </label>
+            {dateError && (
+              <span id="date-error" className="field-error" role="alert">
+                {dateError}
+              </span>
+            )}
+          </div>
 
-        <div className="field-cell">
-          <label>
-            Time
-            <input
-              type="time"
-              value={time}
-              onChange={(e) => setTime(e.target.value)}
-            />
-          </label>
-          <div className="suggestion-chips">
-            <button
-              type="button"
-              className="chip"
-              onClick={() => setTime(nowHHMM())}
-            >
-              Now
-            </button>
+          <div className="field-cell">
+            <label>
+              Time
+              <input
+                type="time"
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+              />
+            </label>
+            <div className="suggestion-chips">
+              <button
+                type="button"
+                className="chip"
+                onClick={() => setTime(nowHHMM())}
+              >
+                Now
+              </button>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="form-row">
-        <div className="field-cell">
-          <label>
-            Dose (mg)
-            <input
-              type="number"
-              min={0}
-              // "any", not 1: fractional doses are ordinary (62.5mg, 12.5mg when
-              // titrating), doseMg is a float in the model, and the field already
-              // declares inputMode="decimal". With step=1 the browser silently
-              // refused to submit a decimal dose — constraint validation blocks
-              // the submit event, so the form just appeared to do nothing.
-              step="any"
-              inputMode="decimal"
+        <div className="form-row">
+          <div className="field-cell">
+            <label>
+              Dose (mg)
+              <input
+                type="number"
+                min={0}
+                // "any", not 1: fractional doses are ordinary (62.5mg, 12.5mg when
+                // titrating), doseMg is a float in the model, and the field already
+                // declares inputMode="decimal". With step=1 the browser silently
+                // refused to submit a decimal dose — constraint validation blocks
+                // the submit event, so the form just appeared to do nothing.
+                step="any"
+                inputMode="decimal"
+                value={doseMg}
+                onChange={(e) => setDoseMg(e.target.value)}
+                placeholder="e.g. 50"
+                aria-invalid={doseError ? true : undefined}
+                aria-describedby={doseError ? "dose-error" : undefined}
+              />
+            </label>
+            {doseError && (
+              <span id="dose-error" className="field-error" role="alert">
+                {doseError}
+              </span>
+            )}
+            <SuggestionChips
+              label="dose"
+              suggestions={suggestions.dose}
               value={doseMg}
-              onChange={(e) => setDoseMg(e.target.value)}
-              placeholder="e.g. 50"
-              aria-invalid={doseError ? true : undefined}
-              aria-describedby={doseError ? "dose-error" : undefined}
+              onSelect={setDoseMg}
             />
-          </label>
-          {doseError && (
-            <span id="dose-error" className="field-error" role="alert">
-              {doseError}
-            </span>
-          )}
-          <SuggestionChips
-            label="dose"
-            suggestions={suggestions.dose}
-            value={doseMg}
-            onSelect={setDoseMg}
-          />
-        </div>
+          </div>
 
-        <div className="field-cell">
-          <label>
-            Injection site
-            <input
-              type="text"
+          <div className="field-cell">
+            <label>
+              Injection site
+              <input
+                type="text"
+                value={injectionSite}
+                onChange={(e) => setInjectionSite(e.target.value)}
+                placeholder="e.g. thigh, glute, stomach"
+                // Domain vocabulary the phone's dictionary does not have —
+                // "cypionate", "enanthate", "cottonseed" — so iOS autocorrect
+                // rewrites it into something it does know, mid-word, while you
+                // look at the keyboard. These four are also the REUSED values:
+                // a mangled one becomes a suggestion chip you tap again next
+                // week, so the mistake compounds rather than sitting still.
+                // (`suggestionsFor` already dedupes case-insensitively, so
+                // capitalisation would not split the chip list — this is about
+                // the letters, not the case.)
+                // Notes and Mood are left alone: those are prose, where the
+                // phone's help is help.
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+              />
+            </label>
+            <SuggestionChips
+              label="injection site"
+              suggestions={suggestions.site}
               value={injectionSite}
-              onChange={(e) => setInjectionSite(e.target.value)}
-              placeholder="e.g. thigh, glute, stomach"
+              onSelect={setInjectionSite}
             />
-          </label>
-          <SuggestionChips
-            label="injection site"
-            suggestions={suggestions.site}
-            value={injectionSite}
-            onSelect={setInjectionSite}
-          />
-        </div>
+          </div>
 
-        <div className="field-cell">
-          <label>
-            Position
-            <input
-              type="text"
+          <div className="field-cell">
+            <label>
+              Position
+              <input
+                type="text"
+                value={injectionSitePosition}
+                onChange={(e) => setInjectionSitePosition(e.target.value)}
+                placeholder="e.g. left, right, upper left"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+              />
+            </label>
+            <SuggestionChips
+              label="position"
+              suggestions={suggestions.position}
               value={injectionSitePosition}
-              onChange={(e) => setInjectionSitePosition(e.target.value)}
-              placeholder="e.g. left, right, upper left"
+              onSelect={setInjectionSitePosition}
             />
-          </label>
-          <SuggestionChips
-            label="position"
-            suggestions={suggestions.position}
-            value={injectionSitePosition}
-            onSelect={setInjectionSitePosition}
-          />
+          </div>
         </div>
-      </div>
 
-      <div className="form-row">
-        <div className="field-cell">
-          <label>
-            Type of T
-            <input
-              type="text"
+        <div className="form-row">
+          <div className="field-cell">
+            <label>
+              Type of T
+              <input
+                type="text"
+                value={testosteroneEster}
+                onChange={(e) => setTestosteroneEster(e.target.value)}
+                placeholder="e.g. cypionate, enanthate, undecanoate"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+              />
+            </label>
+            <SuggestionChips
+              label="testosterone type"
+              suggestions={suggestions.ester}
               value={testosteroneEster}
-              onChange={(e) => setTestosteroneEster(e.target.value)}
-              placeholder="e.g. cypionate, enanthate, undecanoate"
+              onSelect={setTestosteroneEster}
             />
-          </label>
-          <SuggestionChips
-            label="testosterone type"
-            suggestions={suggestions.ester}
-            value={testosteroneEster}
-            onSelect={setTestosteroneEster}
-          />
-        </div>
+          </div>
 
-        <div className="field-cell">
-          <label>
-            Carrier oil
-            <input
-              type="text"
+          <div className="field-cell">
+            <label>
+              Carrier oil
+              <input
+                type="text"
+                value={carrierOil}
+                onChange={(e) => setCarrierOil(e.target.value)}
+                placeholder="e.g. cottonseed, sesame"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+              />
+            </label>
+            <SuggestionChips
+              label="carrier oil"
+              suggestions={suggestions.oil}
               value={carrierOil}
-              onChange={(e) => setCarrierOil(e.target.value)}
-              placeholder="e.g. cottonseed, sesame"
+              onSelect={setCarrierOil}
             />
-          </label>
-          <SuggestionChips
-            label="carrier oil"
-            suggestions={suggestions.oil}
-            value={carrierOil}
-            onSelect={setCarrierOil}
-          />
+          </div>
         </div>
-      </div>
 
-      <div className="form-row">
-        {/* Wrapped like the date and dose fields: .form-row is a flex row, so an
+        <div className="form-row">
+          {/* Wrapped like the date and dose fields: .form-row is a flex row, so an
             unwrapped error span becomes a third flex item and squeezes a text
             column in between Pain and Mood. */}
-        <div className="field-cell">
+          <div className="field-cell">
+            <label>
+              Pain (0–10)
+              <input
+                type="number"
+                min={0}
+                max={10}
+                step={1}
+                inputMode="numeric"
+                value={painScore}
+                onChange={(e) => setPainScore(e.target.value)}
+                placeholder="e.g. 3"
+                aria-invalid={painError ? true : undefined}
+                aria-describedby={painError ? "pain-error" : undefined}
+              />
+            </label>
+            {painError && (
+              <span id="pain-error" className="field-error" role="alert">
+                {painError}
+              </span>
+            )}
+          </div>
+
           <label>
-            Pain (0–10)
-          <input
-            type="number"
-            min={0}
-            max={10}
-            step={1}
-            inputMode="numeric"
-            value={painScore}
-            onChange={(e) => setPainScore(e.target.value)}
-            placeholder="e.g. 3"
-            aria-invalid={painError ? true : undefined}
-            aria-describedby={painError ? "pain-error" : undefined}
-          />
+            Mood
+            <input
+              type="text"
+              value={mood}
+              onChange={(e) => setMood(e.target.value)}
+              placeholder="e.g. low, okay, good"
+            />
           </label>
-          {painError && (
-            <span id="pain-error" className="field-error" role="alert">
-              {painError}
-            </span>
-          )}
         </div>
 
-        <label>
-          Mood
-          <input
-            type="text"
-            value={mood}
-            onChange={(e) => setMood(e.target.value)}
-            placeholder="e.g. low, okay, good"
+        <label className="form-column">
+          Notes
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={3}
+            placeholder="Pain, mood, anything you want to remember for later..."
           />
         </label>
-      </div>
-
-      <label className="form-column">
-        Notes
-        <textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          rows={3}
-          placeholder="Pain, mood, anything you want to remember for later..."
-        />
-      </label>
 
         {/* Closing keeps what you typed, so discarding needs its own control —
             but a quiet one, at the end of the fields rather than competing with
@@ -860,7 +911,8 @@ export const ShotForm: React.FC<ShotFormProps> = ({
                   unwrapped it announced as "check mark Saved" (or worse, "white
                   heavy check mark"), which is the decoration reading itself
                   aloud. The word carries the meaning; the tick is the beat. */}
-              <span aria-hidden="true">✓</span> {editingShot ? "Updated" : "Saved"}
+              <span aria-hidden="true">✓</span>{" "}
+              {editingShot ? "Updated" : "Saved"}
             </>
           ) : (
             `${editingShot ? "Update" : "Save"} ${saveFailed ? "again" : "shot"}`

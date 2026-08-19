@@ -65,6 +65,21 @@ const sheetGone = () =>
     timeout: 3000,
   });
 
+/** One left-to-right swipe, dispatched as the browser would. */
+const swipeRightGesture = () => {
+  const t = (x: number) =>
+    ({ clientX: x, clientY: 400, target: document.body }) as unknown as Touch;
+  const fire = (type: string, touches: Touch[], changed = touches) => {
+    const e = new Event(type) as TouchEvent & { touches: Touch[] };
+    Object.assign(e, { touches, changedTouches: changed });
+    act(() => {
+      window.dispatchEvent(e);
+    });
+  };
+  fire("touchstart", [t(40)]);
+  fire("touchend", [], [t(260)]);
+};
+
 /** Background the app, or bring it back. jsdom reports "visible" and never
  *  changes it, so both halves have to be driven by hand. */
 const setVisibility = (state: DocumentVisibilityState) => {
@@ -184,15 +199,20 @@ describe("App — logging via the sheet", () => {
     expect(screen.getByRole("button", { name: /See all/ })).toBeInTheDocument();
   });
 
-  it("puts initial focus on the first field, not on Close", () => {
+  it("lands focus on the heading — not the date field, not Close", () => {
     renderApp();
     fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    const sheet = within(screen.getByRole("dialog"));
 
-    // Landing on Close would mean a stray Enter dismisses the form just opened;
-    // a data-entry dialog should start on data entry.
-    expect(
-      within(screen.getByRole("dialog")).getByLabelText("Date")
-    ).toHaveFocus();
+    // The DATE FIELD is what this used to be, and on a phone that opened the
+    // sheet with the date wheel already covering half the screen: focusing an
+    // `<input type="date">` by script is what summons it. The same hazard this
+    // codebase documents for "Clear form", missed for the sheet's own opening.
+    expect(sheet.getByRole("heading", { name: "Log a shot" })).toHaveFocus();
+    expect(sheet.getByLabelText("Date")).not.toHaveFocus();
+    // And not the ✕: landing there means a stray Enter dismisses the form you
+    // just opened.
+    expect(sheet.getByRole("button", { name: "Close" })).not.toHaveFocus();
   });
 
   it("the top-bar close dismisses without saving", async () => {
@@ -710,15 +730,231 @@ describe("App — editing from History", () => {
     }
   });
 
-  it("the Home teaser is read-only — no edit or delete there", () => {
+  it("does not strand focus when a swipe unmounts what held it", async () => {
+    // The gesture removes the whole outgoing view. A tab TAP is safe because
+    // focus is on the tab button, which survives; a swipe has no such anchor, so
+    // focus was landing on <body> and the next Tab restarted from the top of the
+    // document.
+    seedShots([{ id: "a", date: "2026-06-01", notes: "an entry" }]);
+    renderApp();
+    goTo("History");
+    const search = screen.getByLabelText("Search notes and mood");
+    search.focus();
+    expect(search).toHaveFocus();
+
+    swipeRightGesture();
+
+    await expectFocusSettled("after swiping back from History");
+  });
+
+  it("animates the arrival only when a swipe caused it", () => {
+    // The motion answers the gesture. A tab tap is not a swipe and gets none —
+    // otherwise the app would appear to slide sideways whenever you pressed
+    // Home, which is a different claim about what just happened.
+    seedShots([{ id: "a", date: "2026-06-01" }]);
+    renderApp();
+    // The animated surface is the whole screen — title and content — not just
+    // the content: animating `.app-main` alone left the heading still while
+    // everything under it slid, which reads as widgets shifting inside a page
+    // rather than a page arriving.
+    const screen_ = () => document.querySelector(".app-screen")!;
+
+    goTo("History");
+    goTo("Home");
+    expect(screen_().className).not.toContain("app-screen--back");
+
+    goTo("History");
+    swipeRightGesture();
+    expect(screen_().className).toContain("app-screen--back");
+    // ...and the tab bar is outside it: a transform on an ancestor would become
+    // the containing block for a `position: fixed` bar and drag it along.
+    expect(screen_().querySelector("nav")).toBeNull();
+
+    // ...and it is retired by the next navigation, so returning later is still.
+    goTo("Settings");
+    goTo("Home");
+    expect(screen_().className).not.toContain("app-screen--back");
+  });
+
+  it("swipes back to Home, and not from Home or under a sheet", () => {
+    // The gesture is wired at the App level, so this is about WHICH screens it
+    // is live on — the hook's own thresholds are covered in its unit tests.
+    const swipeRight = swipeRightGesture;
+    const current = () =>
+      within(screen.getByRole("navigation"))
+        .getAllByRole("button")
+        .find((b) => b.getAttribute("aria-current") === "page")?.textContent;
+
+    seedShots([{ id: "a", date: "2026-06-01", notes: "an entry" }]);
+    renderApp();
+    expect(current()).toBe("Home");
+
+    // Home has nothing to its left — a swipe there must not wander off.
+    swipeRight();
+    expect(current()).toBe("Home");
+
+    // Home from anywhere — not "one tab left". Stepping the tab order made
+    // Settings swipe to History, which is sideways rather than back: you never
+    // arrived at Settings from History.
+    goTo("Settings");
+    swipeRight();
+    expect(current()).toBe("Home");
+
+    goTo("History");
+    swipeRight();
+    expect(current()).toBe("Home");
+
+    // With a sheet open the swipe belongs to the form, not the screen behind it.
+    goTo("History");
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    swipeRight();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(current()).toBe("History");
+  });
+
+  it("opens a teaser shot in History, with the editor already up", () => {
+    // The roadmap's "tapping through to edit happens in the History tab",
+    // finally built: the rows looked exactly like the ones you can open a tab
+    // away, and pressing them did nothing.
+    seedShots([
+      { id: "older", date: "2026-06-01", notes: "older entry" },
+      { id: "newest", date: "2026-06-08", notes: "the one tapped" },
+    ]);
+    renderApp();
+
+    // The row's own Edit button, not the row: a card-sized target beside "Log a
+    // shot" was too easy to hit on the way past.
+    const row = screen.getByText("the one tapped").closest("li")!;
+    fireEvent.click(within(row).getByRole("button", { name: "Edit" }));
+
+    // The editor is up, on the shot that was pressed...
+    const sheet = within(screen.getByRole("dialog"));
+    expect(sheet.getByRole("heading", { name: "Edit shot" })).toBeInTheDocument();
+    expect(sheet.getByPlaceholderText(/remember for later/i)).toHaveValue(
+      "the one tapped"
+    );
+    // ...and History is what is behind it, so closing lands somewhere that
+    // shows what you just did rather than back on Home.
+    expect(
+      within(screen.getByRole("navigation")).getByRole("button", { name: "History" })
+    ).toHaveAttribute("aria-current", "page");
+  });
+
+  it("clears a History filter that would hide the shot just tapped", () => {
+    // The query survives ordinary tab changes on purpose, but this trip is one
+    // the app takes for you: a filter set earlier can exclude the very shot you
+    // tapped, so the sheet opens over a list not containing it and saving sends
+    // the entry somewhere invisible.
+    seedShots([
+      { id: "thigh", date: "2026-06-01", injectionSite: "thigh", notes: "in the filter" },
+      { id: "glute", date: "2026-06-08", injectionSite: "glute", notes: "filtered out" },
+    ]);
+    renderApp();
+
+    // Filter History down to one site, then go back to Home.
+    goTo("History");
+    fireEvent.click(screen.getByRole("button", { name: /Filters/ }));
+    fireEvent.change(screen.getByLabelText("Site"), { target: { value: "thigh" } });
+    goTo("Home");
+
+    // Tap the shot the filter excludes.
+    const hidden = screen.getByText("filtered out").closest("li")!;
+    fireEvent.click(within(hidden).getByRole("button", { name: "Edit" }));
+
+    // "Cancel editing", not "Close" — the ✕ names what dismissing does, and in
+    // edit mode that is abandoning changes rather than closing a new entry.
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Cancel editing",
+      })
+    );
+    return sheetGone().then(() => {
+      // It is on screen behind, rather than filtered away.
+      expect(screen.getByText("filtered out")).toBeInTheDocument();
+    });
+  });
+
+  it("edits through from the teaser and the change sticks", () => {
+    seedShots([{ id: "a", date: "2026-06-01", notes: "before" }]);
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.change(
+      within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i),
+      { target: { value: "after" } }
+    );
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Update shot" })
+    );
+    return sheetGone().then(() => {
+      const stored: ShotEntry[] = JSON.parse(
+        localStorage.getItem(STORAGE_KEYS.shots) ?? "[]"
+      );
+      expect(stored[0].notes).toBe("after");
+      expect(screen.getByText("after")).toBeInTheDocument();
+    });
+  });
+
+  it("deletes from the Home teaser, through the same confirm History uses", () => {
+    // Delete was kept off this screen because a mis-tap could lose an entry.
+    // The confirm is what makes it two deliberate acts — and one dialog serves
+    // both lists, so a refused write behaves identically wherever you delete
+    // from.
     seedShots([{ id: "a", date: "2026-06-01", notes: "only shot" }]);
     renderApp();
 
-    expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
-    // ...but the same shot is editable one tap away, in History.
-    goTo("History");
-    expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    expect(
+      JSON.parse(localStorage.getItem(STORAGE_KEYS.shots) ?? "[]")
+    ).toHaveLength(1); // the press asks; it does not delete
+
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" })
+    );
+    expect(
+      JSON.parse(localStorage.getItem(STORAGE_KEYS.shots) ?? "[]")
+    ).toHaveLength(0);
+    expect(screen.getByText(/No shots logged yet/i)).toBeInTheDocument();
+  });
+
+  it("lands focus on the row that takes the deleted one's place", async () => {
+    // The same landing History gives, because it is the same hook. The teaser
+    // deleted through the shared dialog but passed no `onDeleted`, so focus
+    // fell to the whole <section> — which a screen reader reads out entirely —
+    // for the same act, one tab away from a list that aimed at a real row.
+    // Four shots so a fourth slides up into the three-row teaser.
+    seedShots([
+      { id: "a", date: "2026-06-01", notes: "fourth, waiting offscreen" },
+      { id: "b", date: "2026-06-08", notes: "third" },
+      { id: "c", date: "2026-06-15", notes: "second" },
+      { id: "d", date: "2026-06-22", notes: "newest" },
+    ]);
+    renderApp();
+    const row = screen.getByText("second").closest("li")!;
+    fireEvent.click(within(row).getByRole("button", { name: "Delete" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" })
+    );
+    await expectFocusSettled("after deleting a teaser row");
+
+    // Index 1 held "second"; "third" now does, and that is where focus is —
+    // not the section, and not the row above.
+    const landed = document.activeElement as HTMLElement;
+    expect(landed.tagName).toBe("LI");
+    expect(landed).toHaveTextContent("third");
+  });
+
+  it("does not strand focus when the deleted row was the last one", async () => {
+    // The row that had focus removes itself. CLAUDE.md calls this class
+    // non-negotiable, and with no row left to take the place the teaser falls
+    // back to the section — History's "focus the next row" has nothing to aim
+    // at here.
+    seedShots([{ id: "a", date: "2026-06-01", notes: "only shot" }]);
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" })
+    );
+    await expectFocusSettled("after deleting the last teaser row");
   });
 
   it("drops the in-progress edit when the edited shot disappears", () => {
@@ -1955,6 +2191,45 @@ describe("the post-log acknowledgement", () => {
     expect(washedRows()).toBe(0);
   });
 
+  it("washes an edited row without saying anything about it", async () => {
+    // The two halves of the acknowledgement part here. The wash is a locator —
+    // the Yellow Fade Technique's original job, "show me the record that just
+    // changed" — so an edit flashes: you are returned to a list, and the row you
+    // touched is the one worth finding. The LINE stays log-only.
+    // FOUR shots, and the one edited is deliberately NOT among the newest three.
+    // Seeding two made both members of the Home teaser, so the retirement effect's
+    // teaser question happened to answer yes and the test passed over a wash that
+    // was cleared within a frame for every other row.
+    seedShots([
+      { id: "a", date: "2026-06-01", notes: "before" },
+      { id: "b", date: "2026-06-08", notes: "untouched" },
+      { id: "c", date: "2026-06-15", notes: "newer" },
+      { id: "d", date: "2026-06-22", notes: "newest" },
+    ]);
+    renderApp();
+    goTo("History");
+    const row = screen.getByText("before").closest("li")!;
+    fireEvent.click(within(row).getByRole("button", { name: "Edit" }));
+    fireEvent.change(
+      within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i),
+      { target: { value: "after" } }
+    );
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Update shot" })
+    );
+    await sheetGone();
+
+    // Exactly the row that changed, and only that row.
+    const washing = document.querySelectorAll(".shot-list-item--washing");
+    expect(washing).toHaveLength(1);
+    expect(washing[0]).toHaveTextContent("after");
+
+    // ...and nothing was said.
+    expect(announced()).toBe("");
+    goTo("Home");
+    expect(greeting()).not.toBe(ACK);
+  });
+
   it("says nothing when an existing shot is edited", async () => {
     // "Logged for you." is about logging a shot, not correcting one.
     seedShots([{ id: "a", date: "2026-06-01", notes: "before" }]);
@@ -2111,6 +2386,55 @@ describe("the post-log wash", () => {
       );
     });
     expect(screen.getAllByRole("listitem")).toHaveLength(1); // it IS in the teaser now
+    expect(washed()).toEqual([]);
+  });
+
+  it("retires a wash whose row a History filter hides", async () => {
+    // The third way a row never sends `animationend`, and the one the model
+    // question cannot see: the shot is still in `shots`, so "is it in the list"
+    // says yes while nothing is on screen. Edit a shot so it falls out of the
+    // active filter and the wash sits armed; clear the filter minutes later and
+    // a full 2.2s wash plays for an edit nobody just made — exactly the
+    // stale-wash regression this retirement exists to prevent.
+    seedShots([
+      {
+        id: "a",
+        date: "2026-06-01",
+        notes: "keeps this one visible",
+        injectionSite: "thigh",
+      },
+      {
+        id: "b",
+        date: "2026-06-08",
+        notes: "another thigh shot",
+        injectionSite: "thigh",
+      },
+    ]);
+    renderApp();
+    goTo("History");
+
+    // Filter to thigh, then edit one of them onto a different site.
+    fireEvent.click(screen.getByRole("button", { name: /Filters/ }));
+    fireEvent.change(screen.getByLabelText("Site"), { target: { value: "thigh" } });
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+
+    const row = screen.getByText("another thigh shot").closest("li")!;
+    fireEvent.click(within(row).getByRole("button", { name: "Edit" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(
+      within(dialog).getByPlaceholderText(/thigh, glute, stomach/i),
+      { target: { value: "glute" } }
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Update shot" }));
+    await sheetGone();
+
+    // It filtered out, so no row ever animated and nothing retired the wash.
+    expect(screen.getAllByRole("listitem")).toHaveLength(1);
+    expect(washed()).toEqual([]);
+
+    // Clearing the filter brings it back. It must arrive plain.
+    fireEvent.change(screen.getByLabelText("Site"), { target: { value: "" } });
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
     expect(washed()).toEqual([]);
   });
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { localISODate, todayLocalISO, nowHHMM } from "../datetime";
+import { localISODate, todayLocalISO, nowHHMM, formatTimeForDisplay } from "../datetime";
 
 afterEach(() => vi.useRealTimers());
 
@@ -41,5 +41,47 @@ describe("datetime helpers", () => {
   it("nowHHMM formats local wall-clock time, zero-padded", () => {
     expect(nowHHMM(new Date("2026-07-14T09:05:00"))).toBe("09:05");
     expect(nowHHMM(new Date("2026-07-14T14:40:00"))).toBe("14:40");
+  });
+});
+
+describe("formatTimeForDisplay", () => {
+  it("renders a stored 24-hour time the way the locale writes it", () => {
+    // The test runner's locale decides which; what matters is that it goes
+    // through Intl rather than being hand-formatted, so a device that writes
+    // 15:45 keeps writing 15:45 and one that writes 3:45 PM gets that.
+    const rendered = formatTimeForDisplay("15:45");
+    const expected = new Intl.DateTimeFormat(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(new Date(2000, 0, 1, 15, 45));
+    expect(rendered).toBe(expected);
+  });
+
+  it("keeps midnight and noon distinct", () => {
+    expect(formatTimeForDisplay("00:00")).not.toBe(formatTimeForDisplay("12:00"));
+  });
+
+  it("hands back anything it cannot read, rather than inventing a time", () => {
+    // Storage is untrusted: a hand-edited or older value must show as itself
+    // instead of being coerced into a plausible-looking wrong one.
+    for (const raw of ["", "nope", "7:5", "25:00", "12:99", "08:30:00"]) {
+      expect(formatTimeForDisplay(raw)).toBe(raw);
+    }
+  });
+
+  it("does not shift the hour across timezones or DST", () => {
+    // Asserted against Intl rather than against the string "12", which assumed a
+    // 12-hour locale: on en-GB this rendered "0:00" and the suite went red for
+    // any contributor whose ICU default is not US-style. The claim worth making
+    // is that the hour survives the round trip, not which clock writes it.
+    const midnight = new Date(2000, 0, 1, 0, 0);
+    expect(formatTimeForDisplay("00:00")).toBe(
+      new Intl.DateTimeFormat(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+      }).format(midnight)
+    );
+    // ...and the hour is genuinely the one asked for, in any locale.
+    expect(midnight.getHours()).toBe(0);
   });
 });

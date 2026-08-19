@@ -37,3 +37,37 @@ export function nowHHMM(d: Date = new Date()): string {
   const mm = String(d.getMinutes()).padStart(2, "0");
   return `${hh}:${mm}`;
 }
+
+/**
+ * A stored `HH:MM` rendered the way this device writes times — "8:30 AM" in the
+ * US, "08:30" where the 24-hour clock is the norm.
+ *
+ * The STORED value stays 24-hour `HH:MM`: it sorts, compares and round-trips
+ * through a backup as itself, and only the display is localised. That split is
+ * the point — a value formatted for a reader is not a value.
+ *
+ * Locale rather than a hardcoded 12-hour clock, because "which clock" is the
+ * reader's convention and not ours to pick; `Intl` already knows, and the app's
+ * own `<input type="time">` is localised by the browser on exactly the same
+ * basis, so the two agree by construction.
+ *
+ * The date attached is arbitrary and never shown: `Intl` needs a Date, so the
+ * time is placed on 1 January 2000 in LOCAL time, which is what keeps the hour
+ * the one that was asked for. (An earlier version of this comment said "a fixed
+ * local noon", which the code never did — it places the given hour. No IANA zone
+ * has an offset transition around local midnight on that date, so the two agree
+ * in practice; the comment was describing code that did not exist.)
+ */
+export function formatTimeForDisplay(time: string): string {
+  const match = /^(\d{2}):(\d{2})$/.exec(time);
+  if (!match) return time; // not ours to interpret; show it as stored
+  const [, hh, mm] = match;
+  const hours = Number(hh);
+  const minutes = Number(mm);
+  if (hours > 23 || minutes > 59) return time;
+  const at = new Date(2000, 0, 1, hours, minutes);
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(at);
+}

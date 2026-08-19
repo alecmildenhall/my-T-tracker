@@ -24,8 +24,9 @@
   --radius-lg: 16px;
   --radius-md: 10px;
   --shadow-soft: 0 16px 40px rgba(0, 0, 0, 0.45);
-  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
-    "Segoe UI", sans-serif;
+  --font-sans:
+    system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+    sans-serif;
 }
 
 *,
@@ -201,6 +202,34 @@ select {
   outline: none;
 }
 
+/* iOS Safari ZOOMS THE PAGE whenever you focus a form control whose text is
+   under 16px — it is not configurable and not a preference, it is what the
+   browser does. At 0.85rem (13.6px) that meant tapping any field on a phone
+   jumped the whole layout, on the app's primary platform, in its primary flow.
+   Gated on `any-pointer: coarse`, not `pointer: coarse`: `pointer` describes the
+   PRIMARY mechanism, and an iPad with a Magic Keyboard reports `fine` while you
+   are still tapping the screen with a finger — controls would drop back to
+   13.6px on the exact device that zooms. `any-pointer` asks whether a coarse
+   pointer exists at all, which is the condition that predicts the behaviour. A
+   touchscreen laptop also gets 16px controls, which is harmless.
+
+   NOT fixed with `maximum-scale=1` or `user-scalable=no` in the viewport meta,
+   which is the answer the web is full of: that disables pinch-zoom for
+   everyone, fails WCAG 1.4.4, and modern iOS ignores it in Safari anyway. The
+   font size is the actual cause. */
+@media (any-pointer: coarse) {
+  input,
+  textarea,
+  select {
+    /* `max`, not a bare 16px: everything else in the app is `rem`, so it grows
+       with a raised browser default. Pinning these would leave someone on a 24px
+       default typing text smaller than its own label — non-resizable, which is
+       the very WCAG 1.4.4 concern quoted above. `max` clears the iOS threshold
+       at every root size and still scales past it. */
+    font-size: max(1rem, 16px);
+  }
+}
+
 input::placeholder,
 textarea::placeholder {
   color: #6b7280;
@@ -250,8 +279,11 @@ textarea {
   padding: 0.4rem 0.85rem;
   min-height: 44px; /* Apple HIG minimum tap target */
   cursor: pointer;
-  transition: border-color 0.15s ease, background-color 0.15s ease,
-    color 0.15s ease, transform 0.08s ease;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.08s ease;
 }
 
 /* Chips keep a distinct model: hover/press only brighten the border (the
@@ -280,6 +312,32 @@ textarea {
 
 /* Buttons */
 
+/* Every interactive surface, stated once by ELEMENT rather than enumerated by
+   class. The first version of this was a list of thirteen class names, and it
+   had already missed two — the in-sheet "Export a backup" button and the skip
+   link — with every control slice B½ adds defaulting to missing. A hand-kept
+   list of the things a rule should apply to is the same smell CLAUDE.md flags
+   about lists of reasons something cannot happen: the list is never complete.
+
+   This is the double-tap gesture only. Pinch to zoom is untouched, which is the
+   line that matters — one is an accident, the other is how people read.
+
+   Deliberately NOT claimed as a fix for the old ~300ms tap delay: that was
+   already gone the moment index.html declared `width=device-width`, which every
+   modern mobile browser reads as "this page is responsive, stop waiting for a
+   second tap". The advice saying otherwise — and saying Safari lacks
+   `touch-action` — dates from 2014-16; Safari has supported it since 13. */
+button,
+a,
+label,
+summary,
+[role="button"],
+input,
+textarea,
+select {
+  touch-action: manipulation;
+}
+
 .primary-button,
 .secondary-button {
   border-radius: 999px;
@@ -294,8 +352,12 @@ textarea {
   align-items: center;
   justify-content: center;
   gap: 0.3rem;
-  transition: filter 0.15s ease, background-color 0.15s ease,
-    border-color 0.15s ease, color 0.15s ease, transform 0.08s ease;
+  transition:
+    filter 0.15s ease,
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.08s ease;
 }
 
 .primary-button {
@@ -410,6 +472,7 @@ textarea {
 .tabbar:focus-visible,
 .history__count:focus-visible,
 .history:focus-visible,
+.recent-shots:focus-visible,
 .manage-values:focus-visible,
 .shot-form__title:focus-visible,
 .app-title:focus-visible,
@@ -474,18 +537,6 @@ textarea {
 .settings {
   max-width: 640px;
   margin: 0 auto;
-}
-
-.settings-header {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 1.5rem;
-}
-
-.settings-header h2 {
-  margin: 0;
-  font-size: 1.3rem;
 }
 
 .settings-section {
@@ -611,8 +662,11 @@ textarea {
   padding: 0.4rem 0.75rem;
   min-height: 36px;
   cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease,
-    background-color 0.15s ease, transform 0.08s ease;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    transform 0.08s ease;
 }
 
 /* Neutral (matches .secondary-button's engaged look) */
@@ -644,7 +698,9 @@ textarea {
   font-size: 1.1rem;
   line-height: 1;
   cursor: pointer;
-  transition: border-color 0.15s ease, background-color 0.15s ease,
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease,
     transform 0.08s ease;
 }
 
@@ -722,7 +778,13 @@ textarea {
   background: var(--bg-card-soft);
   color: var(--text);
   font-family: inherit;
-  font-size: 0.9rem;
+  /* No font-size of its own, deliberately. It used to say 0.9rem, and a class
+     selector beats the bare `input` in the coarse-pointer rule above (0,1,1 vs
+     0,0,1 — a media query adds no specificity), so the rename dialog kept
+     zooming on iOS after the rest of the app stopped. Worse than the original
+     bug: it happens with a modal open, and iOS does not zoom back out on blur.
+     Form-control size now has exactly ONE source, so there is no cascade left
+     to get wrong. */
   padding: 0.55rem 0.6rem;
   outline: none;
 }
@@ -767,8 +829,11 @@ textarea {
   font-weight: 600;
   cursor: pointer;
   border: 1px solid transparent;
-  transition: filter 0.15s ease, background-color 0.15s ease,
-    border-color 0.15s ease, transform 0.08s ease;
+  transition:
+    filter 0.15s ease,
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.08s ease;
 }
 
 .dialog-danger {
@@ -875,6 +940,52 @@ textarea {
   line-height: 1.5;
 }
 
+/* The screen you swipe back to slides in from the left, so the movement agrees
+   with the thumb that asked for it and reads as "back" rather than "a different
+   screen". Without it the view swapped in a single frame, which is the one
+   navigation in the app with no motion at all — the sheet already enters at
+   300ms and leaves at 240.
+
+   250ms: Material puts mobile screen transitions around 300ms and is explicit
+   that past ~400ms they start to feel slow. A little under, because this one
+   answers a gesture the user is already mid-way through rather than starting
+   from rest — the movement has, in a sense, already begun.
+
+   Decelerate easing, entering at speed and settling, which is the curve for
+   something arriving on screen.
+
+   Only the ARRIVING screen moves. Sliding the outgoing one out as well needs
+   both mounted at once, which is the structural change that follow-the-finger
+   would need too — see the roadmap.
+
+   It covers the title as well as the content: animating only `.app-main` left
+   the heading still while everything under it slid, which reads as the widgets
+   shifting inside the page rather than the page arriving. */
+@keyframes screen-slide-back {
+  from {
+    transform: translateX(-8%);
+    opacity: 0.6;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+.app-screen--back {
+  animation: screen-slide-back 250ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The movement goes; nothing replaces it. A swipe is deliberate, so the change
+     of screen is not a surprise that needs softening — unlike the row wash,
+     which still holds its colour because it reports something that happened
+     without being asked. */
+  .app-screen--back {
+    animation: none;
+  }
+}
+
 /* Bottom tab bar */
 
 /* Drawn INSIDE the bar. `.tabbar` is fixed to the left, right and bottom edges
@@ -921,7 +1032,9 @@ textarea {
   font-size: 0.68rem;
   font-weight: 550;
   cursor: pointer;
-  transition: color 0.15s ease, background-color 0.15s ease;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
 }
 
 .tab svg {
@@ -1150,8 +1263,11 @@ textarea {
   line-height: 1;
   cursor: pointer;
   font-family: inherit;
-  transition: color 0.15s ease, border-color 0.15s ease,
-    background-color 0.15s ease, transform 0.08s ease;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    transform 0.08s ease;
 }
 
 @media (hover: hover) {
@@ -1184,6 +1300,48 @@ textarea {
   flex-direction: column;
   gap: 0.8rem;
   padding: 1rem 0.9rem 1.25rem;
+
+  /* SCROLL SHADOWS: a soft edge appears at the top or bottom exactly when there
+     is more form in that direction, and only then.
+
+     The form is ten fields in a sheet the keyboard shrinks to a few hundred
+     pixels, and iOS hides scrollbars until you are already scrolling — so the
+     one moment you need to know there is more is the one moment nothing says
+     so. Reported from a phone: the sheet reads as the whole form, cut off.
+
+     Four layers, and the trick is which of them scroll. The two COVER layers
+     are `background-attachment: local`, so they travel with the content and sit
+     over the shadows while you are at that end; the two SHADOW layers are
+     `scroll`, so they stay pinned to the box. Scroll away from an edge and its
+     cover moves off, revealing the shadow underneath. No JS, no scroll
+     listener, and nothing to keep in sync — the browser does the arithmetic.
+
+     Cover colour must match what is behind the region (the sheet's own card),
+     or the covers read as bands of the wrong colour at rest.
+
+     The shadow is LIGHT, not dark. The usual recipe casts a black haze, which on
+     a near-black sheet is a black gradient on black — measured invisible in a
+     screenshot, which is the only way to answer "can you see it" and the same
+     mistake the row wash made. On a dark surface the edge has to read as a lift.
+     Content being visibly cut off does the rest of the work, and the two
+     together are what say "there is more of this". */
+  background:
+    linear-gradient(var(--bg-card) 30%, rgba(17, 24, 39, 0)) top / 100% 14px
+      no-repeat local,
+    linear-gradient(rgba(17, 24, 39, 0), var(--bg-card) 70%) bottom / 100% 14px
+      no-repeat local,
+    radial-gradient(
+        farthest-side at 50% 0,
+        rgba(148, 163, 184, 0.5),
+        rgba(148, 163, 184, 0)
+      )
+      top / 100% 10px no-repeat scroll,
+    radial-gradient(
+        farthest-side at 50% 100%,
+        rgba(148, 163, 184, 0.5),
+        rgba(148, 163, 184, 0)
+      )
+      bottom / 100% 10px no-repeat scroll;
 }
 
 .shot-form__save {
@@ -1503,7 +1661,6 @@ textarea {
   font-size: 0.8rem;
   line-height: 1.45;
 }
-
 
 /* ---- Post-log acknowledgement ------------------------------------------- */
 

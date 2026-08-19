@@ -28,7 +28,8 @@ import { toShotDate, shotDateRange } from "../utils/civilDate";
 import { suggestionsFor, normalizeValue } from "../utils/suggestions";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { ShotListItem } from "./ShotListItem";
-import { Modal } from "./Modal";
+import { useDeleteShotConfirm } from "../hooks/useDeleteShotConfirm";
+import { useRowFocusAfterRemoval } from "../hooks/useRowFocusAfterRemoval";
 import { handOffFocus } from "../utils/focus";
 
 /** Pause in typing before the search re-runs. Short — the work is in-memory. */
@@ -41,6 +42,12 @@ interface HistoryViewProps {
   onEditShot: (shot: ShotEntry) => void;
   /** Returns whether the deletion reached storage. */
   onDeleteShot: (id: string) => boolean;
+  /** id of the shot just changed, if its wash is still owed. History shows the
+   *  wash for the same reason Home does: you are returned to a list and the row
+   *  you touched is the one worth finding. */
+  justChangedId?: string | null;
+  /** Fired when that wash finishes, so the parent can retire the state. */
+  onWashEnd?: () => void;
 }
 
 export const HistoryView: React.FC<HistoryViewProps> = ({
@@ -49,19 +56,13 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   onQueryChange,
   onEditShot,
   onDeleteShot,
+  justChangedId = null,
+  onWashEnd,
 }) => {
   // Same bounds the log sheet's date field carries, so a filter cannot ask for a
   // range no shot could ever have been saved in. Per render — it reads the clock.
   const dateRange = shotDateRange();
   const [filtersOpen, setFiltersOpen] = useState(false);
-  // INTERIM — slice C replaces this with an undo snackbar (undo-over-confirm is
-  // the end state the roadmap chose). Until then Delete sits beside Edit on every
-  // row of a dense phone list, there is no undo, and there is no server copy, so
-  // one mis-tap permanently loses a logged entry. A confirm is throwaway work and
-  // worth it against that.
-  const [pendingDelete, setPendingDelete] = useState<ShotEntry | null>(null);
-  const [deleteFailed, setDeleteFailed] = useState(false);
-  const cancelDeleteRef = useRef<HTMLButtonElement>(null);
   const sectionRef = useRef<HTMLElement>(null);
   const filtersToggleRef = useRef<HTMLButtonElement>(null);
   // Local, not lifted: see HistoryQuery. Owning it here is also what makes the
@@ -71,25 +72,10 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   const debouncedText = useDebouncedValue(query.text, SEARCH_DEBOUNCE_MS);
   const listRef = useRef<HTMLUListElement>(null);
   const countRef = useRef<HTMLParagraphElement>(null);
-  /** Row index to focus once the next render lands — set by "Load more" (the
-   *  first newly revealed row) and by a delete (the row that takes its place).
-   *  null when the render wasn't caused by either. */
-  const focusRowAt = useRef<number | null>(null);
-
-  // Deferred to an effect rather than done inline, because both triggers destroy
-  // the element that had focus: "Load more" unmounts its own button on the last
-  // page, and a confirmed delete unmounts the row AND the dialog — whose own
-  // focus-restore would otherwise run last and win. Effects run after the removed
-  // children's cleanup, so this is the final word.
-  useEffect(() => {
-    const at = focusRowAt.current;
-    focusRowAt.current = null;
-    if (at === null) return;
-    const rows = listRef.current?.querySelectorAll<HTMLElement>("li");
-    // Deleting the last row leaves nothing at that index; fall back to the
-    // previous row, then to the count line, rather than dropping to <body>.
-    handOffFocus(rows?.[at], rows?.[at - 1], countRef);
-  });
+  // Shared with the Home teaser, which offers the same Delete behind the same
+  // dialog and used to answer this differently. "Load more" aims at the first
+  // newly revealed row; a delete aims at the row that takes its place.
+  const { aimAt } = useRowFocusAfterRemoval(listRef, countRef);
 
   // Facet options come from the user's own logged values, so the dropdowns only
   // ever offer choices that can actually match something. The currently-selected
@@ -155,6 +141,32 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
     [shots, query.filter, limit, debouncedText]
   );
 
+  // Shared with the Home teaser — see useDeleteShotConfirm. Focus goes to the
+  // row that takes the deleted one's place; the hook falls back to the section
+  // when the list is now empty.
+  const { requestDelete, deleteDialog } = useDeleteShotConfirm({
+    onDeleteShot,
+    fallbackFocusRef: sectionRef,
+    onDeleted: (id) => {
+      aimAt(page.items.findIndex((s) => s.id === id));
+    },
+  });
+
+  // The wash is an animation on a row, so a wash this list cannot show has to be
+  // retired here — nothing else can see it. `page.items` is not a proxy for what
+  // is rendered; it IS what is rendered, including the filter, the search and
+  // the page limit. App used to ask `shots.some(...)` instead, which stayed true
+  // for a row a filter had hidden: editing a shot out of the active filter left
+  // the wash armed, and clearing the filter minutes later played a full 2.2s
+  // wash for an edit nobody had just made. No dependency list, so this also
+  // covers this component's OWN state — the search debounce settling and "Load
+  // more" never reach App at all.
+  useEffect(() => {
+    if (justChangedId && !page.items.some((s) => s.id === justChangedId)) {
+      onWashEnd?.();
+    }
+  });
+
   // Typing must not reset the page window on every keystroke: the list is still
   // showing results for the *old* search until the debounce settles, so an
   // immediate reset collapses 60 visible rows to 20 of the previous results,
@@ -196,28 +208,6 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
     // deferral needed, since this button is removed by its own click rather than
     // by a dialog closing on top of it.
     handOffFocus(filtersToggleRef, sectionRef);
-  };
-
-  // Deleting unmounts the row holding the focused button, which would drop focus
-  // to <body> and strand a keyboard or screen-reader user at the top of a long
-  // list. Hand focus to the neighbouring row (or the count line, when the list
-  // empties) — the same care the sheet and "Load more" already take.
-  const handleDelete = (id: string) => {
-    // After removal, this index holds what was the next row down.
-    const next = page.items.findIndex((s) => s.id === id);
-    // A refused delete commits nothing, so the shot is still in the list. Closing
-    // the dialog anyway was the worst version of this: it dismissed as though it
-    // had worked, the row stayed put with nothing said, and a later "Try again"
-    // force-wrote the UNCHANGED list, succeeded, and cleared the banner — a green
-    // all-clear over a delete that never happened. Hold the dialog open and say
-    // so, exactly as the log sheet does.
-    if (!onDeleteShot(id)) {
-      setDeleteFailed(true);
-      return;
-    }
-    focusRowAt.current = next;
-    setDeleteFailed(false);
-    setPendingDelete(null);
   };
 
   return (
@@ -393,10 +383,10 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
             <ShotListItem
               key={shot.id}
               shot={shot}
+              justLogged={shot.id === justChangedId}
+              onWashEnd={onWashEnd}
               onEdit={onEditShot}
-              onDelete={(id) =>
-                setPendingDelete(page.items.find((s) => s.id === id) ?? null)
-              }
+              onDelete={() => requestDelete(shot)}
             />
           ))}
         </ul>
@@ -411,7 +401,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
             // focus to <body> and dump a keyboard or screen-reader user at the
             // top of the document mid-task. Send focus to the first newly
             // revealed row instead — the content they asked for.
-            focusRowAt.current = page.items.length;
+            aimAt(page.items.length);
             setLimit((current) => current + PAGE_SIZE);
           }}
         >
@@ -419,49 +409,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
         </button>
       )}
 
-      {pendingDelete && (
-        <Modal
-          labelledBy="delete-shot-title"
-          onClose={() => {
-            setDeleteFailed(false);
-            setPendingDelete(null);
-          }}
-          initialFocusRef={cancelDeleteRef}
-          fallbackFocusRef={sectionRef}
-        >
-          <h3 id="delete-shot-title">Delete this shot?</h3>
-          {deleteFailed && (
-            <p className="dialog-error" role="alert">
-              Couldn’t delete it — this device isn’t accepting changes right now.
-              The shot is still here, and nothing has been altered.
-            </p>
-          )}
-          <p className="dialog-text">
-            The entry from <b>{pendingDelete.date}</b> will be removed from this
-            device. There is no undo, and no copy anywhere else.
-          </p>
-          <div className="dialog-actions">
-            <button
-              ref={cancelDeleteRef}
-              type="button"
-              className="secondary-button"
-              onClick={() => {
-                setDeleteFailed(false);
-                setPendingDelete(null);
-              }}
-            >
-              Keep it
-            </button>
-            <button
-              type="button"
-              className="dialog-danger"
-              onClick={() => handleDelete(pendingDelete.id)}
-            >
-              Delete
-            </button>
-          </div>
-        </Modal>
-      )}
+      {deleteDialog}
     </section>
   );
 };
