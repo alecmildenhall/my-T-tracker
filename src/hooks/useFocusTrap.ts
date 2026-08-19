@@ -31,6 +31,14 @@ const SEGMENTED_INPUT =
  * closed on a single Escape. That was recorded as latent rather than fixed
  * because today's dialogs are mutually exclusive. It stops being latent as soon
  * as anything opens a confirm from inside a sheet, which is on the way in B½.
+ *
+ * SCOPE, because this registry is easy to mistake for more than it is: it makes
+ * the KEYBOARD and FOCUS obey the topmost dialog, and nothing else. `Modal`'s
+ * modality is still per-instance and unrefcounted — closing an inner dialog
+ * lifts `inert` off `#root` and removes `--sheet-h` while the outer is still
+ * open — and `useBackToClose` pushes an entry per dialog, so a second Back
+ * closes both. A confirm inside a sheet is therefore not supported yet; see the
+ * Tab-trap item in README.md for the measurements and why the rest was left.
  */
 const mounted: HTMLElement[] = [];
 
@@ -53,6 +61,15 @@ const mounted: HTMLElement[] = [];
  */
 const isTopmost = (dialog: HTMLElement | null): boolean =>
   dialog !== null &&
+  // Registered, not merely non-null. `isTopmost` otherwise asks only "is any
+  // REGISTERED dialog after me", which an unregistered one passes vacuously —
+  // and so does the registered dialog beneath it, since the unregistered one is
+  // not in the list to be seen. Both would then trap, which is the fight the
+  // registry exists to prevent, arrived at through a hole in the registry.
+  // Failing closed means an unregistered dialog does not trap at all, which is
+  // recoverable; two dialogs fighting over focus is not. Not reachable through
+  // `Modal`, whose element always renders, but this is a shared hook now.
+  mounted.includes(dialog) &&
   mounted.every(
     (other) =>
       other === dialog ||
