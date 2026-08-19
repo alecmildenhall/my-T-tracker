@@ -12,7 +12,7 @@
 // The reasoning below is kept from those rounds rather than rewritten. What
 // changed is only where the list comes from: `tabbablesIn` asks a real
 // tabbability question where a CSS selector used to approximate one.
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import type { RefObject } from "react";
 import { handOffFocus } from "../utils/focus";
 import { tabbablesIn } from "../utils/tabbing";
@@ -78,9 +78,21 @@ export function useFocusTrap(
     onEscapeRef.current = onEscape;
   });
 
-  // Registration is its own effect and runs FIRST, so the dialog is registered
-  // before the listeners below ever consult it.
-  useEffect(() => {
+  // A LAYOUT effect, and that is the whole point — registration has to happen
+  // before anything moves focus.
+  //
+  // As an ordinary effect this was a real bug: Modal focuses its content from a
+  // passive effect declared ABOVE this hook, so a dialog opened from inside
+  // another one focused its first control while still unregistered. The older
+  // dialog was therefore still "topmost", saw focus land somewhere it did not
+  // contain, and hauled it straight back — so opening a confirm from a sheet
+  // left focus on the button that opened it.
+  //
+  // Layout effects run during the commit, before every passive effect in the
+  // tree, so a mounting dialog is always registered before any focus effect
+  // runs — including its own. That makes the ordering a property of the phase
+  // rather than of where this hook happens to be called in Modal.
+  useLayoutEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
     mounted.push(dialog);

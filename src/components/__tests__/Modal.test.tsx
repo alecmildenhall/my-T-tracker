@@ -805,6 +805,44 @@ describe("locking the page costs no layout width", () => {
     expect(htmlRule).toMatch(/color-scheme:\s*dark/);
   });
 
+  it("puts focus in a dialog opened from inside another one", () => {
+    // Real Modals, both portalled to <body> as siblings — the shape that ships,
+    // and the one a hand-rolled nested harness cannot reproduce.
+    //
+    // This failed once. Modal focuses its content from a passive effect declared
+    // ABOVE useFocusTrap, so the inner dialog focused its first control while
+    // still unregistered; the outer dialog was therefore still "topmost", its
+    // focusin net saw focus land somewhere it did not contain, and hauled it
+    // straight back. Opening a confirm from a sheet left focus on the button
+    // that opened it. Registration is a LAYOUT effect now, so it always precedes
+    // any passive focus effect.
+    const Stacked = () => {
+      const [inner, setInner] = useState(false);
+      return (
+        <div id="root">
+          <Modal labelledBy="outer-t" onClose={() => {}}>
+            <h2 id="outer-t">Outer</h2>
+            <button type="button" onClick={() => setInner(true)}>
+              Open inner
+            </button>
+            <button type="button">Outer other</button>
+          </Modal>
+          {inner && (
+            <Modal labelledBy="inner-t" onClose={() => {}}>
+              <h2 id="inner-t">Inner</h2>
+              <button type="button">Inner control</button>
+            </Modal>
+          )}
+        </div>
+      );
+    };
+    render(<Stacked />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Open inner" }));
+
+    expect(screen.getByRole("button", { name: "Inner control" })).toHaveFocus();
+  });
+
   it("reserves the scrollbar's space in styles.css so hiding it shifts nothing", () => {
     const css = readFileSync(`${process.cwd()}/src/styles.css`, "utf8");
     const htmlRule = /(^|\})\s*html\s*\{([^}]*)\}/.exec(css)?.[2];
