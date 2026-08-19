@@ -1,5 +1,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { tabbablesIn } from "../tabbing";
+import type { FocusableElement } from "../focus";
+import { handOffFocus } from "../focus";
 
 /**
  * Builds a detached-then-attached container. Attached matters: `tabbable`
@@ -13,7 +15,7 @@ function mount(html: string): HTMLElement {
   return root;
 }
 
-const names = (els: HTMLElement[]) =>
+const names = (els: FocusableElement[]) =>
   els.map((el) => el.getAttribute("data-n") ?? el.tagName.toLowerCase());
 
 afterEach(() => {
@@ -133,16 +135,28 @@ describe("tabbablesIn", () => {
     expect(names(tabbablesIn(root))).toEqual(["a"]);
   });
 
-  it("returns only HTMLElements, so handOffFocus cannot be handed an SVG", () => {
-    // `tabbable` returns HTMLElement | SVGElement, and handOffFocus resolves
-    // anything that is not an HTMLElement by reading `.current` off it — which
-    // for an SVGElement is undefined, and then throws on `.isConnected`.
+  it("keeps a focusable SVG, because the browser's tab order does", () => {
+    // These were dropped at first, so the list disagreed with the browser: the
+    // rotation skipped the SVG and every index question — "is there a control
+    // beyond this one", "what is the backward neighbour" — answered about the
+    // wrong element. They were dropped only because `handOffFocus` used to
+    // resolve a non-HTMLElement by reading `.current` off it, which for an
+    // SVGElement is undefined and then threw on `.isConnected`. `FocusTarget`
+    // covers both now, so the list can stay honest.
     const root = mount(`
       <button data-n="a"></button>
-      <svg tabindex="0"><circle /></svg>
+      <svg data-n="svg" tabindex="0"><circle /></svg>
+      <button data-n="b"></button>
     `);
-    const found = tabbablesIn(root);
-    expect(found.every((el) => el instanceof HTMLElement)).toBe(true);
-    expect(names(found)).toEqual(["a"]);
+    expect(names(tabbablesIn(root))).toEqual(["a", "svg", "b"]);
+  });
+
+  it("hands focus to that SVG without throwing", () => {
+    // The crash the old filter was avoiding, asserted rather than designed
+    // around: handOffFocus resolves it, focuses it, and verifies.
+    const root = mount(`<svg data-n="svg" tabindex="0"><circle /></svg>`);
+    const svg = tabbablesIn(root)[0];
+    expect(() => handOffFocus(svg)).not.toThrow();
+    expect(document.activeElement).toBe(svg);
   });
 });

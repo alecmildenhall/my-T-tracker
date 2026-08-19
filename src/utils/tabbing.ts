@@ -13,6 +13,7 @@
 // index-based question about that list wrong: that is the shape that produced
 // two separate ways for focus to leave the page.
 import { tabbable } from "tabbable";
+import type { FocusableElement } from "./focus";
 
 /**
  * Has this environment ever reported layout?
@@ -63,19 +64,20 @@ function environmentReportsLayout(): boolean {
  * it is survivable rather than dangerous, because nothing here *acts* on the
  * list without `handOffFocus` verifying the move actually landed.
  *
- * SVG is filtered out. `tabbable` returns `HTMLElement | SVGElement`, while
- * `handOffFocus` resolves anything that is not an `HTMLElement` by reading
- * `.current` off it — so an `<svg tabindex="0">` would resolve to `undefined`
- * and throw on `.isConnected`. No dialog in this app contains a focusable SVG;
- * if one ever does, widen `FocusTarget` in `focus.ts` rather than special-casing
- * it here.
+ * SVG is KEPT. `tabbable` returns `HTMLElement | SVGElement`, and a focusable
+ * `<svg tabindex="0">` is genuinely in the browser's tab order — dropping it
+ * would make this list disagree with the browser, so the rotation would skip it
+ * and every index question (`at < list.length - 1`, the backward neighbour)
+ * would answer about the wrong element. It was dropped at first because
+ * `handOffFocus` resolved anything that was not an `HTMLElement` by reading
+ * `.current` off it, which for an SVGElement is undefined and then threw on
+ * `.isConnected`; `FocusTarget` covers both now, which is the fix that keeps
+ * the list honest instead of trimming it to suit the consumer.
  */
-export function tabbablesIn(root: Element): HTMLElement[] {
+export function tabbablesIn(root: Element): FocusableElement[] {
   return tabbable(root, {
     displayCheck: environmentReportsLayout() ? "full" : "none",
-  })
-    .filter((el): el is HTMLElement => el instanceof HTMLElement)
-    .sort(byTabOrder);
+  }).sort(byTabOrder);
 }
 
 /**
@@ -98,7 +100,7 @@ export function tabbablesIn(root: Element): HTMLElement[] {
  * rotation order that production never sees, which is the exact class of
  * false-green this codebase keeps paying for.
  */
-function byTabOrder(a: HTMLElement, b: HTMLElement): number {
+function byTabOrder(a: FocusableElement, b: FocusableElement): number {
   // Only a POSITIVE tabindex reorders anything; 0 and "absent" tab in document
   // order together, which is what `el.tabIndex > 0 ? … : 0` collapses them to.
   const ta = a.tabIndex > 0 ? a.tabIndex : 0;

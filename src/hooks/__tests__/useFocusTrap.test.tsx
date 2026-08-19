@@ -1,4 +1,4 @@
-import React, { useRef } from "react";
+import React, { useRef, useState } from "react";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import { useFocusTrap } from "../useFocusTrap";
@@ -97,6 +97,38 @@ describe("useFocusTrap", () => {
       // throws on unmount if the node it means to remove has already gone.
       parent.appendChild(host);
     });
+  });
+
+  it("still answers Escape when its element attached after the first commit", () => {
+    // Registration runs once, with deps that never change, so a caller whose
+    // ref is empty on the first commit is never registered — and the fail-
+    // closed membership check then disabled Escape as well as Tab. For
+    // variant="sheet", where backdrop-click is deliberately off, that would
+    // leave no keyboard dismissal at all (WCAG 2.1.2). Failing closed is right
+    // for TRAPPING, where the alternative is two dialogs fighting over focus;
+    // it is not right for dismissal, where the alternative is being stuck.
+    //
+    // Unreachable through Modal, whose element always renders. This is a shared
+    // hook, and the failure would be silent.
+    const onEscape = vi.fn();
+    const LateRef: React.FC = () => {
+      const ref = useRef<HTMLDivElement>(null);
+      const [attached, setAttached] = useState(false);
+      useFocusTrap(ref, { onEscape });
+      return (
+        <>
+          <button onClick={() => setAttached(true)}>attach</button>
+          <div ref={attached ? ref : null}>
+            <button>inside</button>
+          </div>
+        </>
+      );
+    };
+    render(<LateRef />);
+    fireEvent.click(screen.getByText("attach"));
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onEscape).toHaveBeenCalledOnce();
   });
 
   describe("when a dialog opens on top of another", () => {

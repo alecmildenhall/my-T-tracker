@@ -15,6 +15,7 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import type { RefObject } from "react";
 import { handOffFocus } from "../utils/focus";
+import type { FocusableElement } from "../utils/focus";
 import { tabbablesIn } from "../utils/tabbing";
 
 /** Inputs whose own Tab handling moves between segments inside the control. */
@@ -132,8 +133,18 @@ export function useFocusTrap(
       const dialog = dialogRef.current;
       if (!dialog?.isConnected) return;
       // ...and a dialog that is merely underneath another one is not the one
-      // being typed into.
-      if (!isTopmost(dialog)) return;
+      // being typed into. Registered-but-not-topmost only: an UNREGISTERED
+      // dialog still gets Escape.
+      //
+      // The membership guard inside `isTopmost` fails closed, which is right
+      // for trapping — a dialog that does not trap is recoverable, two dialogs
+      // fighting over focus is not. Applying it to Escape as well was not: the
+      // registration effect's deps never change, so a caller whose ref is empty
+      // on the first commit gets no Tab containment AND no Escape, forever. For
+      // `variant="sheet"` backdrop-click is disabled too, which would leave no
+      // keyboard dismissal at all (WCAG 2.1.2). Unreachable through `Modal`,
+      // whose element always renders, but this is a shared hook.
+      if (mounted.includes(dialog) && !isTopmost(dialog)) return;
 
       // Ctrl/Alt/Cmd combinations belong to the browser and the OS, and this
       // guard covers the WHOLE handler — it used to sit below the Escape branch
@@ -149,6 +160,9 @@ export function useFocusTrap(
         return;
       }
       if (e.key !== "Tab") return;
+      // Trapping, unlike Escape, stays strictly fail-closed: an unregistered
+      // dialog must not own Tab, or two of them fight over focus.
+      if (!isTopmost(dialog)) return;
       // Already handled. The old trap only acted at the list edges, so a second
       // delivery of the same Tab was a no-op; this one rotates ONE STEP from
       // wherever focus is, so a duplicate delivery advances twice and lands a
@@ -172,7 +186,7 @@ export function useFocusTrap(
       // the candidate order and letting `handOffFocus` verify each one removes
       // the question of WHICH element can take focus: it tries them in order
       // and stops at the first that does.
-      const active = document.activeElement as HTMLElement | null;
+      const active = document.activeElement as FocusableElement | null;
       const at = active ? list.indexOf(active) : -1;
 
       // `input[type=date]` and friends are several controls in one: Tab steps
@@ -212,14 +226,27 @@ export function useFocusTrap(
       // and still enter at the first segment — the residual the roadmap
       // records, now genuinely limited to an END of the tab order rather than
       // to every segmented field with a non-segmented neighbour.
-      if (e.shiftKey && at > 0 && list[at - 1].matches(SEGMENTED_INPUT)) return;
-
-      let order: HTMLElement[];
+      let order: FocusableElement[];
+      /**
+       * What the BROWSER would move to if we stood aside on Shift+Tab: the last
+       * tabbable before `active` in document order, or null when there is none
+       * — in which case standing aside would walk off an inert page.
+       *
+       * Computed in every branch rather than from `at`, because the first
+       * version of this fix asked only `at > 0` and so covered the branch where
+       * focus sits on a LISTED control. Focus on a `tabIndex={-1}` element is
+       * the other branch, and the comment there calls it "not a rare case: it
+       * is where every hand-off inside a dialog lands" — so the defect this was
+       * written to fix was still reachable through the door beside it. Read
+       * before `before.reverse()`, which mutates in place.
+       */
+      let backwardNeighbour: FocusableElement | null = null;
       if (at !== -1) {
         // On one of the controls: rotate from it, and end back on it so that a
         // dialog with a single focusable does nothing rather than escaping.
         const after = list.slice(at + 1);
         const before = list.slice(0, at);
+        backwardNeighbour = before.length ? before[before.length - 1] : null;
         order = e.shiftKey
           ? [...before.reverse(), ...after.reverse(), list[at]]
           : [...after, ...before, list[at]];
@@ -259,6 +286,7 @@ export function useFocusTrap(
         // `list.slice()`, not `list`. `.reverse()` mutates in place, so
         // aliasing `list` here reverses the array every other branch reads.
         const before = nextIdx === -1 ? list.slice() : list.slice(0, nextIdx);
+        backwardNeighbour = before.length ? before[before.length - 1] : null;
         order = e.shiftKey
           ? [...before.reverse(), ...after.reverse()]
           : [...after, ...before];
@@ -266,6 +294,22 @@ export function useFocusTrap(
         // Genuinely outside: enter from the appropriate end.
         order = e.shiftKey ? [...list].reverse() : list;
       }
+
+      // Stepping BACKWARDS into a segmented input has to be the browser's move.
+      // `handOffFocus` uses `el.focus()`, which enters a date or time field at
+      // its FIRST segment — right going forwards, exactly wrong going
+      // backwards, where the browser enters at the LAST. Landing on the hour
+      // meant the next Shift+Tab left the field, so minutes and AM/PM could not
+      // be reached backwards at all. Measured on the log sheet: one backward
+      // stop inside the dialog against four for the same control outside one.
+      //
+      // Safe precisely when a control precedes it, because the browser's own
+      // backward move then lands inside that control and cannot leave the
+      // dialog. At the boundary we keep it and still enter at the first
+      // segment — the residual the roadmap records, genuinely limited to an END
+      // of the tab order rather than to every segmented field with a
+      // non-segmented neighbour.
+      if (e.shiftKey && backwardNeighbour?.matches(SEGMENTED_INPUT)) return;
 
       e.preventDefault();
       handOffFocus(...order, dialogRef);
@@ -311,11 +355,22 @@ export function useFocusTrap(
       if (!isTopmost(dialog)) return;
       const target = e.target;
       if (!(target instanceof Node) || dialog.contains(target)) return;
-      // `<body>` is where focus goes when it goes nowhere, and the keydown path
-      // above already treats that as "outside" and re-enters from an end.
-      // Pulling it back here as well would fight the close-time restore in the
-      // one frame where the dialog is still connected.
-      if (target === document.body) return;
+      // `<body>` used to be excluded here, on the reasoning that recovering it
+      // would fight Modal's close-time restore. That reasoning was wrong: the
+      // restore runs from a PASSIVE cleanup, by which point React has nulled
+      // the host ref and the layout cleanup has already deregistered, so both
+      // guards above have returned long before. Verified by removing the line
+      // and watching the sheet still restore to "+ Log a shot" and a confirm to
+      // its row's Delete button.
+      //
+      // Recovering it is also the rule this codebase treats as non-negotiable:
+      // `<body>` is the browser's way of saying "nowhere". Worth knowing that
+      // the case is hard to reach in Chrome — clicking the sheet's dead padding
+      // lands on the `.dialog` container, because it carries `tabIndex={-1}`
+      // and Chrome focuses the nearest focusable ancestor, so focus never
+      // reaches `<body>` at all. Measured, with and without this line. It stays
+      // out for the browsers that do not do that, since the whole point of a
+      // net is the cases nobody enumerated.
       handOffFocus(...tabbablesIn(dialog), dialogRef);
     };
     document.addEventListener("focusin", onFocusIn);

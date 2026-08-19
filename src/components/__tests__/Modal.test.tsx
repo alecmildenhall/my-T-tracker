@@ -254,6 +254,38 @@ describe("Modal", () => {
     expect(screen.getByLabelText("Date2")).toHaveFocus();
   });
 
+  it("steps backwards into a date field from a tabIndex -1 element too", () => {
+    // The same hand-off through the OTHER branch. Focus on a `tabIndex={-1}`
+    // element inside the dialog — the sheet heading after "Clear form", the
+    // container itself — is where every in-dialog hand-off lands, and the first
+    // version of the backward fix only covered focus sitting on a LISTED
+    // control. So the defect it was written to close stayed reachable through
+    // the door beside it, and B½ makes it live the moment a heading or new
+    // hand-off target is placed after the date/time pair.
+    render(
+      <Modal labelledBy="t" onClose={() => {}}>
+        <button type="button">Before</button>
+        <input type="date" aria-label="Date" />
+        <h2 id="t" tabIndex={-1}>
+          Section
+        </h2>
+        <button type="button">After</button>
+      </Modal>
+    );
+    screen.getByRole("heading", { name: "Section" }).focus();
+
+    // The heading's backward neighbour is the date, so the browser takes it.
+    expect(fireEvent.keyDown(window, { key: "Tab", shiftKey: true })).toBe(true);
+
+    // Forwards from the same place is still ours — first-segment entry is the
+    // correct forward start, so there is nothing to stand aside for.
+    screen.getByRole("heading", { name: "Section" }).focus();
+    expect(fireEvent.keyDown(window, { key: "Tab", shiftKey: false })).toBe(
+      false
+    );
+    expect(screen.getByRole("button", { name: "After" })).toHaveFocus();
+  });
+
   it("ignores Escape carrying an OS modifier", () => {
     // The Ctrl/Alt/Cmd guard used to sit below the Escape branch, so it only
     // protected Tab. Alt+Esc cycles windows on Windows and Cmd-modified
