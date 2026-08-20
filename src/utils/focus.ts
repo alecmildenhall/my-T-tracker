@@ -30,19 +30,33 @@ import type { RefObject } from "react";
  * the call site is exactly the boilerplate that let sites drift apart.
  */
 export type FocusTarget =
-  | HTMLElement
+  | FocusableElement
   | RefObject<HTMLElement | null>
   | null
   | undefined;
 
-const resolve = (target: FocusTarget): HTMLElement | null => {
+/**
+ * Anything the browser will actually focus.
+ *
+ * `SVGElement` is included because a focusable `<svg tabindex="0">` IS in the
+ * browser's tab order, and both implement `HTMLOrSVGElement`. Excluding it from
+ * a tab-order list would make the list disagree with the browser and quietly
+ * answer index questions about the wrong neighbour. The roadmap commits to
+ * hand-rolled inline SVG icons, so this stops being hypothetical.
+ */
+export type FocusableElement = HTMLElement | SVGElement;
+
+const resolve = (target: FocusTarget): FocusableElement | null => {
   if (!target) return null;
   // `instanceof`, not `"current" in target`. A real element can have a `current`
   // property: HTMLFormElement exposes its named controls as own properties, so a
   // form containing <input name="current"> would resolve to the input instead of
   // the form. Both Modal call sites splat raw querySelectorAll results in here,
   // and FOCUSABLE's `[tabindex]` clause matches <form tabindex="0">.
-  return target instanceof HTMLElement ? target : target.current;
+  // `instanceof Element`, which covers SVG too — not `instanceof HTMLElement`,
+  // which sent an SVGElement down the ref branch to `.current` (undefined) and
+  // then threw on `.isConnected`.
+  return target instanceof Element ? target : target.current;
 };
 
 /**
@@ -53,7 +67,7 @@ const resolve = (target: FocusTarget): HTMLElement | null => {
  * way, and enumerating them is how you miss one. {@link handOffFocus} answers
  * the question by trying and then looking, which cannot be wrong.
  */
-const isPlausible = (el: HTMLElement | null): el is HTMLElement =>
+const isPlausible = (el: FocusableElement | null): el is FocusableElement =>
   // <body> is excluded before anything else: it is where focus goes when it goes
   // nowhere, so accepting it means declaring success on the exact failure this
   // module exists to prevent.
@@ -76,7 +90,9 @@ const isPlausible = (el: HTMLElement | null): el is HTMLElement =>
  * // The row that replaced the deleted one, else the row above, else the count.
  * handOffFocus(rows[at], rows[at - 1], countRef);
  */
-export function handOffFocus(...candidates: FocusTarget[]): HTMLElement | null {
+export function handOffFocus(
+  ...candidates: FocusTarget[]
+): FocusableElement | null {
   for (const candidate of candidates) {
     const el = resolve(candidate);
     if (!isPlausible(el)) continue;

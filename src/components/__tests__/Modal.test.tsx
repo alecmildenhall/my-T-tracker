@@ -1,6 +1,13 @@
 import { readFileSync } from "node:fs";
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent, act, configure } from "@testing-library/react";
+import {
+  render,
+  screen,
+  fireEvent,
+  act,
+  cleanup,
+  configure,
+} from "@testing-library/react";
 import { useRef, useState } from "react";
 import { Modal, SHEET_EXIT_MS } from "../Modal";
 
@@ -202,6 +209,102 @@ describe("Modal", () => {
     expect(date).toHaveFocus(); // wrapped back inside
   });
 
+  it("lets the browser step BACKWARDS into a date field, at its last segment", () => {
+    // The mirror of the test above, and the half that was missing. `focus()`
+    // enters a segmented input at its FIRST segment, which is right going
+    // forwards and wrong going backwards — so the trap owning this Shift+Tab
+    // landed on the hour and the next Shift+Tab left the field, making minutes
+    // and AM/PM unreachable backwards. Measured in Chromium on the log sheet:
+    // one backward stop inside the dialog against four for the same control
+    // outside one.
+    //
+    // jsdom has no segments, so this pins the contract: the handler must stand
+    // aside when Shift+Tab would ENTER a segmented input that has a control
+    // before it, and the browser then enters at the last segment.
+    render(
+      <Modal labelledBy="t" onClose={() => {}}>
+        <h2 id="t">Title</h2>
+        <button type="button">Before</button>
+        <input type="date" aria-label="Date" />
+        <button type="button">After</button>
+      </Modal>
+    );
+    const after = screen.getByRole("button", { name: "After" });
+    after.focus();
+
+    // Backwards into the date: left to the browser.
+    expect(fireEvent.keyDown(window, { key: "Tab", shiftKey: true })).toBe(true);
+
+    // ...but only where the browser's own move stays inside. Wrapping BACKWARDS
+    // from the first control onto a segmented LAST control is the boundary: the
+    // browser would walk off an inert page, so the trap keeps that one and
+    // enters at the first segment. That is the residual the roadmap records,
+    // and it is now genuinely limited to an END of the tab order rather than to
+    // every segmented field with a non-segmented neighbour.
+    cleanup();
+    render(
+      <Modal labelledBy="t2" onClose={() => {}}>
+        <h2 id="t2">Title</h2>
+        <button type="button">First</button>
+        <input type="date" aria-label="Date2" />
+      </Modal>
+    );
+    screen.getByRole("button", { name: "First" }).focus();
+    expect(fireEvent.keyDown(window, { key: "Tab", shiftKey: true })).toBe(false);
+    expect(screen.getByLabelText("Date2")).toHaveFocus();
+  });
+
+  it("steps backwards into a date field from a tabIndex -1 element too", () => {
+    // The same hand-off through the OTHER branch. Focus on a `tabIndex={-1}`
+    // element inside the dialog — the sheet heading after "Clear form", the
+    // container itself — is where every in-dialog hand-off lands, and the first
+    // version of the backward fix only covered focus sitting on a LISTED
+    // control. So the defect it was written to close stayed reachable through
+    // the door beside it, and B½ makes it live the moment a heading or new
+    // hand-off target is placed after the date/time pair.
+    render(
+      <Modal labelledBy="t" onClose={() => {}}>
+        <button type="button">Before</button>
+        <input type="date" aria-label="Date" />
+        <h2 id="t" tabIndex={-1}>
+          Section
+        </h2>
+        <button type="button">After</button>
+      </Modal>
+    );
+    screen.getByRole("heading", { name: "Section" }).focus();
+
+    // The heading's backward neighbour is the date, so the browser takes it.
+    expect(fireEvent.keyDown(window, { key: "Tab", shiftKey: true })).toBe(true);
+
+    // Forwards from the same place is still ours — first-segment entry is the
+    // correct forward start, so there is nothing to stand aside for.
+    screen.getByRole("heading", { name: "Section" }).focus();
+    expect(fireEvent.keyDown(window, { key: "Tab", shiftKey: false })).toBe(
+      false
+    );
+    expect(screen.getByRole("button", { name: "After" })).toHaveFocus();
+  });
+
+  it("ignores Escape carrying an OS modifier", () => {
+    // The Ctrl/Alt/Cmd guard used to sit below the Escape branch, so it only
+    // protected Tab. Alt+Esc cycles windows on Windows and Cmd-modified
+    // Escapes are OS-level on macOS, and each still dispatches an Escape
+    // keydown here — measured, all three dismissed the log sheet. Coming back
+    // from another app to find a half-filled form gone is not a dismissal
+    // anyone asked for.
+    const onClose = vi.fn();
+    render(<Harness onClose={onClose} />);
+
+    for (const mod of ["altKey", "ctrlKey", "metaKey"]) {
+      fireEvent.keyDown(window, { key: "Escape", [mod]: true });
+    }
+    expect(onClose).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
   it("lets Tab out of a date field even when a DISABLED control follows it", () => {
     // The segmented-input escape hatch asks "is there a control beyond this one",
     // and a disabled button used to answer yes — so Tab was handed back to the
@@ -237,11 +340,18 @@ describe("Modal", () => {
     render(<Harness />);
     const outside = document.createElement("button");
     document.body.appendChild(outside);
-    outside.focus();
 
     // Detach the dialog without unmounting React, reproducing that window.
     const overlay = document.querySelector(".dialog-overlay") as HTMLElement;
     overlay.remove();
+
+    // Focused AFTER the detach, deliberately. Focusing it first would be a
+    // truer copy of nothing at all: the focusin net corrects focus that lands
+    // outside a LIVE dialog, so the setup would be exercising the net rather
+    // than the stale-listener window this test is about. Detached first, the
+    // net stands down and the question is only what the leftover keydown
+    // listener does.
+    outside.focus();
 
     const notPrevented = fireEvent.keyDown(window, { key: "Tab" });
     expect(notPrevented).toBe(true); // left alone entirely
@@ -796,6 +906,44 @@ describe("locking the page costs no layout width", () => {
     expect(htmlRule).toBeDefined();
     expect(htmlRule).toMatch(/background-color:\s*#020617/);
     expect(htmlRule).toMatch(/color-scheme:\s*dark/);
+  });
+
+  it("puts focus in a dialog opened from inside another one", () => {
+    // Real Modals, both portalled to <body> as siblings — the shape that ships,
+    // and the one a hand-rolled nested harness cannot reproduce.
+    //
+    // This failed once. Modal focuses its content from a passive effect declared
+    // ABOVE useFocusTrap, so the inner dialog focused its first control while
+    // still unregistered; the outer dialog was therefore still "topmost", its
+    // focusin net saw focus land somewhere it did not contain, and hauled it
+    // straight back. Opening a confirm from a sheet left focus on the button
+    // that opened it. Registration is a LAYOUT effect now, so it always precedes
+    // any passive focus effect.
+    const Stacked = () => {
+      const [inner, setInner] = useState(false);
+      return (
+        <div id="root">
+          <Modal labelledBy="outer-t" onClose={() => {}}>
+            <h2 id="outer-t">Outer</h2>
+            <button type="button" onClick={() => setInner(true)}>
+              Open inner
+            </button>
+            <button type="button">Outer other</button>
+          </Modal>
+          {inner && (
+            <Modal labelledBy="inner-t" onClose={() => {}}>
+              <h2 id="inner-t">Inner</h2>
+              <button type="button">Inner control</button>
+            </Modal>
+          )}
+        </div>
+      );
+    };
+    render(<Stacked />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Open inner" }));
+
+    expect(screen.getByRole("button", { name: "Inner control" })).toHaveFocus();
   });
 
   it("reserves the scrollbar's space in styles.css so hiding it shifts nothing", () => {
