@@ -1,11 +1,13 @@
 import { describe, it, expect } from "vitest";
 import {
   addDaysCivil,
-  scheduleAnchor,
+  snapToWeekday,
+  establishAnchor,
   plannedDateFor,
   plannedDateOnSave,
   daysFromPlanned,
 } from "../schedule";
+import { WEEKDAYS, weekdayOf } from "../weekday";
 
 /** 5 Aug 2026 is a Wednesday — the anchor day for every scenario below. */
 const WED = "2026-08-05";
@@ -22,9 +24,11 @@ function history(
   shotDay = "wednesday" as const,
   interval = 7,
 ) {
-  const anchor = scheduleAnchor(actuals, shotDay)!;
+  // The anchor is established ONCE from the first shot and frozen, exactly as
+  // the profile now stores it — not recomputed from whatever is earliest.
+  const anchor = establishAnchor(actuals[0], shotDay)!;
   return actuals.map((actual) => {
-    const planned = plannedDateFor(actual, anchor, interval);
+    const planned = plannedDateFor(actual, anchor, interval)!;
     const delta = daysFromPlanned({ date: actual, plannedFor: planned })!;
     return delta === 0
       ? "on time"
@@ -60,26 +64,38 @@ describe("addDaysCivil", () => {
   });
 });
 
-describe("scheduleAnchor", () => {
-  it("snaps the earliest shot to the nearest shot day", () => {
+describe("establishAnchor", () => {
+  it("snaps the first shot to the nearest shot day", () => {
     // A first shot taken one day early still anchors the grid to Wednesday —
     // which is the entire reason shot day is required.
-    expect(scheduleAnchor([day(-1)], "wednesday")).toBe(WED);
-    expect(scheduleAnchor([day(1)], "wednesday")).toBe(WED);
-    expect(scheduleAnchor([WED], "wednesday")).toBe(WED);
+    expect(establishAnchor(day(-1), "wednesday")).toBe(WED);
+    expect(establishAnchor(day(1), "wednesday")).toBe(WED);
+    expect(establishAnchor(WED, "wednesday")).toBe(WED);
   });
 
   it("picks the nearer occurrence when a shot sits between two", () => {
     // Sunday is 4 days after one Wednesday and 3 before the next.
-    expect(scheduleAnchor([day(4)], "wednesday")).toBe(day(7));
+    expect(establishAnchor(day(4), "wednesday")).toBe(day(7));
   });
 
-  it("anchors to the EARLIEST shot, whatever order they arrive in", () => {
-    expect(scheduleAnchor([day(21), day(7), WED], "wednesday")).toBe(WED);
+  it("is null for a date it cannot read", () => {
+    expect(establishAnchor("nope", "wednesday")).toBeNull();
   });
+});
 
-  it("is null with no shots to anchor to", () => {
-    expect(scheduleAnchor([], "wednesday")).toBeNull();
+describe("snapToWeekday", () => {
+  it("reaches every weekday from any day, within half a week", () => {
+    for (const target of WEEKDAYS) {
+      for (let offset = 0; offset < 7; offset++) {
+        const snapped = snapToWeekday(day(offset), target)!;
+        expect(weekdayOf(snapped)).toBe(target);
+        expect(
+          Math.abs(
+            daysFromPlanned({ date: day(offset), plannedFor: snapped })!,
+          ),
+        ).toBeLessThanOrEqual(3);
+      }
+    }
   });
 });
 
@@ -182,23 +198,32 @@ describe("the six user patterns the design was chosen by", () => {
 });
 
 describe("plannedDateOnSave", () => {
-  it("needs both settings, and guesses nothing without them", () => {
-    expect(plannedDateOnSave(WED, [], undefined, 7)).toBeUndefined();
-    expect(plannedDateOnSave(WED, [], "wednesday", undefined)).toBeUndefined();
-    expect(plannedDateOnSave(WED, [], undefined, undefined)).toBeUndefined();
+  it("needs an anchor and an interval, and guesses nothing without them", () => {
+    expect(plannedDateOnSave(WED, undefined, 7)).toBeUndefined();
+    expect(plannedDateOnSave(WED, WED, undefined)).toBeUndefined();
+    expect(plannedDateOnSave(WED, undefined, undefined)).toBeUndefined();
   });
 
   it("refuses a nonsensical interval rather than dividing by it", () => {
-    expect(plannedDateOnSave(WED, [], "wednesday", 0)).toBeUndefined();
-    expect(plannedDateOnSave(WED, [], "wednesday", -7)).toBeUndefined();
+    // A zero interval used to reach addDaysCivil with Infinity slots and
+    // produce the string "NaN-NaN-NaN", frozen onto the shot.
+    expect(plannedDateOnSave(WED, WED, 0)).toBeUndefined();
+    expect(plannedDateOnSave(WED, WED, -7)).toBeUndefined();
+    expect(plannedDateOnSave(WED, WED, NaN)).toBeUndefined();
   });
 
-  it("anchors a first shot to itself, snapped", () => {
-    expect(plannedDateOnSave(day(-1), [], "wednesday", 7)).toBe(WED);
+  it("refuses a shot date it cannot read", () => {
+    // sanitizeShots deliberately accepts a non-blank but malformed date, so an
+    // unreadable one does reach here.
+    expect(plannedDateOnSave("2026-13-40", WED, 7)).toBeUndefined();
+    expect(plannedDateOnSave("nope", WED, 7)).toBeUndefined();
   });
 
-  it("anchors a later shot to the earliest one already logged", () => {
-    expect(plannedDateOnSave(day(8), [day(-1)], "wednesday", 7)).toBe(day(7));
+  it("uses the frozen anchor, so other shots cannot move it", () => {
+    // The bug this replaced: deriving the anchor from the earliest shot meant
+    // backdating a remembered shot repointed the grid for every later save.
+    expect(plannedDateOnSave(day(8), WED, 7)).toBe(day(7));
+    expect(plannedDateOnSave(day(42), WED, 14)).toBe(day(42));
   });
 });
 

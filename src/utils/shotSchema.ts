@@ -6,6 +6,7 @@ import { z } from "zod";
 import { APP_NAME, FORMAT_VERSION } from "../appMeta";
 import { isRealDate, isShotDateInRange } from "./civilDate";
 import { WEEKDAYS } from "./weekday";
+import { MIN_INTERVAL_DAYS, MAX_INTERVAL_DAYS } from "../types/profile";
 
 const TIME_RE = /^\d{2}:\d{2}$/; // HH:MM
 
@@ -78,10 +79,19 @@ export const profileSchema = z.strictObject({
   // Shot day is an enum: only the seven weekday keys are accepted, so a hand-edit
   // or hostile file can't smuggle an arbitrary string past the boundary.
   shotDay: z.enum(WEEKDAYS).optional(),
-  // Whole days, at least one. Upper bound is generous rather than clinical —
-  // the app has no business ruling on someone's regimen — but it stops a value
-  // that would make the schedule grid nonsense.
-  intervalDays: z.number().int().min(1).max(365).optional(),
+  // Bounds imported rather than restated, so this and the DTO allowlist cannot
+  // drift into the app exporting a file its own importer refuses.
+  intervalDays: z
+    .number()
+    .int()
+    .min(MIN_INTERVAL_DAYS)
+    .max(MAX_INTERVAL_DAYS)
+    .optional(),
+  // The date the schedule grid is aligned to. Same range rule as a shot date.
+  scheduleAnchor: z
+    .string()
+    .refine(isShotDateInRange, "scheduleAnchor outside the supported range")
+    .optional(),
 });
 
 /**

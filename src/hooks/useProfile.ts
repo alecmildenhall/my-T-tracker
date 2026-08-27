@@ -2,6 +2,7 @@
 import { useCallback } from "react";
 import { useLocalStorage } from "./useLocalStorage";
 import type { Profile } from "../types/profile";
+import { isValidIntervalDays } from "../types/profile";
 import type { Weekday } from "../utils/weekday";
 import { STORAGE_KEYS } from "../storageKeys";
 import { isBlank } from "../utils/strings";
@@ -41,6 +42,13 @@ function normalizeKnownFields(o: Record<string, unknown>): void {
   // shotDay is an enum, not free text: drop anything that isn't one of the seven
   // weekday keys (a hand-edit, an old value, or "" from a cleared <select>).
   if (!isWeekday(o.shotDay)) delete o.shotDay;
+  // The third boundary. Import and export were both hardened first, and this
+  // one was missed: localStorage is hand-editable, and a string "14" or a 7.5
+  // flowed straight into a field typed `number`. The save path's own guard did
+  // not catch it either — `!"abc"` is false and `"abc" <= 0` is false — so the
+  // shot ended up with a planned date of "NaN-NaN-NaN".
+  if (!isValidIntervalDays(o.intervalDays)) delete o.intervalDays;
+  if (isBlank(o.scheduleAnchor)) delete o.scheduleAnchor;
 }
 
 /**

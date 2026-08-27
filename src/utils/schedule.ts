@@ -24,7 +24,7 @@
 // error can travel down. So there is a fixed grid, and each shot is judged
 // against it alone.
 import { civilDateParts } from "./civilDate";
-import { weekdayOf } from "./weekday";
+import { weekdayOf, WEEKDAYS } from "./weekday";
 import type { Weekday } from "./weekday";
 
 /** Whole days added to a civil date, DST-proof for the same reason
@@ -33,7 +33,13 @@ import type { Weekday } from "./weekday";
  *  matching `addMonthsCivil`. */
 export function addDaysCivil(iso: string, days: number): string {
   const parts = civilDateParts(iso);
-  if (!parts) return iso;
+  // `days` is guarded as well as the date. Only the date used to be, and a
+  // non-finite count silently produced the STRING "NaN-NaN-NaN" — which would
+  // have been frozen onto a shot, shown in History, and written into a
+  // provider's CSV. Reachable three ways: a zero interval (Infinity slots), an
+  // unparseable shot date (sanitizeShots deliberately accepts a non-blank but
+  // malformed one), and NaN arithmetic upstream.
+  if (!parts || !Number.isFinite(days)) return iso;
   const [y, m, d] = parts;
   const shifted = new Date(Date.UTC(y, m - 1, d) + days * 86_400_000);
   const mm = String(shifted.getUTCMonth() + 1).padStart(2, "0");
@@ -42,38 +48,44 @@ export function addDaysCivil(iso: string, days: number): string {
 }
 
 /**
- * The date the grid is aligned to: the earliest shot, moved to the nearest
- * occurrence of the user's shot day.
+ * Move a date to the nearest occurrence of a weekday.
  *
- * Snapping is the whole reason shot day is required. Without it the anchor is
- * "wherever the first shot happened to land", and a first shot taken a day early
- * makes the entire schedule a day early — which then marks every correctly
- * timed shot afterwards as late. Measured, not theorised: that pattern produced
- * "1 late" on every shot from the second onwards, permanently.
- *
- * Returns null when there are no shots to anchor to.
+ * Exactly one offset in [-3, 3] can match a given weekday, so this is a single
+ * arithmetic step rather than a search. An earlier version looped and tracked a
+ * minimum distance, with a comment claiming a forward candidate won an equal
+ * comparison — it did not (the loop ran backwards-first and kept the earlier
+ * one), and the tracking was dead code besides, since no tie is reachable.
  */
-export function scheduleAnchor(
-  shotDates: string[],
+export function snapToWeekday(iso: string, weekday: Weekday): string | null {
+  const current = weekdayOf(iso);
+  if (!current) return null;
+  const forward =
+    (WEEKDAYS.indexOf(weekday) - WEEKDAYS.indexOf(current) + 7) % 7; // 0..6
+  return addDaysCivil(iso, forward <= 3 ? forward : forward - 7);
+}
+
+/**
+ * The date a user's schedule is aligned to, established once from their first
+ * shot and then FROZEN on the profile.
+ *
+ * Stored rather than derived, and that was a real bug rather than a preference.
+ * Deriving it as "the earliest shot, snapped" meant any shot could become the
+ * earliest — so backdating a remembered shot, or deleting the oldest one,
+ * silently repointed the grid for every shot saved afterwards. Snapping only
+ * removes phase error modulo 7 days, so on a fortnightly schedule a 7-day shift
+ * flips which week the grid falls on: measured, an on-rhythm shot went from
+ * "on time" to "7 days before" and stayed there, frozen, unrepairable.
+ *
+ * That is the third failure this module's header says it rejects — "one
+ * accidental early first shot marks every correct shot late forever" — arriving
+ * through the anchor instead of through chaining. The invariant only holds if
+ * the anchor cannot move.
+ */
+export function establishAnchor(
+  firstShotDate: string,
   shotDay: Weekday,
 ): string | null {
-  if (shotDates.length === 0) return null;
-  const earliest = shotDates.reduce((a, b) => (a <= b ? a : b));
-  // Nearest occurrence within half a week. Ties (exactly 3 or 4 either side
-  // cannot tie; ±3.5 is not reachable with whole days) resolve to the smaller
-  // absolute offset, and a forward one wins an equal comparison because the
-  // loop reaches it second only for a strictly smaller distance.
-  let best: string | null = null;
-  let bestDistance = Number.POSITIVE_INFINITY;
-  for (let offset = -3; offset <= 3; offset++) {
-    const candidate = addDaysCivil(earliest, offset);
-    if (weekdayOf(candidate) !== shotDay) continue;
-    if (Math.abs(offset) < bestDistance) {
-      best = candidate;
-      bestDistance = Math.abs(offset);
-    }
-  }
-  return best;
+  return snapToWeekday(firstShotDate, shotDay);
 }
 
 /**
@@ -97,8 +109,18 @@ export function plannedDateFor(
   actual: string,
   anchor: string,
   intervalDays: number,
-): string {
+): string | null {
   const offset = daysApart(anchor, actual);
+  // Null rather than a junk string. This is exported and was reachable with an
+  // unparseable date or a zero interval, and the result would have been frozen
+  // onto a shot rather than refused.
+  if (
+    !Number.isFinite(offset) ||
+    !Number.isFinite(intervalDays) ||
+    intervalDays <= 0
+  ) {
+    return null;
+  }
   const slots = Math.floor(offset / intervalDays + 0.5);
   return addDaysCivil(anchor, slots * intervalDays);
 }
@@ -121,28 +143,24 @@ function daysApart(a: string, b: string): number {
  * The planned date to freeze onto a shot being saved, or `undefined` when the
  * app has no business guessing one.
  *
- * **Both settings are required and neither is defaulted.** No interval or no
- * shot day means no planned date at all — not a fallback, not a guess. A
- * default of 7 would be uniquely harmful here because the value is *frozen*: a
- * fortnightly user who never opened Settings would accumulate months of shots
- * marked against a schedule they were never on, and correcting the setting
- * afterwards would not repair a single one of them.
+ * Takes the profile's frozen `scheduleAnchor` rather than working one out from
+ * the shot list — see {@link establishAnchor} for why deriving it was a bug.
+ * A caller with no anchor yet establishes one first and persists it.
  *
- * @param actual the date being saved
- * @param existingShotDates every other shot's date, for anchoring the grid
+ * **Both settings are required and neither is defaulted.** No interval, no shot
+ * day, or no anchor means no planned date at all — not a fallback, not a guess.
+ * A default of 7 would be uniquely harmful because the value is *frozen*: a
+ * fortnightly user who never opened Settings would accumulate months of shots
+ * measured against a schedule they were never on, and correcting the setting
+ * afterwards would repair none of them.
  */
 export function plannedDateOnSave(
   actual: string,
-  existingShotDates: string[],
-  shotDay: Weekday | undefined,
+  anchor: string | undefined,
   intervalDays: number | undefined,
 ): string | undefined {
-  if (!shotDay || !intervalDays || intervalDays <= 0) return undefined;
-  // The shot being saved counts toward the anchor, so a first shot anchors to
-  // itself (snapped) rather than producing nothing.
-  const anchor = scheduleAnchor([...existingShotDates, actual], shotDay);
-  if (!anchor) return undefined;
-  return plannedDateFor(actual, anchor, intervalDays);
+  if (!anchor || !intervalDays) return undefined;
+  return plannedDateFor(actual, anchor, intervalDays) ?? undefined;
 }
 
 /**
