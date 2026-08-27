@@ -90,10 +90,11 @@ describe("plannedDateFor", () => {
     expect(plannedDateFor(day(13), WED, 7)).toBe(day(14));
   });
 
-  it("resolves an exact midpoint the same way on both sides of the anchor", () => {
-    // Math.round rounds half AWAY FROM ZERO, so -3.5 would go to -4 while 3.5
-    // goes to 4 — two shots equally spaced either side of the anchor landing on
-    // slots a full interval apart. floor(x + 0.5) always rounds up.
+  it("gives an exact midpoint to the LATER slot, on both sides of the anchor", () => {
+    // A behaviour, not an implementation: this cannot distinguish
+    // `floor(x + 0.5)` from `Math.round`, because in JavaScript they are the
+    // same function. It pins which way a tie falls, which is the part a future
+    // edit could change without noticing.
     const interval = 8; // even, so half of it is a whole number of days
     expect(plannedDateFor(day(4), WED, interval)).toBe(day(8));
     expect(plannedDateFor(day(-4), WED, interval)).toBe(WED);

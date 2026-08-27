@@ -79,11 +79,19 @@ export function scheduleAnchor(
 /**
  * The grid slot this shot is nearest to.
  *
- * `Math.floor(x + 0.5)`, deliberately, and NOT `Math.round`: a shot exactly half
- * an interval from two slots has to resolve the same way on both sides of the
- * anchor, and `Math.round` breaks that symmetry by rounding half **away from
- * zero** — so -3.5 would go to -4 while 3.5 goes to 4, and two shots equally
- * spaced either side of the anchor would land on slots a full interval apart.
+ * A shot exactly half an interval from two slots claims the LATER one, on both
+ * sides of the anchor.
+ *
+ * `floor(x + 0.5)` rather than `Math.round` states that intention in the code.
+ * The two are **identical in JavaScript** — an earlier version of this comment
+ * claimed `Math.round` rounds half away from zero and would break the symmetry,
+ * which is false, and the mutant surviving is what caught it: JS rounds half
+ * toward +∞, so `Math.round(-3.5)` is -3, not -4. (Python's `round` really does
+ * differ — half to even — so a port would need this form.)
+ *
+ * Kept as `floor(x + 0.5)` because the tie direction is then visible without
+ * knowing the spec. No test can tell the two apart, so the test beside this
+ * pins which way a tie falls instead.
  */
 export function plannedDateFor(
   actual: string,
