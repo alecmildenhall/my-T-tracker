@@ -15,6 +15,9 @@ export interface UseProfile {
   setPreferredName: (name: string | undefined) => void;
   /** Set (or clear, with undefined) the shot-day weekday. */
   setShotDay: (day: Weekday | undefined) => void;
+  /** Days between shots. `undefined` clears it, which stops planned dates
+   *  being computed rather than falling back to a guess. */
+  setIntervalDays: (days: number | undefined) => void;
   /** Merge a partial patch into the profile. */
   updateProfile: (patch: Partial<Profile>) => void;
   /**
@@ -49,7 +52,9 @@ function normalizeKnownFields(o: Record<string, unknown>): void {
  */
 function sanitizeProfile(raw: unknown): Profile {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return {};
-  const clean: Record<string, unknown> = { ...(raw as Record<string, unknown>) };
+  const clean: Record<string, unknown> = {
+    ...(raw as Record<string, unknown>),
+  };
   normalizeKnownFields(clean);
   return clean as Profile;
 }
@@ -80,7 +85,7 @@ export function useProfile(): UseProfile {
   const [profile, setProfile, persistProfile] = useLocalStorage<Profile>(
     STORAGE_KEYS.profile,
     EMPTY,
-    { sanitize: sanitizeProfile }
+    { sanitize: sanitizeProfile },
   );
 
   const updateProfile = useCallback(
@@ -95,7 +100,7 @@ export function useProfile(): UseProfile {
         return next as Profile;
       });
     },
-    [setProfile]
+    [setProfile],
   );
 
   const replaceProfile = useCallback(
@@ -110,22 +115,27 @@ export function useProfile(): UseProfile {
         return clean as Profile;
       });
     },
-    [persistProfile]
+    [persistProfile],
   );
 
   const setStartDate = useCallback(
     (date: string | undefined) => updateProfile({ startDate: date }),
-    [updateProfile]
+    [updateProfile],
   );
 
   const setPreferredName = useCallback(
     (name: string | undefined) => updateProfile({ preferredName: name }),
-    [updateProfile]
+    [updateProfile],
   );
 
   const setShotDay = useCallback(
     (day: Weekday | undefined) => updateProfile({ shotDay: day }),
-    [updateProfile]
+    [updateProfile],
+  );
+
+  const setIntervalDays = useCallback(
+    (days: number | undefined) => updateProfile({ intervalDays: days }),
+    [updateProfile],
   );
 
   return {
@@ -133,6 +143,7 @@ export function useProfile(): UseProfile {
     setStartDate,
     setPreferredName,
     setShotDay,
+    setIntervalDays,
     updateProfile,
     replaceProfile,
   };

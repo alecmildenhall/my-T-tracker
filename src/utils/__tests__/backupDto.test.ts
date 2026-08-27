@@ -46,7 +46,12 @@ describe("pickShotFields", () => {
   });
 
   it("preserves a legitimate 0 for numeric fields (not treated as blank)", () => {
-    const shot: ShotEntry = { id: "s1", date: "2026-07-12", doseMg: 0, painScore: 0 };
+    const shot: ShotEntry = {
+      id: "s1",
+      date: "2026-07-12",
+      doseMg: 0,
+      painScore: 0,
+    };
     expect(pickShotFields(shot)).toEqual({
       id: "s1",
       date: "2026-07-12",
@@ -64,7 +69,7 @@ describe("pickShotFields", () => {
 describe("pickProfileFields", () => {
   it("keeps known non-blank fields", () => {
     expect(
-      pickProfileFields({ startDate: "2025-01-15", preferredName: "Lou" })
+      pickProfileFields({ startDate: "2025-01-15", preferredName: "Lou" }),
     ).toEqual({ startDate: "2025-01-15", preferredName: "Lou" });
   });
 
@@ -95,8 +100,23 @@ describe("pickProfileFields", () => {
       shotDay: "wednesday",
     });
     expect(
-      pickProfileFields({ shotDay: "someday" } as unknown as Profile)
+      pickProfileFields({ shotDay: "someday" } as unknown as Profile),
     ).toEqual({});
+  });
+
+  it("carries intervalDays through, whole and positive only", () => {
+    // The allowlist trap CLAUDE.md names by name: a Profile field missing from
+    // here does not fail loudly, it silently does not survive the user's own
+    // backup and reverts to unset on restore — losing the schedule every
+    // planned date was measured against.
+    expect(pickProfileFields({ intervalDays: 14 })).toEqual({
+      intervalDays: 14,
+    });
+    for (const bad of [0, -7, 7.5, NaN, "7"]) {
+      expect(
+        pickProfileFields({ intervalDays: bad } as unknown as Profile),
+      ).toEqual({});
+    }
   });
 });
 

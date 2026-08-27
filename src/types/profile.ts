@@ -14,7 +14,18 @@ export interface Profile {
   startDate?: string;
   /** How the user likes to be addressed in milestone messages. Free text. */
   preferredName?: string;
-  /** Optional weekday for a celebratory "Happy shot day!" greeting. Absent means
-   *  no shot-day greeting at all — there is no guessing from logged shots. */
+  /** Optional weekday for a celebratory "Happy shot day!" greeting, and — since
+   *  cadence landed — the day the shot schedule is aligned to. Absent means no
+   *  shot-day greeting at all, and no planned dates: there is no guessing from
+   *  logged shots, in either direction. */
   shotDay?: Weekday;
+  /** How many days the user normally leaves between shots. Optional, and
+   *  deliberately NOT defaulted.
+   *
+   *  A default of 7 would be uniquely harmful because a shot's planned date is
+   *  frozen at save time: a fortnightly user who never opened Settings would
+   *  accumulate months of shots measured against a schedule they were never on,
+   *  and correcting the setting afterwards would repair none of them. Absent
+   *  means no planned date is computed at all — see `plannedDateOnSave`. */
+  intervalDays?: number;
 }

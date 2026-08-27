@@ -27,11 +27,9 @@ describe("buildBackup", () => {
       shot({ date: "2026-07-12" }),
       shot({ date: "2026-07-10", time: "08:00" }),
     ]);
-    expect(backup.shots.map((s) => `${s.date} ${s.time ?? ""}`.trim())).toEqual([
-      "2026-07-10 08:00",
-      "2026-07-10 18:00",
-      "2026-07-12",
-    ]);
+    expect(backup.shots.map((s) => `${s.date} ${s.time ?? ""}`.trim())).toEqual(
+      ["2026-07-10 08:00", "2026-07-10 18:00", "2026-07-12"],
+    );
   });
 
   it("does not mutate the input array", () => {
@@ -149,7 +147,7 @@ describe("escapeCsvCell", () => {
 
   it("quotes a cell that is both a formula and contains a comma", () => {
     // guard prefix first, then RFC quoting wraps the whole thing
-    expect(escapeCsvCell("=1,2")).toBe("\"'=1,2\"");
+    expect(escapeCsvCell("=1,2")).toBe('"\'=1,2"');
   });
 
   it("neutralises a formula hidden behind leading whitespace", () => {
@@ -166,7 +164,14 @@ describe("toCsv", () => {
   it("starts with a UTF-8 BOM and a header row", () => {
     const csv = toCsv([]);
     expect(csv.charCodeAt(0)).toBe(0xfeff);
-    expect(csv.slice(1)).toContain("date,time,doseMg");
+    // The whole header, not a fragment: this is the row a provider reads and
+    // a spreadsheet keys on, so a column appearing, vanishing or moving should
+    // be a deliberate edit here rather than something a substring match waves
+    // through. `plannedFor` sits beside the date it belongs to.
+    expect(csv.slice(1).split("\r\n")[0]).toBe(
+      "date,plannedFor,time,doseMg,injectionSite,injectionSitePosition," +
+        "testosteroneEster,carrierOil,painScore,mood,notes",
+    );
   });
 
   it("uses CRLF line endings", () => {

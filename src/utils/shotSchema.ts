@@ -34,7 +34,9 @@ export const shotEntrySchema = z.strictObject({
   // see `backupEnvelopeSchema` below and `parseBackup`. This comment used to say
   // the whole file was refused; that was true, and was the wrong answer, because
   // a backup is usually the only copy left by the time it is imported.
-  date: z.string().refine(isShotDateInRange, "date outside the supported range"),
+  date: z
+    .string()
+    .refine(isShotDateInRange, "date outside the supported range"),
   time: z.string().refine(isRealTime, "invalid time").optional(),
   doseMg: z.number().finite().nonnegative().optional(),
   injectionSite: z.string().min(1).optional(),
@@ -44,6 +46,13 @@ export const shotEntrySchema = z.strictObject({
   painScore: z.number().int().min(0).max(10).optional(),
   mood: z.string().min(1).optional(),
   notes: z.string().min(1).optional(),
+  // Same range rule as `date`: a planned date is a date the app could have
+  // produced, so it is bounded identically. Import is the other way into
+  // storage, and a bound on the form alone is a bound with a door beside it.
+  plannedFor: z
+    .string()
+    .refine(isShotDateInRange, "plannedFor outside the supported range")
+    .optional(),
 });
 
 /**
@@ -69,6 +78,10 @@ export const profileSchema = z.strictObject({
   // Shot day is an enum: only the seven weekday keys are accepted, so a hand-edit
   // or hostile file can't smuggle an arbitrary string past the boundary.
   shotDay: z.enum(WEEKDAYS).optional(),
+  // Whole days, at least one. Upper bound is generous rather than clinical —
+  // the app has no business ruling on someone's regimen — but it stops a value
+  // that would make the schedule grid nonsense.
+  intervalDays: z.number().int().min(1).max(365).optional(),
 });
 
 /**

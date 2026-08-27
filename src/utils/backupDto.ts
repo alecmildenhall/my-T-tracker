@@ -51,6 +51,16 @@ export function pickProfileFields(p: Partial<Profile>): Profile {
   const preferredName = nonBlankString(p.preferredName);
   if (preferredName !== undefined) out.preferredName = preferredName;
   if (isWeekday(p.shotDay)) out.shotDay = p.shotDay;
+  // Whole positive days only. A fraction or a zero would divide the schedule
+  // grid into something meaningless, and this is the boundary where a
+  // hand-edited or hostile file arrives.
+  if (
+    typeof p.intervalDays === "number" &&
+    Number.isInteger(p.intervalDays) &&
+    p.intervalDays > 0
+  ) {
+    out.intervalDays = p.intervalDays;
+  }
   return out;
 }
 

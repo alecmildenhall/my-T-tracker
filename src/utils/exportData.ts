@@ -47,6 +47,9 @@ export function toJson(shots: ShotEntry[], profile: Profile = {}): string {
 
 const CSV_COLUMNS: Array<{ header: string; key: keyof ShotEntry }> = [
   { header: "date", key: "date" },
+  // Beside the date it belongs to, so a provider reading the CSV can see the
+  // gap without arithmetic. Empty for shots logged before a cadence was set.
+  { header: "plannedFor", key: "plannedFor" },
   { header: "time", key: "time" },
   { header: "doseMg", key: "doseMg" },
   { header: "injectionSite", key: "injectionSite" },
