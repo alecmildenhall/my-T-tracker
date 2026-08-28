@@ -26,7 +26,7 @@ function history(
 ) {
   // The anchor is established ONCE from the first shot and frozen, exactly as
   // the profile now stores it — not recomputed from whatever is earliest.
-  const anchor = establishAnchor(actuals[0], shotDay)!;
+  const anchor = establishAnchor(actuals[0], shotDay, interval)!;
   return actuals.map((actual) => {
     const planned = plannedDateFor(actual, anchor, interval)!;
     const delta = daysFromPlanned({ date: actual, plannedFor: planned })!;
@@ -62,24 +62,61 @@ describe("addDaysCivil", () => {
   it("returns the input unchanged when it cannot parse", () => {
     expect(addDaysCivil("not-a-date", 7)).toBe("not-a-date");
   });
+
+  it("pads a three-digit year, so the result is always YYYY-MM-DD", () => {
+    // Unpadded this returned "999-01-08", which fails CIVIL_DATE_RE everywhere
+    // downstream. civilDateParts accepts years 100–999, so it is reachable.
+    expect(addDaysCivil("0999-01-01", 7)).toBe("0999-01-08");
+    expect(addDaysCivil("0100-01-01", -1)).toBe("0099-12-31");
+  });
+
+  it("refuses a non-finite day count rather than emitting NaN-NaN-NaN", () => {
+    expect(addDaysCivil("2026-08-05", NaN)).toBe("2026-08-05");
+    expect(addDaysCivil("2026-08-05", Infinity)).toBe("2026-08-05");
+  });
 });
 
 describe("establishAnchor", () => {
   it("snaps the first shot to the nearest shot day", () => {
     // A first shot taken one day early still anchors the grid to Wednesday —
     // which is the entire reason shot day is required.
-    expect(establishAnchor(day(-1), "wednesday")).toBe(WED);
-    expect(establishAnchor(day(1), "wednesday")).toBe(WED);
-    expect(establishAnchor(WED, "wednesday")).toBe(WED);
+    expect(establishAnchor(day(-1), "wednesday", 7)).toBe(WED);
+    expect(establishAnchor(day(1), "wednesday", 7)).toBe(WED);
+    expect(establishAnchor(WED, "wednesday", 7)).toBe(WED);
   });
 
   it("picks the nearer occurrence when a shot sits between two", () => {
     // Sunday is 4 days after one Wednesday and 3 before the next.
-    expect(establishAnchor(day(4), "wednesday")).toBe(day(7));
+    expect(establishAnchor(day(4), "wednesday", 7)).toBe(day(7));
   });
 
   it("is null for a date it cannot read", () => {
-    expect(establishAnchor("nope", "wednesday")).toBeNull();
+    expect(establishAnchor("nope", "wednesday", 7)).toBeNull();
+  });
+});
+
+describe("establishAnchor — cadences a weekday cannot describe", () => {
+  it("refuses to anchor anything that is not a whole number of weeks", () => {
+    // Snapping only aligns the grid when the interval is a multiple of 7. On a
+    // 10-day cadence the grid walks across the week, so the snap injects a
+    // fixed offset every shot then carries, frozen. Measured before the guard:
+    // a user injecting EXACTLY every 10 days read "3 days before" on all of
+    // them, forever — the failure this module's header rejects.
+    for (const interval of [1, 3, 10, 13, 30]) {
+      expect(establishAnchor("2026-08-09", "wednesday", interval)).toBeNull();
+    }
+  });
+
+  it("anchors every whole number of weeks", () => {
+    for (const interval of [7, 14, 21, 28]) {
+      expect(establishAnchor(day(-1), "wednesday", interval)).toBe(WED);
+    }
+  });
+
+  it("refuses an out-of-range interval outright", () => {
+    expect(establishAnchor(WED, "wednesday", 0)).toBeNull();
+    expect(establishAnchor(WED, "wednesday", 7.5)).toBeNull();
+    expect(establishAnchor(WED, "wednesday", 371)).toBeNull(); // > 365
   });
 });
 
@@ -210,6 +247,10 @@ describe("plannedDateOnSave", () => {
     expect(plannedDateOnSave(WED, WED, 0)).toBeUndefined();
     expect(plannedDateOnSave(WED, WED, -7)).toBeUndefined();
     expect(plannedDateOnSave(WED, WED, NaN)).toBeUndefined();
+    // A fraction used to divide the grid into fractional days and still return
+    // a date, because the guard here was looser than isValidIntervalDays.
+    expect(plannedDateOnSave(WED, WED, 7.5)).toBeUndefined();
+    expect(plannedDateOnSave(WED, WED, 400)).toBeUndefined();
   });
 
   it("refuses a shot date it cannot read", () => {

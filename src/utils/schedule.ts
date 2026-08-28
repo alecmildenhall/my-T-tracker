@@ -25,6 +25,7 @@
 // against it alone.
 import { civilDateParts } from "./civilDate";
 import { weekdayOf, WEEKDAYS } from "./weekday";
+import { isValidIntervalDays } from "../types/profile";
 import type { Weekday } from "./weekday";
 
 /** Whole days added to a civil date, DST-proof for the same reason
@@ -42,9 +43,16 @@ export function addDaysCivil(iso: string, days: number): string {
   if (!parts || !Number.isFinite(days)) return iso;
   const [y, m, d] = parts;
   const shifted = new Date(Date.UTC(y, m - 1, d) + days * 86_400_000);
+  // The YEAR is padded too. Unpadded, `addDaysCivil("0999-01-01", 7)` returned
+  // "999-01-08" — not YYYY-MM-DD, so it fails CIVIL_DATE_RE everywhere
+  // downstream. `civilDateParts` accepts years 100–999 (only 0–99 fail its
+  // Date.UTC round-trip), so any caller holding such a date reaches this.
+  // EARLIEST_DATE in civilDate.ts pads for exactly this reason; addMonthsCivil
+  // still has the same gap.
+  const yyyy = String(shifted.getUTCFullYear()).padStart(4, "0");
   const mm = String(shifted.getUTCMonth() + 1).padStart(2, "0");
   const dd = String(shifted.getUTCDate()).padStart(2, "0");
-  return `${shifted.getUTCFullYear()}-${mm}-${dd}`;
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 /**
@@ -84,8 +92,27 @@ export function snapToWeekday(iso: string, weekday: Weekday): string | null {
 export function establishAnchor(
   firstShotDate: string,
   shotDay: Weekday,
+  intervalDays: number,
 ): string | null {
+  // Snapping to a weekday only keeps the grid weekday-aligned when the interval
+  // is a whole number of weeks. On any other cadence the grid walks across the
+  // week, so the snap does not align it — it injects a fixed offset every shot
+  // then carries, frozen. Measured: first shot on a Sunday, shot day Wednesday,
+  // interval 10 — a user injecting EXACTLY every 10 days reads "3 days before"
+  // on every shot, forever. That is the failure this module's header rejects,
+  // arriving through the snap.
+  //
+  // There is no honest anchor for those cadences: a weekday cannot describe
+  // them, and falling back to the raw first shot is the "wherever it landed"
+  // guess that fails in both directions. So they get no planned dates, which is
+  // the same answer this file gives to every other unknown.
+  if (!isWeeklyMultiple(intervalDays)) return null;
   return snapToWeekday(firstShotDate, shotDay);
+}
+
+/** A cadence a weekday can describe: a whole number of weeks. */
+export function isWeeklyMultiple(intervalDays: number): boolean {
+  return isValidIntervalDays(intervalDays) && intervalDays % 7 === 0;
 }
 
 /**
@@ -115,9 +142,10 @@ export function plannedDateFor(
   // unparseable date or a zero interval, and the result would have been frozen
   // onto a shot rather than refused.
   if (
+    // `isValidIntervalDays`, not a looser lookalike: a 7.5 would have divided
+    // the grid into fractional days and still returned a date.
     !Number.isFinite(offset) ||
-    !Number.isFinite(intervalDays) ||
-    intervalDays <= 0
+    !isValidIntervalDays(intervalDays)
   ) {
     return null;
   }
@@ -159,7 +187,10 @@ export function plannedDateOnSave(
   anchor: string | undefined,
   intervalDays: number | undefined,
 ): string | undefined {
-  if (!anchor || !intervalDays) return undefined;
+  // `typeof`, not truthiness — CLAUDE.md forbids the latter on an optional
+  // number. Harmless only because 0 happens to be invalid today, which is
+  // exactly the reasoning that rule exists to stop.
+  if (!anchor || typeof intervalDays !== "number") return undefined;
   return plannedDateFor(actual, anchor, intervalDays) ?? undefined;
 }
 

@@ -90,6 +90,14 @@ describe("pickShotFields — the planned date", () => {
     ).toEqual({ id: "a", date: "2026-08-06" });
   });
 
+  it("drops a planned date the importer would refuse", () => {
+    for (const bad of ["9999-01-01", "1899-12-31", "nope"]) {
+      expect(
+        pickShotFields({ id: "a", date: "2026-08-06", plannedFor: bad }),
+      ).toEqual({ id: "a", date: "2026-08-06" });
+    }
+  });
+
   it("exports a shot its own importer accepts", () => {
     const widest = pickShotFields({
       id: "a",
@@ -173,6 +181,19 @@ describe("pickProfileFields", () => {
       scheduleAnchor: "2026-08-05",
     });
     expect(profileSchema.safeParse(widest).success).toBe(true);
+  });
+
+  it("drops an anchor the importer would refuse, rather than exporting it", () => {
+    // The DTO used to accept any non-blank string while the schema required
+    // isShotDateInRange, so the app could write a profile it could not read
+    // back — and the profile is atomic, so that costs startDate, preferredName,
+    // shotDay and intervalDays too. Reachable without hand-editing:
+    // establishAnchor("1900-01-01", "sunday") returns "1899-12-31".
+    for (const bad of ["9999-01-01", "1899-12-31", "not-a-date", "  ", 7]) {
+      expect(
+        pickProfileFields({ scheduleAnchor: bad } as unknown as Profile),
+      ).toEqual({});
+    }
   });
 });
 

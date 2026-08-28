@@ -3,6 +3,7 @@ import { useCallback } from "react";
 import { useLocalStorage } from "./useLocalStorage";
 import type { Profile } from "../types/profile";
 import { isValidIntervalDays } from "../types/profile";
+import { isShotDateInRange } from "../utils/civilDate";
 import type { Weekday } from "../utils/weekday";
 import { STORAGE_KEYS } from "../storageKeys";
 import { isBlank } from "../utils/strings";
@@ -48,7 +49,16 @@ function normalizeKnownFields(o: Record<string, unknown>): void {
   // not catch it either — `!"abc"` is false and `"abc" <= 0` is false — so the
   // shot ended up with a planned date of "NaN-NaN-NaN".
   if (!isValidIntervalDays(o.intervalDays)) delete o.intervalDays;
-  if (isBlank(o.scheduleAnchor)) delete o.scheduleAnchor;
+  // The same date rule as import and export, not merely "non-blank". A
+  // hand-edited "9999-01-01" used to survive here and then freeze a year-9999
+  // planned date onto every subsequent shot — shown in History and written into
+  // the CSV a provider reads. That is the class isShotDateInRange exists for.
+  if (
+    typeof o.scheduleAnchor !== "string" ||
+    !isShotDateInRange(o.scheduleAnchor)
+  ) {
+    delete o.scheduleAnchor;
+  }
 }
 
 /**

@@ -11,6 +11,7 @@
 import type { ShotEntry } from "../types/shot";
 import type { Profile } from "../types/profile";
 import { isValidIntervalDays } from "../types/profile";
+import { isShotDateInRange } from "./civilDate";
 import { nonBlankString } from "./strings";
 import { isWeekday } from "./weekday";
 
@@ -46,8 +47,17 @@ export function pickShotFields(s: ShotEntry): ShotEntry {
   // plannedFor out cost the entire timing history on any restore, and by this
   // feature's own design it can never be regenerated: it is frozen at save time
   // from the settings in force then. The restore would have reported success.
-  const plannedFor = nonBlankString(s.plannedFor);
-  if (plannedFor !== undefined) shot.plannedFor = plannedFor;
+  // `isShotDateInRange`, not just non-blank. The schema applies that rule, so
+  // admitting anything looser here lets the app export a file its own importer
+  // refuses — a skipped row for a shot, and for the atomic profile, the whole
+  // thing. Reachable without hand-editing: establishAnchor("1900-01-01",
+  // "sunday") returns "1899-12-31", which is out of range.
+  if (
+    typeof s.plannedFor === "string" &&
+    isShotDateInRange(s.plannedFor.trim())
+  ) {
+    shot.plannedFor = s.plannedFor.trim();
+  }
   return shot;
 }
 
@@ -63,8 +73,12 @@ export function pickProfileFields(p: Partial<Profile>): Profile {
   // grid into something meaningless, and this is the boundary where a
   // hand-edited or hostile file arrives.
   if (isValidIntervalDays(p.intervalDays)) out.intervalDays = p.intervalDays;
-  const anchor = nonBlankString(p.scheduleAnchor);
-  if (anchor !== undefined) out.scheduleAnchor = anchor;
+  if (
+    typeof p.scheduleAnchor === "string" &&
+    isShotDateInRange(p.scheduleAnchor.trim())
+  ) {
+    out.scheduleAnchor = p.scheduleAnchor.trim();
+  }
   return out;
 }
 
