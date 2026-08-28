@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   addDaysCivil,
+  scheduleMode,
+  plannedDateRolling,
   snapToWeekday,
   establishAnchor,
   plannedDateFor,
@@ -231,6 +233,100 @@ describe("the six user patterns the design was chosen by", () => {
       "3 before",
       "3 before",
     ]);
+  });
+});
+
+describe("scheduleMode", () => {
+  it("answers 'did I hit my day' only with a weekly rhythm AND a shot day", () => {
+    expect(scheduleMode("wednesday", 7)).toBe("grid");
+    expect(scheduleMode("wednesday", 14)).toBe("grid");
+    expect(scheduleMode("wednesday", 28)).toBe("grid");
+  });
+
+  it("answers 'was my gap right' for any cadence a weekday cannot describe", () => {
+    // Shot day is irrelevant here, set or not — the grid would walk across the
+    // week, so the weekday means nothing. The UI greys the control out to say so.
+    expect(scheduleMode(undefined, 10)).toBe("rolling");
+    expect(scheduleMode("wednesday", 10)).toBe("rolling");
+    expect(scheduleMode("wednesday", 3)).toBe("rolling");
+  });
+
+  it("answers nothing for a weekly rhythm with no shot day", () => {
+    // Deliberate, not an oversight. Rolling would work mechanically and would
+    // under-report: someone consistently on Fridays who meant Wednesdays reads
+    // "on time" every week. True, and useless.
+    expect(scheduleMode(undefined, 7)).toBe("none");
+    expect(scheduleMode(undefined, 14)).toBe("none");
+  });
+
+  it("answers nothing without a usable interval", () => {
+    expect(scheduleMode("wednesday", undefined)).toBe("none");
+    expect(scheduleMode("wednesday", 0)).toBe("none");
+    expect(scheduleMode("wednesday", 7.5)).toBe("none");
+    expect(scheduleMode("wednesday", 400)).toBe("none");
+  });
+});
+
+describe("plannedDateRolling", () => {
+  const gaps = (actuals: string[], interval: number) =>
+    actuals.map((a, i) => {
+      const planned = plannedDateRolling(actuals[i - 1], interval);
+      if (!planned) return "first shot";
+      const delta = daysFromPlanned({ date: a, plannedFor: planned })!;
+      return delta === 0
+        ? "on time"
+        : delta > 0
+          ? `${delta} after`
+          : `${-delta} before`;
+    });
+
+  it("has no planned date for the first shot", () => {
+    expect(plannedDateRolling(undefined, 10)).toBeUndefined();
+  });
+
+  it("reads a steady rhythm as on time", () => {
+    expect(gaps([day(0), day(10), day(20), day(30)], 10)).toEqual([
+      "first shot",
+      "on time",
+      "on time",
+      "on time",
+    ]);
+  });
+
+  it("shows a consistently long gap every time, rather than absorbing it", () => {
+    expect(gaps([day(0), day(12), day(24), day(36)], 10)).toEqual([
+      "first shot",
+      "2 after",
+      "2 after",
+      "2 after",
+    ]);
+  });
+
+  it("does not cascade: one late shot, then back on rhythm", () => {
+    // The property that makes chaining safe HERE, where it was not safe for the
+    // grid: this measures the gap, so a late shot moves the next expectation by
+    // exactly the amount it should.
+    expect(gaps([day(0), day(13), day(23), day(33)], 10)).toEqual([
+      "first shot",
+      "3 after",
+      "on time",
+      "on time",
+    ]);
+  });
+
+  it("marks a skipped cycle once, then recovers", () => {
+    expect(gaps([day(0), day(10), day(30), day(40)], 10)).toEqual([
+      "first shot",
+      "on time",
+      "10 after",
+      "on time",
+    ]);
+  });
+
+  it("refuses an interval it cannot use", () => {
+    expect(plannedDateRolling(day(0), 0)).toBeUndefined();
+    expect(plannedDateRolling(day(0), 7.5)).toBeUndefined();
+    expect(plannedDateRolling("nope", 10)).toBeUndefined();
   });
 });
 

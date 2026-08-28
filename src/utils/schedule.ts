@@ -110,6 +110,25 @@ export function establishAnchor(
   return snapToWeekday(firstShotDate, shotDay);
 }
 
+/**
+ * The user's shot day, if it currently means anything.
+ *
+ * A weekday cannot describe a cadence that is not a whole number of weeks, so
+ * the setting is inert while the interval is one — greyed out in Settings, and
+ * silent in the greeting. Deliberately a *read-through* rather than clearing
+ * the stored value: someone correcting a mistyped interval gets their day back
+ * rather than having to remember it.
+ */
+export function shotDayInEffect(profile: {
+  shotDay?: Weekday;
+  intervalDays?: number;
+}): Weekday | undefined {
+  if (!profile.shotDay) return undefined;
+  // No interval at all leaves shot day doing its original job: the greeting.
+  if (typeof profile.intervalDays !== "number") return profile.shotDay;
+  return isWeeklyMultiple(profile.intervalDays) ? profile.shotDay : undefined;
+}
+
 /** A cadence a weekday can describe: a whole number of weeks. */
 export function isWeeklyMultiple(intervalDays: number): boolean {
   return isValidIntervalDays(intervalDays) && intervalDays % 7 === 0;
@@ -165,6 +184,59 @@ function daysApart(a: string, b: string): number {
       Date.UTC(from[0], from[1] - 1, from[2])) /
       86_400_000,
   );
+}
+
+/**
+ * Which question this user's settings can answer.
+ *
+ * Two different mental models, and forcing one onto both was the mistake that
+ * took several rounds to see:
+ *
+ *   - **grid** — "I inject on Wednesdays." A calendar rhythm, where drift is a
+ *     problem because the weekday *is* the intent. Needs a whole number of
+ *     weeks and a shot day.
+ *   - **rolling** — "I inject every 10 days." A gap from the last dose, where
+ *     drift is not drift, it is the definition. You count from your last
+ *     injection, which is also what your levels respond to.
+ *
+ * A weekly cadence with no shot day answers NEITHER, deliberately. Rolling
+ * would work mechanically, but it would under-report: someone consistently
+ * injecting on Fridays when they meant Wednesdays reads "on time" every single
+ * week. True, and useless. A non-weekly cadence has no such intent to miss.
+ */
+export type ScheduleMode = "grid" | "rolling" | "none";
+
+export function scheduleMode(
+  shotDay: Weekday | undefined,
+  intervalDays: number | undefined,
+): ScheduleMode {
+  if (typeof intervalDays !== "number" || !isValidIntervalDays(intervalDays)) {
+    return "none";
+  }
+  if (!isWeeklyMultiple(intervalDays)) return "rolling";
+  return shotDay ? "grid" : "none";
+}
+
+/**
+ * The planned date for a rolling cadence: one interval on from the shot before
+ * it.
+ *
+ * No cascade, despite chaining on the previous ACTUAL date — because this
+ * measures the GAP rather than a position, so a late shot shifts the next
+ * expectation by exactly the amount it should. Measured: one late shot then a
+ * return to rhythm reads "3 after" and then "on time", and a skipped cycle
+ * reads "10 after" and then "on time".
+ *
+ * The first shot has no predecessor, so it has no planned date — never "0 days
+ * after", which would state a fact we do not have.
+ */
+export function plannedDateRolling(
+  previousShotDate: string | undefined,
+  intervalDays: number,
+): string | undefined {
+  if (!previousShotDate || !isValidIntervalDays(intervalDays)) return undefined;
+  const planned = addDaysCivil(previousShotDate, intervalDays);
+  return planned === previousShotDate ? undefined : planned;
 }
 
 /**
