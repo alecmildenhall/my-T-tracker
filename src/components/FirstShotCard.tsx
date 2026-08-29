@@ -13,7 +13,7 @@
 // Nothing to dismiss, and no "dismissed" flag to store — the same derive-don't-
 // store reasoning the soreness card uses. It also means an IMPORT clears it for
 // free, since restoring a backup creates shots.
-import React from "react";
+import React, { useState } from "react";
 import { useProfileContext } from "../context/ProfileContext";
 import { WEEKDAYS, isWeekday, weekdayLabel } from "../utils/weekday";
 import { isWeeklyMultiple } from "../utils/schedule";
@@ -22,6 +22,9 @@ import {
   MIN_INTERVAL_DAYS,
   MAX_INTERVAL_DAYS,
 } from "../types/profile";
+
+/** The two cadences almost everyone is on. */
+const QUICK_PICKS = [7, 14];
 
 interface FirstShotCardProps {
   /** Takes them to Settings → Your data, where the import lives. */
@@ -33,8 +36,51 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
 }) => {
   const { profile, setShotDay, setIntervalDays } = useProfileContext();
 
-  // No local draft here, unlike Settings: these are chips and a select, so every
-  // change is a complete value. There is no half-typed state to protect.
+  /**
+   * The free-entry box holds a draft and commits on blur, exactly as Settings
+   * does — the chips beside it commit immediately because a chip IS a complete
+   * value, but a typed number is not until you stop typing.
+   *
+   * Committing per keystroke made several intervals impossible to enter. Typing
+   * "140" committed 14 on the second keystroke, at which point the box blanked
+   * itself (its value was derived from the profile and hid the two quick-pick
+   * numbers), so the third keystroke started from empty and produced "0" —
+   * invalid, clearing the interval outright. Transiently-valid keystrokes were
+   * worse than useless too: a lone "1" flipped the cadence to non-weekly, so
+   * the shot-day select disabled and the notice flashed mid-word.
+   */
+  const [otherDraft, setOtherDraft] = useState(
+    profile.intervalDays !== undefined &&
+      !QUICK_PICKS.includes(profile.intervalDays)
+      ? String(profile.intervalDays)
+      : "",
+  );
+  const commitOther = () => {
+    const trimmed = otherDraft.trim();
+    if (trimmed === "") {
+      // Only clear an interval this box owns — blanking it must not wipe a
+      // choice made with the chips.
+      if (
+        profile.intervalDays !== undefined &&
+        !QUICK_PICKS.includes(profile.intervalDays)
+      ) {
+        setIntervalDays(undefined);
+      }
+      return;
+    }
+    const parsed = Number(trimmed);
+    if (isValidIntervalDays(parsed)) {
+      setIntervalDays(parsed);
+    } else {
+      setOtherDraft("");
+    }
+  };
+
+  const pickQuick = (days: number) => {
+    setOtherDraft("");
+    setIntervalDays(profile.intervalDays === days ? undefined : days);
+  };
+
   const shotDayUnavailable =
     isValidIntervalDays(profile.intervalDays) &&
     !isWeeklyMultiple(profile.intervalDays);
@@ -52,17 +98,13 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
           role="group"
           aria-label="How often you take your shot"
         >
-          {[7, 14].map((days) => (
+          {QUICK_PICKS.map((days) => (
             <button
               key={days}
               type="button"
               className={`chip${profile.intervalDays === days ? " chip--active" : ""}`}
               aria-current={profile.intervalDays === days ? true : undefined}
-              onClick={() =>
-                setIntervalDays(
-                  profile.intervalDays === days ? undefined : days,
-                )
-              }
+              onClick={() => pickQuick(days)}
             >
               {days === 7 ? "Weekly" : "Fortnightly"}
             </button>
@@ -76,21 +118,9 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
               step={1}
               inputMode="numeric"
               placeholder="Every ___ days"
-              value={
-                profile.intervalDays !== undefined &&
-                profile.intervalDays !== 7 &&
-                profile.intervalDays !== 14
-                  ? String(profile.intervalDays)
-                  : ""
-              }
-              onChange={(e) => {
-                const parsed = Number(e.target.value.trim());
-                setIntervalDays(
-                  e.target.value.trim() !== "" && isValidIntervalDays(parsed)
-                    ? parsed
-                    : undefined,
-                );
-              }}
+              value={otherDraft}
+              onChange={(e) => setOtherDraft(e.target.value)}
+              onBlur={commitOther}
             />
           </label>
         </div>

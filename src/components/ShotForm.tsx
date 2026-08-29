@@ -58,6 +58,14 @@ function carryForward(shots: ShotEntry[]): {
  * a half-typed number that isn't a valid entry yet.
  */
 export interface ShotDraft {
+  /** The planned date as the field held it, and the value it would have shown
+   *  untouched. Both travel, for the same reason `date` and `dateBaseline` do:
+   *  without them, editing only the planned date left the form looking clean,
+   *  so ✕ discarded the correction with no confirm — and in the mixed case the
+   *  notes came back while the planned date silently reverted, which reads as a
+   *  complete restore that quietly dropped a field. */
+  plannedFor: string;
+  plannedBaseline: string;
   /**
    * The date exactly as the field held it — a snapshot, like every other value
    * here. Never re-derived on restore.
@@ -110,6 +118,8 @@ function freshDraft(): ShotDraft {
   return {
     date: todayLocalISO(),
     dateBaseline: todayLocalISO(),
+    plannedFor: "",
+    plannedBaseline: "",
     time: "",
     doseMg: "",
     injectionSite: "",
@@ -240,6 +250,11 @@ export const ShotForm: React.FC<ShotFormProps> = ({
         ? {
             date: initial.date,
             dateBaseline: initial.date,
+            plannedFor: initial.plannedFor ?? "",
+            // The record's own value is what it opened with, so an untouched
+            // reopen reads as clean even though the app might now compute a
+            // different planned date.
+            plannedBaseline: initial.plannedFor ?? "",
             time: initial.time ?? "",
             doseMg: initial.doseMg?.toString() ?? "",
             injectionSite: initial.injectionSite ?? "",
@@ -273,7 +288,13 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       planShot({
         date,
         previousShotDate: previousShotDateBefore(date, shots, editingShot?.id),
-        earliestShotDate: earliestShotDate(shots, editingShot?.id),
+        // NOT excluding the shot being edited: it is still part of the history
+        // the grid is aligned to, and excluding it meant which shot you happened
+        // to open decided where an unestablished anchor landed — on a
+        // fortnightly grid, a 7-day different schedule, then frozen. The
+        // exclusion is right for `previousShotDateBefore`, where a shot must not
+        // be its own predecessor, and wrong here.
+        earliestShotDate: earliestShotDate(shots),
         profile,
       }),
     [date, shots, editingShot?.id, profile],
@@ -291,10 +312,19 @@ export const ShotForm: React.FC<ShotFormProps> = ({
    * untouched planned date follows; an edited one stays put.
    */
   const [plannedDraft, setPlannedDraft] = useState<string>(
-    editingShot?.plannedFor ?? plan.plannedFor ?? "",
+    start.plannedFor || plan.plannedFor || "",
   );
+  // The BASELINE is what the app would compute, never what is stored. Seeding
+  // both from the stored value made them equal on the first render, which is
+  // exactly the condition the sync below fires on — so reopening a shot threw
+  // its frozen planned date away and repainted it from today's settings before
+  // the user touched anything. Measured: a shot overridden to 2026-07-29
+  // rendered and re-saved as 2026-08-05, defeating both the "frozen and NEVER
+  // recomputed" rule on ShotEntry and the override this field's own hint
+  // invites. Seeded from `computed`, a stored value that differs simply reads
+  // as edited, which is what it is.
   const [plannedBaseline, setPlannedBaseline] = useState<string>(
-    editingShot?.plannedFor ?? plan.plannedFor ?? "",
+    plan.plannedFor || "",
   );
   const computed = plan.plannedFor ?? "";
   if (plannedBaseline !== computed && plannedDraft === plannedBaseline) {
@@ -307,6 +337,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   const ownHeadingRef = useRef<HTMLHeadingElement>(null);
   const headingRef = externalHeadingRef ?? ownHeadingRef;
   const [dateError, setDateError] = useState<string | null>(null);
+  const [plannedError, setPlannedError] = useState<string | null>(null);
   const [saveFailed, setSaveFailed] = useState(false);
   const [exportFailed, setExportFailed] = useState(false);
   const [doseError, setDoseError] = useState<string | null>(null);
@@ -456,12 +487,36 @@ export const ShotForm: React.FC<ShotFormProps> = ({
         ? "Pain must be a whole number from 0 to 10."
         : null;
 
+    // The planned date takes the SAME rule as the date, and for the same reason:
+    // the form is noValidate, so `min`/`max` on the input are hints the browser
+    // never enforces. It went through unvalidated, so typing 9999-01-01 stored
+    // it — and the three boundaries then disagreed about a value the user could
+    // see: pickShotFields drops it from the backup, toCsv blanks the cell, and
+    // History renders it. A value on screen that silently does not survive your
+    // own backup is the failure this feature's comments exist to prevent.
+    const parsedPlanned =
+      plannedDraft.trim() === "" ? null : toShotDate(plannedDraft);
+    const nextPlannedError =
+      plannedDraft.trim() === "" || parsedPlanned
+        ? null
+        : isRealDate(plannedDraft)
+          ? `Check the year — dates run from ${range.min} to ${range.max}.`
+          : "That isn’t a real calendar date.";
+
+    setPlannedError(nextPlannedError);
     setDateError(nextDateError);
     setDoseError(nextDoseError);
     setPainError(nextPainError);
     // `!parsedDate` is implied by nextDateError, but stating it narrows the type
     // so the branded CivilDate below can't be null.
-    if (nextDateError || nextDoseError || nextPainError || !parsedDate) return;
+    if (
+      nextDateError ||
+      nextDoseError ||
+      nextPainError ||
+      nextPlannedError ||
+      !parsedDate
+    )
+      return;
 
     const newShot: ShotEntry = {
       id: editingShot ? editingShot.id : newId(),
@@ -480,7 +535,9 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       notes: notes || undefined,
       // Frozen here and never recomputed. An emptied field means "no planned
       // date", which is a real answer rather than a prompt to guess one.
-      plannedFor: plannedDraft || undefined,
+      // The parsed value, like `date` — the parser's result is the trust
+      // boundary, not just a yes/no gate.
+      plannedFor: parsedPlanned ?? undefined,
     };
 
     const outcome =
@@ -490,7 +547,12 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // establish one — otherwise a failed save would leave an anchor behind for
     // a shot that does not exist, quietly fixing the grid to a date the user
     // never logged.
-    if (outcome && plan.anchorToPersist) {
+    // `=== "saved"`, not truthiness. SaveOutcome is a union of non-empty
+    // strings, so "refused" and "ignored" are both truthy and the comment above
+    // was describing behaviour the code did not have: a storage refusal — the
+    // very case this sheet is held open for — would have frozen the grid to a
+    // shot that never existed, with no UI to reset it.
+    if (outcome === "saved" && plan.anchorToPersist) {
       onAnchorEstablished?.(plan.anchorToPersist);
     }
 
@@ -535,6 +597,8 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   const current: ShotDraft = {
     date,
     dateBaseline,
+    plannedFor: plannedDraft,
+    plannedBaseline,
     time,
     doseMg,
     injectionSite,
@@ -554,18 +618,32 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   // The date is compared against its own baseline rather than against `opened`,
   // because a required, always-populated field has no "empty" to mean "nothing
   // entered". Every other field can use that test directly.
+  // `plannedFor` joins `date` in the explicit clause, and for the identical
+  // reason: it is always populated once a cadence is set, so "differs from
+  // empty" is not a test for "the user entered something". Compared generically
+  // it would make a brand-new form dirty on open — the field seeds from what
+  // the app computed, while `opened` holds "" — so "Clear form" would appear
+  // and dismissing would confirm, on a form nobody had touched.
+  const BASELINE_FIELDS: (keyof ShotDraft)[] = [
+    "date",
+    "dateBaseline",
+    "plannedFor",
+    "plannedBaseline",
+  ];
   const hasUnsavedInput =
     date !== dateBaseline ||
+    plannedDraft !== plannedBaseline ||
     (Object.keys(current) as (keyof ShotDraft)[])
-      .filter((k) => k !== "date" && k !== "dateBaseline")
+      .filter((k) => !BASELINE_FIELDS.includes(k))
       .some((k) => current[k] !== opened[k]);
 
   // Whether the form currently shows exactly what a brand-new one would, right
   // now — today's date and nothing beyond the carried-forward values.
   const looksFresh =
     date === todayLocalISO() &&
+    plannedDraft === plannedBaseline &&
     (Object.keys(current) as (keyof ShotDraft)[])
-      .filter((k) => k !== "date" && k !== "dateBaseline")
+      .filter((k) => !BASELINE_FIELDS.includes(k))
       .every((k) => current[k] === opened[k]);
 
   // Publish the live values for the parent to read on dismissal. In an effect
@@ -857,9 +935,19 @@ export const ShotForm: React.FC<ShotFormProps> = ({
                 value={plannedDraft}
                 min={dateRange.min}
                 max={dateRange.max}
-                onChange={(e) => setPlannedDraft(e.target.value)}
+                onChange={(e) => {
+                  setPlannedDraft(e.target.value);
+                  if (plannedError) setPlannedError(null);
+                }}
+                aria-invalid={plannedError ? true : undefined}
+                aria-describedby={plannedError ? "planned-error" : undefined}
               />
             </label>
+            {plannedError && (
+              <span id="planned-error" className="field-error" role="alert">
+                {plannedError}
+              </span>
+            )}
             <p className="field-hint">
               Worked out from how often you inject. Change it if this one was
               always going to be a different day.

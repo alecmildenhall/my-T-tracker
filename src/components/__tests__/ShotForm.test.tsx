@@ -1,8 +1,10 @@
+import React from "react";
 import { readFileSync } from "node:fs";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ShotForm, type ShotDraft } from "../ShotForm";
 import type { ShotEntry } from "../../types/shot";
+import type { SaveOutcome } from "../ShotForm";
 import { todayLocalISO } from "../../utils/datetime";
 import { isShotDateInRange, shotDateRange } from "../../utils/civilDate";
 
@@ -72,12 +74,18 @@ describe("ShotForm suggestion chips", () => {
     render(<ShotForm onAddShot={vi.fn()} shots={[...history, saved]} />);
 
     // Values that stay the same shot-to-shot persist, so a repeat needs no re-entry.
-    expect((screen.getByPlaceholderText("e.g. 50") as HTMLInputElement).value).toBe("50");
+    expect(
+      (screen.getByPlaceholderText("e.g. 50") as HTMLInputElement).value,
+    ).toBe("50");
     expect(esterInput().value).toBe("cypionate");
     expect(oilInput().value).toBe("cottonseed");
     // Injection site does not — it's commonly rotated.
     expect(
-      (screen.getByPlaceholderText(/thigh, glute, stomach/i) as HTMLInputElement).value
+      (
+        screen.getByPlaceholderText(
+          /thigh, glute, stomach/i,
+        ) as HTMLInputElement
+      ).value,
     ).toBe("");
   });
 
@@ -91,7 +99,9 @@ describe("ShotForm suggestion chips", () => {
     fireEvent.change(screen.getByPlaceholderText(/left, right, upper left/i), {
       target: { value: "left" },
     });
-    fireEvent.change(screen.getByPlaceholderText("e.g. 3"), { target: { value: "4" } });
+    fireEvent.change(screen.getByPlaceholderText("e.g. 3"), {
+      target: { value: "4" },
+    });
     fireEvent.change(screen.getByPlaceholderText(/low, okay, good/i), {
       target: { value: "good" },
     });
@@ -104,24 +114,43 @@ describe("ShotForm suggestion chips", () => {
     // losing it.
     const saved = saveAndReopen(onAddShot);
     expect(
-      (screen.getByPlaceholderText(/remember for later/i) as HTMLTextAreaElement).value
+      (
+        screen.getByPlaceholderText(
+          /remember for later/i,
+        ) as HTMLTextAreaElement
+      ).value,
     ).toBe("felt fine");
     first.unmount();
 
     render(<ShotForm onAddShot={vi.fn()} shots={[...history, saved]} />);
 
     expect(
-      (screen.getByPlaceholderText(/thigh, glute, stomach/i) as HTMLInputElement).value
+      (
+        screen.getByPlaceholderText(
+          /thigh, glute, stomach/i,
+        ) as HTMLInputElement
+      ).value,
     ).toBe("");
     expect(
-      (screen.getByPlaceholderText(/left, right, upper left/i) as HTMLInputElement).value
+      (
+        screen.getByPlaceholderText(
+          /left, right, upper left/i,
+        ) as HTMLInputElement
+      ).value,
     ).toBe("");
-    expect((screen.getByPlaceholderText("e.g. 3") as HTMLInputElement).value).toBe("");
     expect(
-      (screen.getByPlaceholderText(/low, okay, good/i) as HTMLInputElement).value
+      (screen.getByPlaceholderText("e.g. 3") as HTMLInputElement).value,
     ).toBe("");
     expect(
-      (screen.getByPlaceholderText(/remember for later/i) as HTMLTextAreaElement).value
+      (screen.getByPlaceholderText(/low, okay, good/i) as HTMLInputElement)
+        .value,
+    ).toBe("");
+    expect(
+      (
+        screen.getByPlaceholderText(
+          /remember for later/i,
+        ) as HTMLTextAreaElement
+      ).value,
     ).toBe("");
   });
 
@@ -178,7 +207,7 @@ describe("ShotForm suggestion chips", () => {
         onUpdateShot={vi.fn()}
         editingShot={editing}
         shots={history}
-      />
+      />,
     );
 
     expect(esterInput().value).toBe("enanthate");
@@ -243,12 +272,17 @@ describe("ShotForm field mapping", () => {
 
     expect(onAddShot).not.toHaveBeenCalled();
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "Add the date this shot was taken."
+      "Add the date this shot was taken.",
     );
-    expect(screen.getByLabelText("Date")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByLabelText("Date")).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
 
     // Typing a date clears the message as you go, not only on the next submit.
-    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-06-15" } });
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: "2026-06-15" },
+    });
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
@@ -271,7 +305,10 @@ describe("ShotForm field mapping", () => {
 
     expect(onAddShot).not.toHaveBeenCalled();
     expect(screen.getByRole("alert")).toHaveTextContent(/Check the year/);
-    expect(screen.getByLabelText("Date")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByLabelText("Date")).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
 
     // The message names the boundary DATES, not their years. It used to say
     // "1900 to 2027" while the real bound was 2027-08-13 — so a date late in
@@ -316,12 +353,13 @@ describe("ShotForm field mapping", () => {
     // `src/test/focusRing.ts` records the same trap.
     const css = readFileSync(`${process.cwd()}/src/styles.css`, "utf8").replace(
       /\/\*[\s\S]*?\*\//g,
-      ""
+      "",
     );
 
     const sized = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
-      .filter(([, sel, body]) =>
-        /\b(input|textarea|select)\b/.test(sel) && /font-size:/.test(body)
+      .filter(
+        ([, sel, body]) =>
+          /\b(input|textarea|select)\b/.test(sel) && /font-size:/.test(body),
       )
       .map(([, sel, body]) => ({
         selector: sel.replace(/\s+/g, " ").trim(),
@@ -374,7 +412,7 @@ describe("ShotForm field mapping", () => {
           { id: "new", date: "2026-07-01", doseMg: 80 },
           { id: "old", date: "2026-01-01", doseMg: 20 },
         ]}
-      />
+      />,
     );
     expect(screen.getByLabelText("Dose (mg)")).toHaveValue(80);
   });
@@ -400,16 +438,20 @@ describe("ShotForm field mapping", () => {
     // to cancel the submit event outright: nothing saved, nothing said.
     const onAddShot = vi.fn();
     render(<ShotForm onAddShot={onAddShot} />);
-    fireEvent.change(screen.getByLabelText("Pain (0–10)"), { target: { value: "2.5" } });
+    fireEvent.change(screen.getByLabelText("Pain (0–10)"), {
+      target: { value: "2.5" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
 
     expect(onAddShot).not.toHaveBeenCalled();
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "Pain must be a whole number from 0 to 10."
+      "Pain must be a whole number from 0 to 10.",
     );
 
     // Correcting it clears the message and saves.
-    fireEvent.change(screen.getByLabelText("Pain (0–10)"), { target: { value: "3" } });
+    fireEvent.change(screen.getByLabelText("Pain (0–10)"), {
+      target: { value: "3" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
     expect(onAddShot.mock.calls[0][0]).toMatchObject({ painScore: 3 });
   });
@@ -420,21 +462,25 @@ describe("ShotForm field mapping", () => {
     // breaking both screen-reader announcements and label-based queries. The
     // error is a sibling, reached via aria-describedby.
     render(<ShotForm onAddShot={vi.fn()} />);
-    fireEvent.change(screen.getByLabelText("Pain (0–10)"), { target: { value: "2.5" } });
+    fireEvent.change(screen.getByLabelText("Pain (0–10)"), {
+      target: { value: "2.5" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
 
     const pain = screen.getByLabelText("Pain (0–10)");
     expect(pain).toHaveAccessibleName("Pain (0–10)");
     expect(pain).toHaveAttribute("aria-invalid", "true");
     expect(pain).toHaveAccessibleDescription(
-      "Pain must be a whole number from 0 to 10."
+      "Pain must be a whole number from 0 to 10.",
     );
   });
 
   it("refuses an out-of-range pain score too", () => {
     const onAddShot = vi.fn();
     render(<ShotForm onAddShot={onAddShot} />);
-    fireEvent.change(screen.getByLabelText("Pain (0–10)"), { target: { value: "15" } });
+    fireEvent.change(screen.getByLabelText("Pain (0–10)"), {
+      target: { value: "15" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
 
     expect(onAddShot).not.toHaveBeenCalled();
@@ -444,11 +490,15 @@ describe("ShotForm field mapping", () => {
   it("refuses a negative dose with a message", () => {
     const onAddShot = vi.fn();
     render(<ShotForm onAddShot={onAddShot} />);
-    fireEvent.change(screen.getByLabelText("Dose (mg)"), { target: { value: "-5" } });
+    fireEvent.change(screen.getByLabelText("Dose (mg)"), {
+      target: { value: "-5" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
 
     expect(onAddShot).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toHaveTextContent("Dose must be a positive number.");
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Dose must be a positive number.",
+    );
   });
 
   it("stores omitted optional fields as undefined, never empty strings", () => {
@@ -479,9 +529,14 @@ describe("ShotForm field mapping", () => {
       <ShotForm
         onAddShot={onAddShot}
         shots={[
-          { id: "1", date: "2026-05-01", testosteroneEster: "cypionate", carrierOil: "grapeseed" },
+          {
+            id: "1",
+            date: "2026-05-01",
+            testosteroneEster: "cypionate",
+            carrierOil: "grapeseed",
+          },
         ]}
-      />
+      />,
     );
     fireEvent.click(screen.getByRole("button", { name: "cypionate" }));
     fireEvent.click(screen.getByRole("button", { name: "grapeseed" }));
@@ -502,7 +557,9 @@ describe("ShotForm draft publishing", () => {
     // there is no encoding for the restoring side to misread.
     const ref = emptyRef();
     render(<ShotForm onAddShot={vi.fn()} liveDraftRef={ref} />);
-    fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "wip" } });
+    fireEvent.change(screen.getByLabelText("Notes"), {
+      target: { value: "wip" },
+    });
 
     expect(ref.current).not.toBeNull();
     expect(ref.current!.date).toBe(todayLocalISO());
@@ -525,7 +582,9 @@ describe("ShotForm draft publishing", () => {
     // Someone part-way through logging yesterday's shot meant that date.
     const ref = emptyRef();
     render(<ShotForm onAddShot={vi.fn()} liveDraftRef={ref} />);
-    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-06-01" } });
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: "2026-06-01" },
+    });
 
     expect(ref.current!.date).toBe("2026-06-01");
   });
@@ -533,10 +592,12 @@ describe("ShotForm draft publishing", () => {
   const draftWith = (
     date: string,
     notes = "carried over",
-    dateBaseline = "1970-01-01" // anything but `date` = "the user chose this"
+    dateBaseline = "1970-01-01", // anything but `date` = "the user chose this"
   ): ShotDraft => ({
     date,
     dateBaseline,
+    plannedFor: "",
+    plannedBaseline: "",
     time: "",
     doseMg: "",
     injectionSite: "",
@@ -581,7 +642,9 @@ describe("ShotForm draft publishing", () => {
 
       expect(screen.getByLabelText("Date")).toHaveValue(started);
       expect(screen.getByLabelText("Date")).not.toHaveValue(todayLocalISO());
-      expect(screen.getByLabelText("Notes")).toHaveValue("half filled in yesterday");
+      expect(screen.getByLabelText("Notes")).toHaveValue(
+        "half filled in yesterday",
+      );
     } finally {
       vi.useRealTimers();
     }
@@ -598,18 +661,24 @@ describe("ShotForm draft publishing", () => {
       vi.setSystemTime(new Date("2026-08-01T21:00:00"));
       const ref = emptyRef();
       const first = render(<ShotForm onAddShot={vi.fn()} liveDraftRef={ref} />);
-      fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "note" } });
+      fireEvent.change(screen.getByLabelText("Notes"), {
+        target: { value: "note" },
+      });
       const parked = ref.current!;
       first.unmount();
 
       vi.setSystemTime(new Date("2026-08-02T09:00:00"));
       const ref2 = emptyRef();
-      render(<ShotForm onAddShot={vi.fn()} draft={parked} liveDraftRef={ref2} />);
+      render(
+        <ShotForm onAddShot={vi.fn()} draft={parked} liveDraftRef={ref2} />,
+      );
       // It restores dirty, so dismissing still keeps it...
       expect(ref2.current).not.toBeNull();
 
       // ...but emptying it out means there is nothing left worth keeping.
-      fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "" } });
+      fireEvent.change(screen.getByLabelText("Notes"), {
+        target: { value: "" },
+      });
       expect(ref2.current).toBeNull();
     } finally {
       vi.useRealTimers();
@@ -647,16 +716,28 @@ describe("ShotForm draft publishing", () => {
       vi.setSystemTime(new Date("2026-08-01T21:00:00"));
       const ref = emptyRef();
       const first = render(<ShotForm onAddShot={vi.fn()} liveDraftRef={ref} />);
-      fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "wip" } });
+      fireEvent.change(screen.getByLabelText("Notes"), {
+        target: { value: "wip" },
+      });
       const parked = ref.current!;
       first.unmount();
 
       vi.setSystemTime(new Date("2026-08-02T09:00:00"));
-      render(<ShotForm onAddShot={vi.fn()} draft={parked} liveDraftRef={emptyRef()} />);
+      render(
+        <ShotForm
+          onAddShot={vi.fn()}
+          draft={parked}
+          liveDraftRef={emptyRef()}
+        />,
+      );
       expect(screen.getByLabelText("Date")).toHaveValue("2026-08-01");
 
-      fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "" } });
-      fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "still going" } });
+      fireEvent.change(screen.getByLabelText("Notes"), {
+        target: { value: "" },
+      });
+      fireEvent.change(screen.getByLabelText("Notes"), {
+        target: { value: "still going" },
+      });
 
       expect(screen.getByLabelText("Date")).toHaveValue("2026-08-01");
     } finally {
@@ -685,7 +766,9 @@ describe("ShotForm draft publishing", () => {
       render(<ShotForm onAddShot={vi.fn()} liveDraftRef={ref} />);
 
       vi.setSystemTime(new Date("2026-08-02T09:00:00"));
-      fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-07-20" } });
+      fireEvent.change(screen.getByLabelText("Date"), {
+        target: { value: "2026-07-20" },
+      });
 
       expect(screen.getByLabelText("Date")).toHaveValue("2026-07-20");
       expect(ref.current).not.toBeNull();
@@ -713,7 +796,13 @@ describe("ShotForm draft publishing", () => {
 
       // Tomorrow arrives; the parked date is now simply today.
       vi.setSystemTime(new Date("2026-08-02T10:00:00"));
-      render(<ShotForm onAddShot={vi.fn()} draft={parked} liveDraftRef={emptyRef()} />);
+      render(
+        <ShotForm
+          onAddShot={vi.fn()}
+          draft={parked}
+          liveDraftRef={emptyRef()}
+        />,
+      );
 
       expect(screen.getByLabelText("Date")).toHaveValue("2026-08-02");
       expect(screen.queryByRole("button", { name: "Clear form" })).toBeNull();
@@ -727,12 +816,20 @@ describe("ShotForm draft publishing", () => {
     render(<ShotForm onAddShot={vi.fn()} liveDraftRef={emptyRef()} />);
     expect(screen.queryByRole("button", { name: "Clear form" })).toBeNull();
 
-    fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "wip" } });
-    expect(screen.getByRole("button", { name: "Clear form" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Notes"), {
+      target: { value: "wip" },
+    });
+    expect(
+      screen.getByRole("button", { name: "Clear form" }),
+    ).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "" } });
-    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-06-01" } });
-    expect(screen.getByRole("button", { name: "Clear form" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: "2026-06-01" },
+    });
+    expect(
+      screen.getByRole("button", { name: "Clear form" }),
+    ).toBeInTheDocument();
   });
 
   it("registers a backdate picked after the form was cleared past midnight", () => {
@@ -745,7 +842,9 @@ describe("ShotForm draft publishing", () => {
       vi.setSystemTime(new Date("2026-08-01T23:58:00"));
       const ref = emptyRef();
       render(<ShotForm onAddShot={vi.fn()} liveDraftRef={ref} />);
-      fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "x" } });
+      fireEvent.change(screen.getByLabelText("Notes"), {
+        target: { value: "x" },
+      });
 
       vi.setSystemTime(new Date("2026-08-02T00:05:00"));
       fireEvent.click(screen.getByRole("button", { name: "Clear form" }));
@@ -777,7 +876,7 @@ describe("ShotForm draft publishing", () => {
         onUpdateShot={vi.fn()}
         editingShot={editing}
         liveDraftRef={ref}
-      />
+      />,
     );
 
     fireEvent.change(screen.getByLabelText("Date"), {
@@ -800,13 +899,17 @@ describe("ShotForm draft publishing", () => {
         onUpdateShot={vi.fn()}
         editingShot={editing}
         liveDraftRef={ref}
-      />
+      />,
     );
 
-    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-05-02" } });
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: "2026-05-02" },
+    });
     expect(ref.current).not.toBeNull();
 
-    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-05-01" } });
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: "2026-05-01" },
+    });
     expect(ref.current).toBeNull();
   });
 
@@ -884,7 +987,11 @@ describe("ShotForm draft publishing", () => {
     // date, so a date the user changed and parked is still unsaved input. Letting
     // the edit branch inherit the draft's date too would read as clean and drop
     // the change on dismissal.
-    const editing: ShotEntry = { id: "e1", date: "2026-05-05", notes: "original" };
+    const editing: ShotEntry = {
+      id: "e1",
+      date: "2026-05-05",
+      notes: "original",
+    };
     const parked: ShotDraft = { ...draftWith("2026-06-10", "original") };
     const ref = emptyRef();
     render(
@@ -894,7 +1001,7 @@ describe("ShotForm draft publishing", () => {
         editingShot={editing}
         draft={parked}
         liveDraftRef={ref}
-      />
+      />,
     );
 
     expect(screen.getByLabelText("Date")).toHaveValue("2026-06-10");
@@ -928,19 +1035,25 @@ describe("ShotForm draft publishing", () => {
 
   it("reports unsaved changes while editing, so an edit can be restored too", () => {
     const ref = emptyRef();
-    const editing: ShotEntry = { id: "e1", date: "2026-06-01", notes: "original" };
+    const editing: ShotEntry = {
+      id: "e1",
+      date: "2026-06-01",
+      notes: "original",
+    };
     render(
       <ShotForm
         onAddShot={vi.fn()}
         onUpdateShot={vi.fn()}
         editingShot={editing}
         liveDraftRef={ref}
-      />
+      />,
     );
     // Untouched: nothing to remember.
     expect(ref.current).toBeNull();
 
-    fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "rewritten" } });
+    fireEvent.change(screen.getByLabelText("Notes"), {
+      target: { value: "rewritten" },
+    });
     expect(ref.current!.notes).toBe("rewritten");
     // The shot's own date is published as-is, like every other untouched field.
     expect(ref.current!.date).toBe("2026-06-01");
@@ -958,17 +1071,25 @@ describe("the in-sheet export button", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
     fireEvent.click(screen.getByRole("button", { name: "Export a backup" }));
 
-    expect(screen.getByRole("alert")).toHaveTextContent(/download didn.t start/i);
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      /download didn.t start/i,
+    );
   });
 
   it("stays quiet when the handler reports the download started", () => {
     render(
-      <ShotForm onAddShot={() => "refused"} onExportBackup={() => true} shots={[]} />
+      <ShotForm
+        onAddShot={() => "refused"}
+        onExportBackup={() => true}
+        shots={[]}
+      />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
     fireEvent.click(screen.getByRole("button", { name: "Export a backup" }));
 
-    expect(screen.getByRole("alert")).not.toHaveTextContent(/download didn.t start/i);
+    expect(screen.getByRole("alert")).not.toHaveTextContent(
+      /download didn.t start/i,
+    );
   });
 });
 
@@ -1000,5 +1121,126 @@ describe("the confirm beat", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
 
     expect(onAddShot).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("ShotForm — the planned date", () => {
+  const grid = {
+    shotDay: "wednesday" as const,
+    intervalDays: 7,
+    scheduleAnchor: "2026-08-05",
+  };
+  const planned = () =>
+    screen.getByLabelText(/Planned for/i) as HTMLInputElement;
+
+  it("keeps a stored planned date instead of repainting it", () => {
+    // It did not. Both the draft and the baseline seeded from the stored value,
+    // which made them equal on the first render — the exact condition the
+    // follow-the-date sync fires on. So reopening a shot threw its frozen
+    // planned date away before the user touched anything, defeating both the
+    // "frozen and NEVER recomputed" rule and the override the field invites.
+    const onUpdateShot = vi.fn(
+      (shot: ShotEntry): SaveOutcome => (shot ? "saved" : "ignored"),
+    );
+    render(
+      <ShotForm
+        onAddShot={() => "saved" as const}
+        onUpdateShot={onUpdateShot}
+        editingShot={{ id: "a", date: "2026-08-05", plannedFor: "2026-07-29" }}
+        shots={[{ id: "a", date: "2026-08-05", plannedFor: "2026-07-29" }]}
+        profile={grid}
+      />,
+    );
+    expect(planned().value).toBe("2026-07-29");
+    fireEvent.click(screen.getByRole("button", { name: /Update shot/i }));
+    expect(onUpdateShot.mock.calls[0]?.[0]?.plannedFor).toBe("2026-07-29");
+  });
+
+  it("refuses an out-of-range planned date, like the shot date", () => {
+    // The form is noValidate, so min/max on the input are hints the browser
+    // never enforces. Unvalidated, 9999-01-01 stored — and the boundaries then
+    // disagreed about a value on screen: dropped from the backup, blanked in
+    // the CSV, rendered in History.
+    const onAddShot = vi.fn(() => "saved" as const);
+    render(<ShotForm onAddShot={onAddShot} shots={[]} profile={grid} />);
+    fireEvent.change(planned(), { target: { value: "9999-01-01" } });
+    fireEvent.click(screen.getByRole("button", { name: /Save shot/i }));
+
+    expect(onAddShot).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent(/Check the year/i);
+  });
+
+  it("does not freeze the grid when the write was refused", () => {
+    // SaveOutcome is a union of non-empty strings, so "refused" was truthy and
+    // a storage failure — the case this sheet is held open for — anchored the
+    // schedule to a shot that never existed, with no UI to reset it.
+    const onAnchorEstablished = vi.fn();
+    render(
+      <ShotForm
+        onAddShot={() => "refused" as const}
+        onAnchorEstablished={onAnchorEstablished}
+        shots={[]}
+        profile={{ shotDay: "wednesday", intervalDays: 7 }}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: "2026-08-05" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Save shot/i }));
+    expect(onAnchorEstablished).not.toHaveBeenCalled();
+  });
+
+  it("freezes the grid once the write lands", () => {
+    const onAnchorEstablished = vi.fn();
+    render(
+      <ShotForm
+        onAddShot={() => "saved" as const}
+        onAnchorEstablished={onAnchorEstablished}
+        shots={[]}
+        profile={{ shotDay: "wednesday", intervalDays: 7 }}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: "2026-08-04" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Save shot/i }));
+    expect(onAnchorEstablished).toHaveBeenCalledWith("2026-08-05");
+  });
+
+  it("does not look dirty on open just because a planned date was computed", () => {
+    // The field is always populated once a cadence is set, so a generic
+    // "differs from empty" comparison made a brand-new form dirty before it was
+    // touched — "Clear form" would appear, and dismissing would confirm.
+    const ref =
+      React.createRef<ShotDraft | null>() as React.RefObject<ShotDraft | null>;
+    render(
+      <ShotForm
+        onAddShot={() => "saved" as const}
+        shots={[]}
+        profile={grid}
+        liveDraftRef={ref}
+      />,
+    );
+    expect(planned().value).not.toBe(""); // a date WAS computed
+    expect(ref.current).toBeNull(); // ...and nothing counts as entered
+  });
+
+  it("counts an edited planned date as unsaved input", () => {
+    // Without this the form looked clean, so dismissing discarded the
+    // correction with no confirm — and in the mixed case the notes were
+    // restored while the planned date silently reverted.
+    const ref =
+      React.createRef<ShotDraft | null>() as React.RefObject<ShotDraft | null>;
+    render(
+      <ShotForm
+        onAddShot={() => "saved" as const}
+        shots={[]}
+        profile={grid}
+        liveDraftRef={ref}
+      />,
+    );
+    fireEvent.change(planned(), { target: { value: "2026-07-29" } });
+    expect(ref.current).not.toBeNull();
+    expect(ref.current!.plannedFor).toBe("2026-07-29");
   });
 });

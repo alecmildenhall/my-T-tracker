@@ -150,7 +150,17 @@ export function useProfile(): UseProfile {
   );
 
   const setShotDay = useCallback(
-    (day: Weekday | undefined) => updateProfile({ shotDay: day }),
+    // Changing your day clears the anchor, so the next save re-establishes the
+    // grid on the new weekday.
+    //
+    // Freezing the anchor protects it from ACCIDENTAL movement — backdating a
+    // remembered shot, deleting the oldest one — and that is still right. But
+    // choosing a different shot day is the one input that should repoint it,
+    // and without this it did nothing at all: the grid stayed on Wednesday
+    // while the greeting moved to Friday, so a shot logged on the new day read
+    // "taken 2 days after" forever, with no way to repair it.
+    (day: Weekday | undefined) =>
+      updateProfile({ shotDay: day, scheduleAnchor: undefined }),
     [updateProfile],
   );
 
