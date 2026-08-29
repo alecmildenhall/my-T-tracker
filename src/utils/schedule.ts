@@ -351,3 +351,35 @@ export function daysFromPlanned(shot: {
   const days = daysApart(shot.plannedFor, shot.date);
   return Number.isNaN(days) ? null : days;
 }
+
+/**
+ * The shot logged immediately before `date`, excluding the one being edited.
+ *
+ * Rolling mode's reference. Excluding `exceptId` matters: editing a shot must
+ * not use that same shot as its own predecessor.
+ */
+export function previousShotDateBefore(
+  date: string,
+  shots: { id: string; date: string }[],
+  exceptId?: string,
+): string | undefined {
+  let best: string | undefined;
+  for (const shot of shots) {
+    if (shot.id === exceptId || shot.date >= date) continue;
+    if (best === undefined || shot.date > best) best = shot.date;
+  }
+  return best;
+}
+
+/** The earliest shot on record, which a grid anchor is established from. */
+export function earliestShotDate(
+  shots: { id: string; date: string }[],
+  exceptId?: string,
+): string | undefined {
+  let best: string | undefined;
+  for (const shot of shots) {
+    if (shot.id === exceptId) continue;
+    if (best === undefined || shot.date < best) best = shot.date;
+  }
+  return best;
+}

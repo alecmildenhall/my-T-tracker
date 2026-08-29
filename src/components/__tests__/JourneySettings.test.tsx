@@ -21,7 +21,7 @@ const renderPanel = () => {
         Your journey
       </h2>
       <JourneySettings headingRef={headingRef} />
-    </ProfileProvider>
+    </ProfileProvider>,
   );
 };
 
@@ -48,7 +48,9 @@ const dateInput = () =>
 const nameInput = () =>
   screen.getByLabelText("Preferred name") as HTMLInputElement;
 const shotDaySelect = () =>
-  screen.getByLabelText("Shot day") as HTMLSelectElement;
+  screen.getByLabelText(
+    "Which day do you usually take it?",
+  ) as HTMLSelectElement;
 const heading = () => screen.getByRole("heading", { name: "Your journey" });
 const stored = () =>
   JSON.parse(localStorage.getItem(STORAGE_KEYS.profile) ?? "null");
@@ -63,7 +65,7 @@ describe("JourneySettings", () => {
   it("reflects an existing profile", () => {
     localStorage.setItem(
       STORAGE_KEYS.profile,
-      JSON.stringify({ startDate: "2025-01-15", preferredName: "Lou" })
+      JSON.stringify({ startDate: "2025-01-15", preferredName: "Lou" }),
     );
     renderPanel();
     expect(dateInput().value).toBe("2025-01-15");
@@ -84,7 +86,7 @@ describe("JourneySettings", () => {
   it("clearing a field removes it from storage (not stored as empty)", () => {
     localStorage.setItem(
       STORAGE_KEYS.profile,
-      JSON.stringify({ startDate: "2025-01-15", preferredName: "Lou" })
+      JSON.stringify({ startDate: "2025-01-15", preferredName: "Lou" }),
     );
     renderPanel();
     fireEvent.change(nameInput(), { target: { value: "" } });
@@ -126,7 +128,7 @@ describe("JourneySettings", () => {
     // round-trip in civilDateParts fails and they are not real dates.
     localStorage.setItem(
       STORAGE_KEYS.profile,
-      JSON.stringify({ startDate: "2020-01-01" })
+      JSON.stringify({ startDate: "2020-01-01" }),
     );
     renderPanel();
 
@@ -170,7 +172,7 @@ describe("JourneySettings", () => {
     // user presses on purpose.
     localStorage.setItem(
       STORAGE_KEYS.profile,
-      JSON.stringify({ startDate: "2020-01-01" })
+      JSON.stringify({ startDate: "2020-01-01" }),
     );
     renderPanel();
 
@@ -186,14 +188,14 @@ describe("JourneySettings", () => {
     expect(dateInput().value).toBe("");
     // And it retires with the value, so there is nothing to press twice.
     expect(
-      screen.queryByRole("button", { name: "Remove start date" })
+      screen.queryByRole("button", { name: "Remove start date" }),
     ).not.toBeInTheDocument();
   });
 
   it("offers no Remove control when there is no start date to remove", () => {
     renderPanel();
     expect(
-      screen.queryByRole("button", { name: "Remove start date" })
+      screen.queryByRole("button", { name: "Remove start date" }),
     ).not.toBeInTheDocument();
   });
 
@@ -206,7 +208,7 @@ describe("JourneySettings", () => {
     // does it.
     localStorage.setItem(
       STORAGE_KEYS.profile,
-      JSON.stringify({ startDate: "2020-01-01" })
+      JSON.stringify({ startDate: "2020-01-01" }),
     );
     renderPanel();
     const remove = screen.getByRole("button", { name: "Remove start date" });
@@ -216,7 +218,7 @@ describe("JourneySettings", () => {
     fireEvent.click(remove);
 
     expect(
-      screen.queryByRole("button", { name: "Remove start date" })
+      screen.queryByRole("button", { name: "Remove start date" }),
     ).not.toBeInTheDocument();
     expectFocusSomewhereUseful("after removing the start date");
     // The HEADING, not the date field. Focusing an input[type=date] from inside
@@ -239,12 +241,12 @@ describe("JourneySettings", () => {
     // verifies each candidate rather than assuming the first one takes.
     localStorage.setItem(
       STORAGE_KEYS.profile,
-      JSON.stringify({ startDate: "2020-01-01" })
+      JSON.stringify({ startDate: "2020-01-01" }),
     );
     render(
       <ProfileProvider>
         <JourneySettings />
-      </ProfileProvider>
+      </ProfileProvider>,
     );
     fireEvent.click(screen.getByRole("button", { name: "Remove start date" }));
     expectFocusSomewhereUseful("after removing with no heading");
@@ -297,7 +299,7 @@ describe("JourneySettings", () => {
     // Otherwise the field is left showing a value nothing holds.
     localStorage.setItem(
       STORAGE_KEYS.profile,
-      JSON.stringify({ startDate: "2020-01-01" })
+      JSON.stringify({ startDate: "2020-01-01" }),
     );
     renderPanel();
     fireEvent.change(dateInput(), { target: { value: "0002-03-15" } });
@@ -322,11 +324,84 @@ describe("JourneySettings", () => {
   it("clearing shot day back to 'No shot day' removes it from storage", () => {
     localStorage.setItem(
       STORAGE_KEYS.profile,
-      JSON.stringify({ shotDay: "friday" })
+      JSON.stringify({ shotDay: "friday" }),
     );
     renderPanel();
     expect(shotDaySelect().value).toBe("friday");
     fireEvent.change(shotDaySelect(), { target: { value: "" } });
     expect(localStorage.getItem(STORAGE_KEYS.profile)).toBe("{}");
+  });
+});
+
+describe("JourneySettings — how often", () => {
+  const intervalField = () =>
+    screen.getByLabelText(
+      "How often do you take your shot?",
+    ) as HTMLInputElement;
+  const shotDay = () =>
+    screen.getByLabelText(
+      "Which day do you usually take it?",
+    ) as HTMLSelectElement;
+
+  it("saves a typed interval on blur, not on every keystroke", () => {
+    renderPanel();
+    fireEvent.change(intervalField(), { target: { value: "1" } });
+    // Nothing written at all: a half-typed "1" must not become an interval of
+    // one day, which is a valid value and would freeze onto the next shot.
+    expect(stored()?.intervalDays).toBeUndefined();
+    fireEvent.change(intervalField(), { target: { value: "14" } });
+    fireEvent.blur(intervalField());
+    expect(stored().intervalDays).toBe(14);
+  });
+
+  it("fills the field from a quick pick", () => {
+    renderPanel();
+    fireEvent.click(screen.getByRole("button", { name: "Weekly" }));
+    expect(intervalField().value).toBe("7");
+    expect(stored().intervalDays).toBe(7);
+  });
+
+  it("clearing the field removes the interval rather than storing zero", () => {
+    renderPanel();
+    fireEvent.click(screen.getByRole("button", { name: "Fortnightly" }));
+    fireEvent.change(intervalField(), { target: { value: "" } });
+    fireEvent.blur(intervalField());
+    expect(stored().intervalDays).toBeUndefined();
+  });
+
+  it("refuses a value the schedule cannot use, and shows what is saved", () => {
+    renderPanel();
+    fireEvent.click(screen.getByRole("button", { name: "Weekly" }));
+    fireEvent.change(intervalField(), { target: { value: "0" } });
+    fireEvent.blur(intervalField());
+    expect(stored().intervalDays).toBe(7);
+    expect(intervalField().value).toBe("7"); // snapped back, never disagrees
+  });
+
+  it("greys out shot day for a non-weekly interval, and says why", () => {
+    renderPanel();
+    fireEvent.change(intervalField(), { target: { value: "10" } });
+    fireEvent.blur(intervalField());
+
+    expect(shotDay()).toBeDisabled();
+    expect(
+      screen.getByText(/No shot day with a non-weekly interval/i),
+    ).toBeInTheDocument();
+  });
+
+  it("disables shot day WITHOUT clearing it, so a corrected interval brings it back", () => {
+    // The whole point of disabling rather than clearing: someone who mistypes
+    // 10 for 14 should not have to remember which day they had chosen.
+    renderPanel();
+    fireEvent.change(shotDay(), { target: { value: "wednesday" } });
+    fireEvent.change(intervalField(), { target: { value: "10" } });
+    fireEvent.blur(intervalField());
+    expect(shotDay()).toBeDisabled();
+    expect(stored().shotDay).toBe("wednesday"); // still stored
+
+    fireEvent.change(intervalField(), { target: { value: "14" } });
+    fireEvent.blur(intervalField());
+    expect(shotDay()).not.toBeDisabled();
+    expect(shotDay().value).toBe("wednesday");
   });
 });

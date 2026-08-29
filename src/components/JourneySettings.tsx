@@ -6,7 +6,19 @@ import React, { useEffect, useRef, useState } from "react";
 import { useProfileContext } from "../context/ProfileContext";
 import { WEEKDAYS, isWeekday, weekdayLabel } from "../utils/weekday";
 import { isRealDate } from "../utils/civilDate";
+import { isWeeklyMultiple } from "../utils/schedule";
+import {
+  isValidIntervalDays,
+  MIN_INTERVAL_DAYS,
+  MAX_INTERVAL_DAYS,
+} from "../types/profile";
 import { handOffFocus } from "../utils/focus";
+
+/** The cadences almost everyone is on. */
+const COMMON_INTERVALS = [
+  { label: "Weekly", days: 7 },
+  { label: "Fortnightly", days: 14 },
+] as const;
 
 interface JourneySettingsProps {
   /** The section heading above this panel, focused when "Remove start date"
@@ -17,8 +29,58 @@ interface JourneySettingsProps {
 export const JourneySettings: React.FC<JourneySettingsProps> = ({
   headingRef,
 }) => {
-  const { profile, setStartDate, setPreferredName, setShotDay } =
-    useProfileContext();
+  const {
+    profile,
+    setStartDate,
+    setPreferredName,
+    setShotDay,
+    setIntervalDays,
+  } = useProfileContext();
+
+  /** Like the date field above: what the box SHOWS, which is not what is saved.
+   *  Committed on blur so a half-typed "1" of "14" never writes an interval,
+   *  and so a cleared box means "no interval" rather than zero. */
+  const [intervalDraft, setIntervalDraft] = useState(
+    profile.intervalDays !== undefined ? String(profile.intervalDays) : "",
+  );
+  // Follow the profile when it changes from OUTSIDE this field — a backup import
+  // replaces the whole profile — without clobbering what is being typed.
+  // Adjusted during render, React's documented pattern for state that follows
+  // changing props, and the same shape the start-date field below uses.
+  const [lastSavedInterval, setLastSavedInterval] = useState(
+    profile.intervalDays,
+  );
+  if (lastSavedInterval !== profile.intervalDays) {
+    setLastSavedInterval(profile.intervalDays);
+    setIntervalDraft(
+      profile.intervalDays !== undefined ? String(profile.intervalDays) : "",
+    );
+  }
+
+  const commitInterval = () => {
+    const trimmed = intervalDraft.trim();
+    if (trimmed === "") {
+      setIntervalDays(undefined);
+      return;
+    }
+    const parsed = Number(trimmed);
+    if (isValidIntervalDays(parsed)) {
+      setIntervalDays(parsed);
+    } else {
+      // Refuse rather than store something the schedule cannot use, and put the
+      // field back to what is actually saved so the two never disagree.
+      setIntervalDraft(
+        profile.intervalDays !== undefined ? String(profile.intervalDays) : "",
+      );
+    }
+  };
+
+  /** Shot day is inert while a weekday cannot describe the cadence — the grid
+   *  would walk across the week. Disabled, never cleared, so switching back to
+   *  a weekly interval brings the saved day straight back. */
+  const shotDayUnavailable =
+    isValidIntervalDays(profile.intervalDays) &&
+    !isWeeklyMultiple(profile.intervalDays);
 
   // What the date field is SHOWING, which is not the same as what is saved.
   //
@@ -178,9 +240,57 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
       </p>
 
       <label className="form-column">
-        Shot day
+        How often do you take your shot?
+        <input
+          type="number"
+          min={MIN_INTERVAL_DAYS}
+          max={MAX_INTERVAL_DAYS}
+          step={1}
+          inputMode="numeric"
+          value={intervalDraft}
+          onChange={(e) => setIntervalDraft(e.target.value)}
+          onBlur={commitInterval}
+          placeholder="Every ___ days"
+          aria-describedby="interval-hint"
+        />
+      </label>
+      {/* The two cadences almost everyone is on, so most people never type a
+          number. Same chip pattern as the log form's reuse values. */}
+      <div
+        className="suggestion-chips"
+        role="group"
+        aria-label="Common intervals"
+      >
+        {COMMON_INTERVALS.map(({ label, days }) => (
+          <button
+            key={days}
+            type="button"
+            className={`chip${intervalDraft === String(days) ? " chip--active" : ""}`}
+            aria-current={intervalDraft === String(days) ? true : undefined}
+            onClick={() => {
+              setIntervalDraft(String(days));
+              setIntervalDays(days);
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Above the control it disables, so the reason is read before the thing
+          that looks broken. */}
+      {shotDayUnavailable && (
+        <p className="field-hint field-hint--notice">
+          No shot day with a non-weekly interval — a weekday can’t describe
+          every {profile.intervalDays} days. Your gaps are still tracked.
+        </p>
+      )}
+
+      <label className="form-column">
+        Which day do you usually take it?
         <select
           value={profile.shotDay ?? ""}
+          disabled={shotDayUnavailable}
           onChange={(e) =>
             setShotDay(isWeekday(e.target.value) ? e.target.value : undefined)
           }
@@ -193,9 +303,9 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
           ))}
         </select>
       </label>
-      <p className="field-hint">
-        Pick the day you usually take your shot for a little "Happy shot day!"
-        greeting. Leave it on "No shot day" to skip.
+      <p className="field-hint" id="interval-hint">
+        Both optional — fill them in and you can track how on time your shots
+        are. Weekly is 7, fortnightly is 14.
       </p>
 
       <label className="form-column">

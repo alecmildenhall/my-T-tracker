@@ -20,6 +20,9 @@ export interface UseProfile {
   /** Days between shots. `undefined` clears it, which stops planned dates
    *  being computed rather than falling back to a guess. */
   setIntervalDays: (days: number | undefined) => void;
+  /** The date the schedule grid is aligned to. Written once, the first time a
+   *  planned date needs one — see `planShot`. */
+  setScheduleAnchor: (date: string | undefined) => void;
   /** Merge a partial patch into the profile. */
   updateProfile: (patch: Partial<Profile>) => void;
   /**
@@ -156,12 +159,18 @@ export function useProfile(): UseProfile {
     [updateProfile],
   );
 
+  const setScheduleAnchor = useCallback(
+    (date: string | undefined) => updateProfile({ scheduleAnchor: date }),
+    [updateProfile],
+  );
+
   return {
     profile,
     setStartDate,
     setPreferredName,
     setShotDay,
     setIntervalDays,
+    setScheduleAnchor,
     updateProfile,
     replaceProfile,
   };

@@ -515,6 +515,67 @@ select {
   margin-bottom: 0.35rem;
 }
 
+.first-shot-card {
+  background: radial-gradient(circle at top left, #111827, #020617 60%);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 1.1rem;
+  box-shadow: var(--shadow-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.first-shot-card__title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.first-shot-card__label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* Sits in the chip row, so it reads as one more way to answer the same
+   question rather than a separate field. */
+.first-shot-card__other {
+  display: inline-flex;
+  flex: 1 1 9rem;
+  min-width: 9rem;
+}
+
+.first-shot-card__other input {
+  width: 100%;
+  border-radius: 999px;
+  padding-inline: 0.85rem;
+}
+
+.first-shot-card__restore {
+  margin: 0;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.shot-list-item__planned {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  margin: 0 0 0.3rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A note that explains why the control under it is disabled, so it reads before
+   the thing that looks broken rather than after. */
+.field-hint--notice {
+  color: #e0f2fe;
+  background: var(--accent-soft);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 6px 6px 0;
+  padding: 0.5rem 0.7rem;
+  margin-bottom: 0.6rem;
+}
+
 .shot-list-item__notes {
   font-size: 0.8rem;
   margin: 0 0 0.3rem;

@@ -2,6 +2,7 @@
 import React from "react";
 import type { ShotEntry } from "../types/shot";
 import { formatTimeForDisplay } from "../utils/datetime";
+import { daysFromPlanned } from "../utils/schedule";
 
 /** Name of the wash keyframes, shared with styles.css. */
 const WASH_ANIMATION = "shot-wash";
@@ -26,6 +27,25 @@ export const ShotListItem: React.FC<ShotListItemProps> = ({
   onWashEnd,
 }) => {
   const dateLabel = shot.date;
+
+  /**
+   * "Planned for 26 Aug · taken 2 days after", or nothing.
+   *
+   * A measurement, never a verdict. The word "late" appears nowhere in this
+   * app: people judge their own timing far more harshly than their clinicians
+   * do — in one study 55% of patients counted a six-hour delay as a missed
+   * dose, against a single physician who agreed — so the app reports the gap
+   * and says nothing about it.
+   */
+  const plannedLabel = (() => {
+    if (!shot.plannedFor) return null;
+    const delta = daysFromPlanned(shot);
+    const on = `Planned for ${shot.plannedFor}`;
+    if (delta === null) return on;
+    if (delta === 0) return `${on} · taken that day`;
+    const days = Math.abs(delta) === 1 ? "1 day" : `${Math.abs(delta)} days`;
+    return `${on} · taken ${days} ${delta > 0 ? "after" : "before"}`;
+  })();
   // Shown the way this device writes times; stored as 24-hour HH:MM either way.
   const timeLabel = shot.time ? formatTimeForDisplay(shot.time) : "—";
 
@@ -55,10 +75,16 @@ export const ShotListItem: React.FC<ShotListItemProps> = ({
         {shot.injectionSitePosition && (
           <span> • Position: {shot.injectionSitePosition}</span>
         )}
-        {shot.testosteroneEster && <span> • Type: {shot.testosteroneEster}</span>}
+        {shot.testosteroneEster && (
+          <span> • Type: {shot.testosteroneEster}</span>
+        )}
         {shot.carrierOil && <span> • Oil: {shot.carrierOil}</span>}
         {shot.mood && <span> • Mood: {shot.mood}</span>}
       </div>
+
+      {plannedLabel && (
+        <p className="shot-list-item__planned">{plannedLabel}</p>
+      )}
 
       {shot.notes && <p className="shot-list-item__notes">{shot.notes}</p>}
     </>

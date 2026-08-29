@@ -6,6 +6,7 @@ import { Settings } from "./components/Settings";
 import { Greeting, ACKNOWLEDGEMENT } from "./components/Greeting";
 import { TabBar } from "./components/TabBar";
 import { RecentShots } from "./components/RecentShots";
+import { FirstShotCard } from "./components/FirstShotCard";
 import { HistoryView } from "./components/HistoryView";
 import { emptyHistoryQuery, type HistoryQuery } from "./utils/historyQuery";
 import { Modal, SHEET_EXIT_MS } from "./components/Modal";
@@ -14,6 +15,7 @@ import { useBackupExport } from "./hooks/useBackupExport";
 import { handOffFocus } from "./utils/focus";
 import { useSwipeBack } from "./hooks/useSwipeBack";
 import { useShotsContext } from "./context/ShotsContext";
+import { useProfileContext } from "./context/ProfileContext";
 import type { ShotEntry } from "./types/shot";
 import type { SaveOutcome } from "./components/ShotForm";
 import type { View } from "./types/view";
@@ -37,6 +39,7 @@ const VIEW_TITLES: Record<View, string> = {
 
 const App: React.FC = () => {
   const { shots, addShot, updateShot, deleteShot } = useShotsContext();
+  const { profile, setScheduleAnchor } = useProfileContext();
   const exportBackup = useBackupExport();
   const [editingShot, setEditingShot] = useState<ShotEntry | null>(null);
   // The log form is a sheet rather than an always-open panel on Home, so the
@@ -669,6 +672,12 @@ const App: React.FC = () => {
         {view === "home" && (
           <main className="app-main">
             <Greeting acknowledged={acknowledgedId !== null} />
+            {/* Gated on there being no shots, which IS the dismissal logic:
+              logging one clears it, and so does importing a backup, with no
+              flag to store and no special case. */}
+            {shots.length === 0 && (
+              <FirstShotCard onGoToSettings={() => navigate("settings")} />
+            )}
             <button
               type="button"
               className="primary-button log-cta"
@@ -731,6 +740,8 @@ const App: React.FC = () => {
               editingShot={activeEditingShot}
               onDismiss={dismissSheet}
               shots={shots}
+              profile={profile}
+              onAnchorEstablished={setScheduleAnchor}
               draft={
                 activeEditingShot ? draftForShot(activeEditingShot) : draft
               }

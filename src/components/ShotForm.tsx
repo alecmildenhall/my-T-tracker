@@ -7,6 +7,7 @@ import React, {
   useCallback,
 } from "react";
 import type { ShotEntry } from "../types/shot";
+import type { Profile } from "../types/profile";
 import { suggestionsFor } from "../utils/suggestions";
 import { todayLocalISO, nowHHMM } from "../utils/datetime";
 import { toShotDate, isRealDate, shotDateRange } from "../utils/civilDate";
@@ -14,6 +15,11 @@ import { newId } from "../utils/id";
 import { SuggestionChips } from "./SuggestionChips";
 import { handOffFocus } from "../utils/focus";
 import { sortShots } from "../utils/shotQuery";
+import {
+  planShot,
+  previousShotDateBefore,
+  earliestShotDate,
+} from "../utils/schedule";
 
 /**
  * The fields worth pre-filling on a new shot: dose, type of T, and carrier oil
@@ -162,6 +168,13 @@ interface ShotFormProps {
   onDismiss?: () => void;
   /** Past shots, used to suggest previously-entered values for reuse. */
   shots?: ShotEntry[];
+  /** The cadence settings a planned date is worked out from. A prop rather than
+   *  context, matching `shots` — the form stays renderable on its own, and with
+   *  no profile it simply plans nothing. */
+  profile?: Pick<Profile, "shotDay" | "intervalDays" | "scheduleAnchor">;
+  /** Called once, after a successful save, when a schedule grid needed an
+   *  anchor and none existed. The parent persists it. */
+  onAnchorEstablished?: (date: string) => void;
   /** id for the form's heading, so a containing dialog can point
    *  `aria-labelledby` at it instead of repeating the title. */
   headingId?: string;
@@ -178,6 +191,8 @@ interface ShotFormProps {
 }
 
 export const ShotForm: React.FC<ShotFormProps> = ({
+  profile = {},
+  onAnchorEstablished,
   onAddShot,
   onUpdateShot,
   onExportBackup,
@@ -251,6 +266,41 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   );
 
   const [date, setDate] = useState<string>(start.date);
+
+  /** What the app works out this shot was meant to be, given today's settings. */
+  const plan = useMemo(
+    () =>
+      planShot({
+        date,
+        previousShotDate: previousShotDateBefore(date, shots, editingShot?.id),
+        earliestShotDate: earliestShotDate(shots, editingShot?.id),
+        profile,
+      }),
+    [date, shots, editingShot?.id, profile],
+  );
+
+  /**
+   * The planned date as SHOWN, and the value it would show untouched.
+   *
+   * Two pieces, not one, and for the reason the date field learned the hard
+   * way: "has the user edited this?" cannot be derived from the value alone. A
+   * planned date is always populated, so emptiness is no tell; comparing
+   * against today's computation is no tell either, since correcting it TO the
+   * computed value would read as untouched. So the baseline travels alongside,
+   * and edited means simply "differs from it". Change the shot's date and an
+   * untouched planned date follows; an edited one stays put.
+   */
+  const [plannedDraft, setPlannedDraft] = useState<string>(
+    editingShot?.plannedFor ?? plan.plannedFor ?? "",
+  );
+  const [plannedBaseline, setPlannedBaseline] = useState<string>(
+    editingShot?.plannedFor ?? plan.plannedFor ?? "",
+  );
+  const computed = plan.plannedFor ?? "";
+  if (plannedBaseline !== computed && plannedDraft === plannedBaseline) {
+    setPlannedBaseline(computed);
+    setPlannedDraft(computed);
+  }
   const [dateBaseline, setDateBaseline] = useState<string>(start.dateBaseline);
   // The sheet's landing spot. Owned by the parent when it supplies one, because
   // Modal needs it as `initialFocusRef` — see the note on the <h2> below.
@@ -428,10 +478,21 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       painScore: parsedPain,
       mood: mood || undefined,
       notes: notes || undefined,
+      // Frozen here and never recomputed. An emptied field means "no planned
+      // date", which is a real answer rather than a prompt to guess one.
+      plannedFor: plannedDraft || undefined,
     };
 
     const outcome =
       editingShot && onUpdateShot ? onUpdateShot(newShot) : onAddShot(newShot);
+
+    // Written only once the shot actually landed, and only when planShot had to
+    // establish one — otherwise a failed save would leave an anchor behind for
+    // a shot that does not exist, quietly fixing the grid to a date the user
+    // never logged.
+    if (outcome && plan.anchorToPersist) {
+      onAnchorEstablished?.(plan.anchorToPersist);
+    }
 
     // The sheet is already leaving and this submit was dropped. Say nothing: the
     // shot the user is actually thinking about was saved by the press before
@@ -783,6 +844,28 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             />
           </label>
         </div>
+
+        {/* Only when the settings answer the question. With no cadence there is
+            nothing to show and nothing to correct, so the field is absent
+            rather than empty. */}
+        {(plannedDraft || computed) && (
+          <div className="field-cell">
+            <label className="form-column">
+              Planned for
+              <input
+                type="date"
+                value={plannedDraft}
+                min={dateRange.min}
+                max={dateRange.max}
+                onChange={(e) => setPlannedDraft(e.target.value)}
+              />
+            </label>
+            <p className="field-hint">
+              Worked out from how often you inject. Change it if this one was
+              always going to be a different day.
+            </p>
+          </div>
+        )}
 
         <label className="form-column">
           Notes
