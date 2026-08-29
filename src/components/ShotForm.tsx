@@ -311,8 +311,16 @@ export const ShotForm: React.FC<ShotFormProps> = ({
    * and edited means simply "differs from it". Change the shot's date and an
    * untouched planned date follows; an edited one stays put.
    */
+  // `draft ? draft.x : …`, never `start.plannedFor || …`. The `||` treated a
+  // deliberately EMPTIED planned date — a legitimate "" meaning "this shot has
+  // none" — as absent, and fell back to today's computation: the value the user
+  // deleted reappeared on reopen, the form read clean so ✕ discarded without a
+  // confirm, and Save wrote it back. That is the overloaded-"" sentinel class
+  // CLAUDE.md calls the most expensive bug here, and it defeated the exact case
+  // ShotDraft.plannedFor was added to carry. Whether a draft exists is the
+  // question; the value inside it is taken verbatim.
   const [plannedDraft, setPlannedDraft] = useState<string>(
-    start.plannedFor || plan.plannedFor || "",
+    draft ? draft.plannedFor : opened.plannedFor || plan.plannedFor || "",
   );
   /** The shot date `plannedBaseline` was worked out for. */
   const [plannedForDate, setPlannedForDate] = useState<string>(start.date);
@@ -334,7 +342,9 @@ export const ShotForm: React.FC<ShotFormProps> = ({
    * it runs when the date moves and never on mount.
    */
   const [plannedBaseline, setPlannedBaseline] = useState<string>(
-    start.plannedBaseline || plan.plannedFor || "",
+    draft
+      ? draft.plannedBaseline
+      : opened.plannedBaseline || plan.plannedFor || "",
   );
   const computed = plan.plannedFor ?? "";
   // Change the shot's date and an untouched planned date follows it; an edited
@@ -404,7 +414,13 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // blocking Save from a field the user had cleared.
     setPlannedDraft("");
     setPlannedBaseline("");
-    setPlannedForDate(todayLocalISO());
+    // "" — meaning "computed for no date yet" — NOT today. Setting it to today
+    // alongside the date meant the sync below saw no disagreement and never
+    // re-seeded, so a shot saved straight after "Clear form" was stored with no
+    // planned date at all: silent, invisible (the field is not rendered on a new
+    // shot), and by this feature's design impossible to regenerate. Measured: a
+    // normal save gave 2026-08-26, one after clearing gave undefined.
+    setPlannedForDate("");
     setPlannedError(null);
     setDateError(null);
     setDoseError(null);
@@ -522,8 +538,12 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // own backup is the failure this feature's comments exist to prevent.
     const parsedPlanned =
       plannedDraft.trim() === "" ? null : toShotDate(plannedDraft);
+    // Only blocks the save when the field — and its message — are on screen.
+    // The planned input renders for an EDIT only, so an unshowable error would
+    // have made Save do nothing at all with nothing said anywhere: the dead
+    // button the noValidate comment above exists to prevent.
     const nextPlannedError =
-      plannedDraft.trim() === "" || parsedPlanned
+      !editingShot || plannedDraft.trim() === "" || parsedPlanned
         ? null
         : isRealDate(plannedDraft)
           ? `Check the year — dates run from ${range.min} to ${range.max}.`
@@ -562,7 +582,9 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       // Frozen here and never recomputed. An emptied field means "no planned
       // date", which is a real answer rather than a prompt to guess one.
       // The parsed value, like `date` — the parser's result is the trust
-      // boundary, not just a yes/no gate.
+      // boundary, not just a yes/no gate. On a new shot the field is not
+      // rendered, so this is whatever planShot worked out, range-checked at
+      // source.
       plannedFor: parsedPlanned ?? undefined,
     };
 

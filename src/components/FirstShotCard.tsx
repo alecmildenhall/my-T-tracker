@@ -14,10 +14,11 @@
 // Nothing to dismiss, and no "dismissed" flag to store — the same derive-don't-
 // store reasoning the soreness card uses. It also means an IMPORT clears it for
 // free, since restoring a backup creates shots.
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useProfileContext } from "../context/ProfileContext";
 import { WEEKDAYS, isWeekday, weekdayLabel } from "../utils/weekday";
 import { isWeeklyMultiple } from "../utils/schedule";
+import { handOffFocus } from "../utils/focus";
 import { toShotDate, shotDateRange } from "../utils/civilDate";
 import {
   isValidIntervalDays,
@@ -95,7 +96,9 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
     }
     const parsed = Number(trimmed);
     if (isValidIntervalDays(parsed)) {
-      setIntervalDays(parsed);
+      // Only on a real change — see JourneySettings: setIntervalDays clears the
+      // schedule anchor, so an idle blur would discard it.
+      if (parsed !== profile.intervalDays) setIntervalDays(parsed);
     } else {
       // Put the box back to what is actually saved, so the screen and the
       // profile never disagree.
@@ -111,9 +114,55 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
    *  0002, 0020, 0202 before it arrives. */
   const [startDraft, setStartDraft] = useState(profile.startDate ?? "");
 
+  // Both drafts here need the same escape hatches the Settings date field has:
+  // blur must not be the only commit, because on a phone you can type a value
+  // and switch apps without ever blurring, and silent loss is the failure this
+  // app treats as severe.
+  const commitAllRef = useRef(() => {});
+  useEffect(() => {
+    commitAllRef.current = () => {
+      commitInterval();
+      if (startDraft.trim() !== "" && toShotDate(startDraft)) {
+        setStartDate(startDraft);
+      }
+    };
+  });
+  useEffect(() => {
+    const onHide = () => {
+      if (document.visibilityState === "hidden") commitAllRef.current();
+    };
+    document.addEventListener("visibilitychange", onHide);
+    return () => {
+      document.removeEventListener("visibilitychange", onHide);
+      commitAllRef.current();
+    };
+  }, []);
+
+  /**
+   * Where focus goes when the shot-day select disables under it.
+   *
+   * The interval box sits immediately before the select in tab order, and its
+   * blur commit is what can disable that select — so tabbing out of the box
+   * after typing a non-weekly interval moves focus INTO the select, which the
+   * re-render then disables, and the browser blurs a disabled element onto
+   * <body>. Same class as the nine hand-off defects in slice B, and invisible
+   * to jsdom. Settings escapes it only by accident, because three chips sit
+   * between its input and its select.
+   */
+  const intervalRef = useRef<HTMLInputElement>(null);
+  const shotDaySelectRef = useRef<HTMLSelectElement>(null);
+
   const shotDayUnavailable =
     isValidIntervalDays(profile.intervalDays) &&
     !isWeeklyMultiple(profile.intervalDays);
+
+  useEffect(() => {
+    if (!shotDayUnavailable) return;
+    const active = document.activeElement;
+    if (active === document.body || active === shotDaySelectRef.current) {
+      handOffFocus(intervalRef);
+    }
+  }, [shotDayUnavailable]);
 
   return (
     <section className="first-shot-card">
@@ -167,7 +216,7 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
               aria-current={intervalDraft === String(days) ? true : undefined}
               onClick={() => {
                 setIntervalDraft(String(days));
-                setIntervalDays(days);
+                if (days !== profile.intervalDays) setIntervalDays(days);
               }}
             >
               {label}
@@ -182,6 +231,7 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
               step={1}
               inputMode="numeric"
               placeholder="Every ___ days"
+              ref={intervalRef}
               value={intervalDraft}
               onChange={(e) => setIntervalDraft(e.target.value)}
               onBlur={commitInterval}
@@ -200,6 +250,7 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
       <label className="form-column">
         Which day do you usually take it?
         <select
+          ref={shotDaySelectRef}
           value={profile.shotDay ?? ""}
           disabled={shotDayUnavailable}
           onChange={(e) =>

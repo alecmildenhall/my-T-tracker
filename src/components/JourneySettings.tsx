@@ -66,7 +66,14 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
     }
     const parsed = Number(trimmed);
     if (isValidIntervalDays(parsed)) {
-      setIntervalDays(parsed);
+      // Only when it actually CHANGED. setIntervalDays clears the schedule
+      // anchor — deliberately, since changing your cadence re-declares the
+      // schedule — so committing unconditionally meant a no-op focus/blur, or
+      // tapping the chip already lit, silently threw the frozen anchor away.
+      // The next save then re-derived it from the earliest shot, which may have
+      // moved, shifting the grid phase by up to 7 days on a fortnightly
+      // schedule. Measured: focus + blur with no edit removed the anchor.
+      if (parsed !== profile.intervalDays) setIntervalDays(parsed);
     } else {
       // Refuse rather than store something the schedule cannot use, and put the
       // field back to what is actually saved so the two never disagree.
@@ -144,6 +151,29 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
       // Unmount too: changing tab destroys this panel, and on a phone that is a
       // likelier exit than blurring the field.
       commitIfReal();
+    };
+  }, []);
+
+  // The interval box needs the same escape hatches, for the same reason and in
+  // the same words: blur "must not be the ONLY one", because on a phone you can
+  // type 14 and switch apps without ever blurring the field, and silent loss is
+  // the failure this app treats as severe. It had none — identical shape to the
+  // date field above, none of its protection.
+  const intervalDraftRef = useRef(intervalDraft);
+  const commitIntervalRef = useRef(() => {});
+  useEffect(() => {
+    intervalDraftRef.current = intervalDraft;
+    commitIntervalRef.current = commitInterval;
+  });
+  useEffect(() => {
+    const commitIfUsable = () => commitIntervalRef.current();
+    const onHide = () => {
+      if (document.visibilityState === "hidden") commitIfUsable();
+    };
+    document.addEventListener("visibilitychange", onHide);
+    return () => {
+      document.removeEventListener("visibilitychange", onHide);
+      commitIfUsable();
     };
   }, []);
   if (profile.startDate !== lastSaved) {
@@ -285,7 +315,7 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
             aria-current={intervalDraft === String(days) ? true : undefined}
             onClick={() => {
               setIntervalDraft(String(days));
-              setIntervalDays(days);
+              if (days !== profile.intervalDays) setIntervalDays(days);
             }}
           >
             {label}

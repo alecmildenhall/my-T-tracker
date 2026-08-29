@@ -1277,6 +1277,58 @@ describe("ShotForm — the planned date", () => {
     expect(planned().value).toBe("2026-07-29"); // stayed put
   });
 
+  it("still plans the shot after Clear form", () => {
+    // It did not: reset blanked the planned state and set its "computed for"
+    // date to today, alongside the shot date — so the sync saw no disagreement
+    // and never re-seeded. A shot saved straight after clearing was stored with
+    // NO planned date, silently (the field is not rendered on a new shot) and
+    // unrecoverably by this feature's own design. Measured: a normal save gave
+    // a date, one after clearing gave undefined.
+    const onAddShot = vi.fn((_s: ShotEntry): SaveOutcome => "saved");
+    render(<ShotForm onAddShot={onAddShot} shots={[]} profile={grid} />);
+    fireEvent.change(screen.getByPlaceholderText(/remember for later/i), {
+      target: { value: "something to clear" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Clear form/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Save shot/i }));
+
+    expect(onAddShot.mock.calls[0]?.[0]?.plannedFor).toBeTruthy();
+  });
+
+  it("keeps a planned date the user deliberately emptied", () => {
+    // `start.plannedFor || computed` treated a legitimate "" — "this shot has
+    // no planned date" — as absent and refilled it from today's computation, so
+    // the value came back, the form read clean, and Save wrote it again. The
+    // overloaded-"" sentinel class, in the field whose draft was added to carry
+    // exactly this.
+    const parked: ShotDraft = {
+      date: "2026-08-12",
+      dateBaseline: "2026-08-12",
+      plannedFor: "",
+      plannedBaseline: "2026-08-12",
+      time: "",
+      doseMg: "",
+      injectionSite: "",
+      injectionSitePosition: "",
+      testosteroneEster: "",
+      carrierOil: "",
+      painScore: "",
+      mood: "",
+      notes: "",
+    };
+    render(
+      <ShotForm
+        onAddShot={() => "saved" as const}
+        onUpdateShot={() => "saved" as const}
+        editingShot={{ id: "a", date: "2026-08-12", plannedFor: "2026-08-12" }}
+        draft={parked}
+        shots={[{ id: "a", date: "2026-08-12" }]}
+        profile={grid}
+      />,
+    );
+    expect(planned().value).toBe("");
+  });
+
   it("counts an edited planned date as unsaved input", () => {
     // Without this the form looked clean, so dismissing discarded the
     // correction with no confirm — and in the mixed case the notes were

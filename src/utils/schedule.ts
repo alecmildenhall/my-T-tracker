@@ -186,7 +186,13 @@ export function plannedDateFor(
     return null;
   }
   const slots = Math.floor(offset / intervalDays + 0.5);
-  return addDaysCivil(anchor, slots * intervalDays);
+  const planned = addDaysCivil(anchor, slots * intervalDays);
+  // Range-checked like establishAnchor, and for the same reason: the rounded
+  // slot lands up to half an interval away from the shot, so a large interval
+  // near the edge of the supported range can produce a date pickShotFields
+  // drops from the backup and toCsv blanks while History renders it — the
+  // three-way disagreement the comments around those boundaries exist to stop.
+  return isShotDateInRange(planned) ? planned : null;
 }
 
 /** Whole days from `a` to `b`. Local to this module rather than imported from
@@ -253,7 +259,9 @@ export function plannedDateRolling(
 ): string | undefined {
   if (!previousShotDate || !isValidIntervalDays(intervalDays)) return undefined;
   const planned = addDaysCivil(previousShotDate, intervalDays);
-  return planned === previousShotDate ? undefined : planned;
+  if (planned === previousShotDate) return undefined; // addDaysCivil refused it
+  // Unbounded above without this: previous + interval can walk past the range.
+  return isShotDateInRange(planned) ? planned : undefined;
 }
 
 export interface PlanInput {

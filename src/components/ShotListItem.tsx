@@ -29,7 +29,9 @@ export const ShotListItem: React.FC<ShotListItemProps> = ({
   const dateLabel = shot.date;
 
   /**
-   * "Planned for 26 Aug · 2 days later", or nothing.
+   * "Planned for 2026-08-26 · 2 days later", or nothing. The date is the stored
+   * ISO string, matching `dateLabel` above rather than inventing a second
+   * format on the same row.
    *
    * A measurement, never a verdict — and the grammar is doing that work, not a
    * euphemism. English separates the adjective from the comparative: "2 days

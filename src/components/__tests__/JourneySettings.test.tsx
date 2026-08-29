@@ -405,3 +405,45 @@ describe("JourneySettings — how often", () => {
     expect(shotDay().value).toBe("wednesday");
   });
 });
+
+describe("JourneySettings — the interval must not discard the schedule anchor", () => {
+  it("leaves the anchor alone when the interval did not change", () => {
+    // setIntervalDays clears the anchor deliberately, because changing your
+    // cadence re-declares the schedule. Committing unconditionally on blur made
+    // an idle focus/blur — or tapping the chip already lit — throw the frozen
+    // anchor away, after which the next save re-derived it from the earliest
+    // shot and could move the grid phase by up to 7 days.
+    localStorage.setItem(
+      STORAGE_KEYS.profile,
+      JSON.stringify({
+        shotDay: "wednesday",
+        intervalDays: 14,
+        scheduleAnchor: "2026-01-07",
+      }),
+    );
+    renderPanel();
+    const box = screen.getByLabelText("How often do you take your shot?");
+
+    fireEvent.focus(box);
+    fireEvent.blur(box);
+    expect(stored().scheduleAnchor).toBe("2026-01-07");
+
+    fireEvent.click(screen.getByRole("button", { name: "2 weeks" }));
+    expect(stored().scheduleAnchor).toBe("2026-01-07");
+  });
+
+  it("clears it when the interval really changes", () => {
+    localStorage.setItem(
+      STORAGE_KEYS.profile,
+      JSON.stringify({
+        shotDay: "wednesday",
+        intervalDays: 14,
+        scheduleAnchor: "2026-01-07",
+      }),
+    );
+    renderPanel();
+    fireEvent.click(screen.getByRole("button", { name: "1 week" }));
+    expect(stored().scheduleAnchor).toBeUndefined();
+    expect(stored().intervalDays).toBe(7);
+  });
+});
