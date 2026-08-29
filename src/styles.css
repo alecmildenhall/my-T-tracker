@@ -230,6 +230,19 @@ select {
   }
 }
 
+/* A disabled control has to LOOK disabled. The dark theme sets its own
+   background and border on inputs and selects, which overrides the greying a
+   browser would otherwise apply — so shot day sat there looking tappable while
+   a non-weekly interval had made it inert. Checked in a browser: without this
+   the disabled select is indistinguishable from an enabled one. */
+input:disabled,
+textarea:disabled,
+select:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: var(--surface-subtle);
+}
+
 input::placeholder,
 textarea::placeholder {
   color: #6b7280;
