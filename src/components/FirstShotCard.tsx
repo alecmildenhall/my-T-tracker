@@ -1,6 +1,7 @@
 // src/components/FirstShotCard.tsx
-// The empty state above "Log a shot": two optional questions, and a way out for
-// someone who came back to restore a backup.
+// The empty state above "Log a shot": the four optional things worth having
+// before there is any history, and a way out for someone who came back to
+// restore a backup.
 //
 // Not a setup wizard, deliberately. The roadmap's rule is a "short, skippable"
 // pointer rather than a wall, and general onboarding advice — which mostly comes
@@ -17,78 +18,83 @@ import React, { useState } from "react";
 import { useProfileContext } from "../context/ProfileContext";
 import { WEEKDAYS, isWeekday, weekdayLabel } from "../utils/weekday";
 import { isWeeklyMultiple } from "../utils/schedule";
+import { toShotDate, shotDateRange } from "../utils/civilDate";
 import {
   isValidIntervalDays,
   MIN_INTERVAL_DAYS,
   MAX_INTERVAL_DAYS,
 } from "../types/profile";
 
-/** The two cadences almost everyone is on. */
-const QUICK_PICKS = [7, 14];
+/**
+ * The cadences worth a shortcut.
+ *
+ * Fortnightly is here on evidence rather than taste. UCSF's masculinising
+ * therapy guidance and the gender-affirming clinics describe testosterone as
+ * taken "every week or every other week", with intramuscular routinely 100–200mg
+ * every 1–2 weeks and "200mg once every two weeks" named as a common primary-care
+ * default. Weekly is more common, especially subcutaneous, but every-other-week
+ * is a mainstream protocol rather than an edge case — dropping it would cost a
+ * chunk of users two taps for no gain.
+ */
+const QUICK_PICKS = [
+  { label: "Weekly", days: 7 },
+  { label: "Fortnightly", days: 14 },
+];
 
 interface FirstShotCardProps {
-  /** Takes them to Settings → Your data, where the import lives. */
+  /** Takes them to Settings, where all of this lives permanently. */
   onGoToSettings: () => void;
 }
 
 export const FirstShotCard: React.FC<FirstShotCardProps> = ({
   onGoToSettings,
 }) => {
-  const { profile, setShotDay, setIntervalDays } = useProfileContext();
+  const {
+    profile,
+    setShotDay,
+    setIntervalDays,
+    setPreferredName,
+    setStartDate,
+  } = useProfileContext();
+  const dateRange = shotDateRange();
 
   /**
-   * The free-entry box holds a draft and commits on blur, exactly as Settings
-   * does — the chips beside it commit immediately because a chip IS a complete
-   * value, but a typed number is not until you stop typing.
+   * ONE draft for the interval, which both the chips and the box write to.
    *
-   * Committing per keystroke made several intervals impossible to enter. Typing
-   * "140" committed 14 on the second keystroke, at which point the box blanked
-   * itself (its value was derived from the profile and hid the two quick-pick
-   * numbers), so the third keystroke started from empty and produced "0" —
-   * invalid, clearing the interval outright. Transiently-valid keystrokes were
-   * worse than useless too: a lone "1" flipped the cadence to non-weekly, so
-   * the shot-day select disabled and the notice flashed mid-word.
+   * They used to be separate — the box kept its own draft and blanked itself
+   * whenever a chip's value was stored — and the two then disagreed in both
+   * directions: tapping Weekly left the box empty instead of showing 7, and
+   * typing 10 left Weekly still lit, because the chip read the saved profile
+   * while the box had not committed yet. One value, one meaning: the chips fill
+   * the box, and what is in the box decides which chip is lit.
    */
-  const [otherDraft, setOtherDraft] = useState(
-    profile.intervalDays !== undefined &&
-      !QUICK_PICKS.includes(profile.intervalDays)
-      ? String(profile.intervalDays)
-      : "",
+  const [intervalDraft, setIntervalDraft] = useState(
+    profile.intervalDays !== undefined ? String(profile.intervalDays) : "",
   );
-  const commitOther = () => {
-    const trimmed = otherDraft.trim();
+
+  const commitInterval = () => {
+    const trimmed = intervalDraft.trim();
     if (trimmed === "") {
-      // Only clear an interval this box owns — blanking it must not wipe a
-      // choice made with the chips.
-      if (
-        profile.intervalDays !== undefined &&
-        !QUICK_PICKS.includes(profile.intervalDays)
-      ) {
-        setIntervalDays(undefined);
-      }
+      setIntervalDays(undefined);
       return;
     }
     const parsed = Number(trimmed);
     if (isValidIntervalDays(parsed)) {
       setIntervalDays(parsed);
-      return;
+    } else {
+      // Put the box back to what is actually saved, so the screen and the
+      // profile never disagree.
+      setIntervalDraft(
+        profile.intervalDays !== undefined ? String(profile.intervalDays) : "",
+      );
     }
-    // Put the box back to what is actually saved, exactly as Settings does.
-    // Blanking it instead left the card showing no interval while the profile
-    // still held one — and planned dates kept being computed from the value the
-    // screen said was gone.
-    setOtherDraft(
-      profile.intervalDays !== undefined &&
-        !QUICK_PICKS.includes(profile.intervalDays)
-        ? String(profile.intervalDays)
-        : "",
-    );
   };
 
-  const pickQuick = (days: number) => {
-    setOtherDraft("");
-    setIntervalDays(profile.intervalDays === days ? undefined : days);
-  };
+  /** Committed on blur, like the same field in Settings: a date input reports a
+   *  value only once all three segments are filled, and Chromium auto-fills the
+   *  ones you have not typed — so committing per keystroke walks a year through
+   *  0002, 0020, 0202 before it arrives. */
+  const [startDraft, setStartDraft] = useState(profile.startDate ?? "");
 
   const shotDayUnavailable =
     isValidIntervalDays(profile.intervalDays) &&
@@ -97,6 +103,37 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
   return (
     <section className="first-shot-card">
       <h2 className="first-shot-card__title">Before your first shot</h2>
+
+      <label className="form-column">
+        What should the app call you?
+        <input
+          type="text"
+          value={profile.preferredName ?? ""}
+          onChange={(e) => setPreferredName(e.target.value || undefined)}
+          placeholder="Your name, or anything you like"
+          autoComplete="off"
+        />
+      </label>
+
+      <label className="form-column">
+        When did you start T?
+        <input
+          type="date"
+          value={startDraft}
+          min={dateRange.min}
+          max={dateRange.max}
+          onChange={(e) => setStartDraft(e.target.value)}
+          onBlur={() => {
+            if (startDraft.trim() === "") {
+              setStartDate(undefined);
+            } else if (toShotDate(startDraft)) {
+              setStartDate(startDraft);
+            } else {
+              setStartDraft(profile.startDate ?? "");
+            }
+          }}
+        />
+      </label>
 
       <div className="form-column">
         <span className="first-shot-card__label">
@@ -107,15 +144,18 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
           role="group"
           aria-label="How often you take your shot"
         >
-          {QUICK_PICKS.map((days) => (
+          {QUICK_PICKS.map(({ label, days }) => (
             <button
               key={days}
               type="button"
-              className={`chip${profile.intervalDays === days ? " chip--active" : ""}`}
-              aria-current={profile.intervalDays === days ? true : undefined}
-              onClick={() => pickQuick(days)}
+              className={`chip${intervalDraft === String(days) ? " chip--active" : ""}`}
+              aria-current={intervalDraft === String(days) ? true : undefined}
+              onClick={() => {
+                setIntervalDraft(String(days));
+                setIntervalDays(days);
+              }}
             >
-              {days === 7 ? "Weekly" : "Fortnightly"}
+              {label}
             </button>
           ))}
           <label className="first-shot-card__other">
@@ -127,9 +167,9 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
               step={1}
               inputMode="numeric"
               placeholder="Every ___ days"
-              value={otherDraft}
-              onChange={(e) => setOtherDraft(e.target.value)}
-              onBlur={commitOther}
+              value={intervalDraft}
+              onChange={(e) => setIntervalDraft(e.target.value)}
+              onBlur={commitInterval}
             />
           </label>
         </div>
@@ -161,8 +201,8 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
       </label>
 
       <p className="field-hint">
-        Both optional — fill them in and you can track how on time your shots
-        are. Change them any time in Settings.
+        All optional, and all editable any time in Settings. Fill in how often
+        and which day, and you can track how on time your shots are.
       </p>
 
       {/* A returning user and a new one land on the same empty screen needing

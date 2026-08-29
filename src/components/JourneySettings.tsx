@@ -153,6 +153,21 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
   return (
     <div className="journey-settings">
       <label className="form-column">
+        Preferred name
+        <input
+          type="text"
+          value={profile.preferredName ?? ""}
+          onChange={(e) => setPreferredName(e.target.value || undefined)}
+          placeholder="e.g. Lou"
+          autoComplete="off"
+        />
+      </label>
+      <p className="field-hint">
+        Only used to personalize milestone messages, and only ever stored on
+        this device. Leave blank to skip.
+      </p>
+
+      <label className="form-column">
         Testosterone start date
         <input
           ref={dateFieldRef}
@@ -306,21 +321,6 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
       <p className="field-hint" id="interval-hint">
         Both optional — fill them in and you can track how on time your shots
         are. Weekly is 7, fortnightly is 14.
-      </p>
-
-      <label className="form-column">
-        Preferred name
-        <input
-          type="text"
-          value={profile.preferredName ?? ""}
-          onChange={(e) => setPreferredName(e.target.value || undefined)}
-          placeholder="e.g. Lou"
-          autoComplete="off"
-        />
-      </label>
-      <p className="field-hint">
-        Only used to personalize milestone messages, and only ever stored on
-        this device. Leave blank to skip.
       </p>
     </div>
   );

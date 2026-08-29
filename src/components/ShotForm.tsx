@@ -17,7 +17,6 @@ import { handOffFocus } from "../utils/focus";
 import { sortShots } from "../utils/shotQuery";
 import {
   planShot,
-  scheduleMode,
   previousShotDateBefore,
   earliestShotDate,
 } from "../utils/schedule";
@@ -394,11 +393,15 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // what let a form cleared after midnight treat a genuine backdate as no
     // change at all, and discard it on dismissal.
     setDateBaseline(todayLocalISO());
-    // The planned date resets with everything else, baseline included. Left
-    // behind, an override survived "Clear form" — so the form still read as
-    // dirty, the link never disappeared, tapping it again visibly did nothing,
-    // and the stale value was frozen onto the next shot. A refused planned date
-    // survived too, blocking the next Save from a field the user had cleared.
+    // The planned date resets with everything else, baseline included.
+    //
+    // Not reachable today — "Clear form" renders only for a NEW shot and the
+    // planned field only when EDITING one, so the two never share a screen.
+    // Kept because resetForm's contract is "reset every field", and leaving one
+    // out is exactly the bug this was added for: an override survived the
+    // reset, so the form still read as dirty, the link never disappeared,
+    // tapping it again visibly did nothing, and a refused value went on
+    // blocking Save from a field the user had cleared.
     setPlannedDraft("");
     setPlannedBaseline("");
     setPlannedForDate(todayLocalISO());
@@ -949,12 +952,16 @@ export const ShotForm: React.FC<ShotFormProps> = ({
         {/* Only when the settings answer the question. With no cadence there is
             nothing to show and nothing to correct, so the field is absent
             rather than empty. */}
-        {/* Shown whenever a cadence is configured or the shot carries one, NOT
-            whenever there happens to be a value: keyed to the transient value,
-            the field could unmount while it held focus — stranding it on <body>
-            inside a dialog, where the Tab trap cannot re-engage. */}
-        {(scheduleMode(profile.shotDay, profile.intervalDays) !== "none" ||
-          Boolean(start.plannedFor)) && (
+        {/* Only when EDITING a saved shot. On a new one it was clutter in the
+            middle of the fast path — the app has just worked the date out, and
+            asking you to review it turns a two-tap log into a decision. There is
+            nothing to correct until there is something saved.
+
+            Keyed to `editingShot`, which cannot change while the sheet is open,
+            so the field can never unmount from under the focus it holds — a
+            transient condition here would strand focus on <body> inside a
+            dialog, where the Tab trap cannot re-engage. */}
+        {Boolean(editingShot) && (
           <div className="field-cell">
             <label className="form-column">
               Planned for
@@ -977,8 +984,9 @@ export const ShotForm: React.FC<ShotFormProps> = ({
               </span>
             )}
             <p className="field-hint">
-              Worked out from how often you inject. Change it if this one was
-              always going to be a different day.
+              Worked out from how often you inject, and kept as it was when you
+              logged it. Change it here if this shot was always meant to be a
+              different day.
             </p>
           </div>
         )}

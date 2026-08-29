@@ -1161,12 +1161,20 @@ describe("ShotForm — the planned date", () => {
     // never enforces. Unvalidated, 9999-01-01 stored — and the boundaries then
     // disagreed about a value on screen: dropped from the backup, blanked in
     // the CSV, rendered in History.
-    const onAddShot = vi.fn(() => "saved" as const);
-    render(<ShotForm onAddShot={onAddShot} shots={[]} profile={grid} />);
+    const onUpdateShot = vi.fn((): SaveOutcome => "saved");
+    render(
+      <ShotForm
+        onAddShot={() => "saved" as const}
+        onUpdateShot={onUpdateShot}
+        editingShot={{ id: "a", date: "2026-08-05" }}
+        shots={[{ id: "a", date: "2026-08-05" }]}
+        profile={grid}
+      />,
+    );
     fireEvent.change(planned(), { target: { value: "9999-01-01" } });
-    fireEvent.click(screen.getByRole("button", { name: /Save shot/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Update shot/i }));
 
-    expect(onAddShot).not.toHaveBeenCalled();
+    expect(onUpdateShot).not.toHaveBeenCalled();
     expect(screen.getByRole("alert")).toHaveTextContent(/Check the year/i);
   });
 
@@ -1207,10 +1215,11 @@ describe("ShotForm — the planned date", () => {
     expect(onAnchorEstablished).toHaveBeenCalledWith("2026-08-05");
   });
 
-  it("does not look dirty on open just because a planned date was computed", () => {
-    // The field is always populated once a cadence is set, so a generic
-    // "differs from empty" comparison made a brand-new form dirty before it was
-    // touched — "Clear form" would appear, and dismissing would confirm.
+  it("is absent when logging a NEW shot", () => {
+    // It sat in the middle of the fast path, asking you to review a date the
+    // app had just worked out — which turns a two-tap log into a decision.
+    // There is nothing to correct until something is saved, so it is a
+    // correction tool on the edit sheet and nowhere else.
     const ref =
       React.createRef<ShotDraft | null>() as React.RefObject<ShotDraft | null>;
     render(
@@ -1221,8 +1230,8 @@ describe("ShotForm — the planned date", () => {
         liveDraftRef={ref}
       />,
     );
-    expect(planned().value).not.toBe(""); // a date WAS computed
-    expect(ref.current).toBeNull(); // ...and nothing counts as entered
+    expect(screen.queryByLabelText(/Planned for/i)).not.toBeInTheDocument();
+    expect(ref.current).toBeNull(); // and a fresh form still reads clean
   });
 
   it("does not report unsaved input for a shot whose planned date is simply old", () => {
@@ -1248,7 +1257,13 @@ describe("ShotForm — the planned date", () => {
 
   it("an untouched planned date follows the shot's date; an edited one does not", () => {
     render(
-      <ShotForm onAddShot={() => "saved" as const} shots={[]} profile={grid} />,
+      <ShotForm
+        onAddShot={() => "saved" as const}
+        onUpdateShot={() => "saved" as const}
+        editingShot={{ id: "a", date: "2026-08-05", plannedFor: "2026-08-05" }}
+        shots={[{ id: "a", date: "2026-08-05", plannedFor: "2026-08-05" }]}
+        profile={grid}
+      />,
     );
     const dateField = screen.getByLabelText("Date");
 
@@ -1262,31 +1277,6 @@ describe("ShotForm — the planned date", () => {
     expect(planned().value).toBe("2026-07-29"); // stayed put
   });
 
-  it("Clear form clears the planned date, its baseline and its error", () => {
-    // Left behind, an override survived the reset — so the form still read as
-    // dirty, the "Clear form" link never disappeared, and tapping it again
-    // visibly did nothing.
-    const ref =
-      React.createRef<ShotDraft | null>() as React.RefObject<ShotDraft | null>;
-    render(
-      <ShotForm
-        onAddShot={() => "saved" as const}
-        shots={[]}
-        profile={grid}
-        liveDraftRef={ref}
-      />,
-    );
-    fireEvent.change(planned(), { target: { value: "9999-01-01" } });
-    fireEvent.click(screen.getByRole("button", { name: /Save shot/i }));
-    expect(screen.getByRole("alert")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: /Clear form/i }));
-
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    expect(planned().value).not.toBe("9999-01-01");
-    expect(ref.current).toBeNull(); // and the form reads clean again
-  });
-
   it("counts an edited planned date as unsaved input", () => {
     // Without this the form looked clean, so dismissing discarded the
     // correction with no confirm — and in the mixed case the notes were
@@ -1296,7 +1286,9 @@ describe("ShotForm — the planned date", () => {
     render(
       <ShotForm
         onAddShot={() => "saved" as const}
-        shots={[]}
+        onUpdateShot={() => "saved" as const}
+        editingShot={{ id: "a", date: "2026-08-05", plannedFor: "2026-08-05" }}
+        shots={[{ id: "a", date: "2026-08-05", plannedFor: "2026-08-05" }]}
         profile={grid}
         liveDraftRef={ref}
       />,
