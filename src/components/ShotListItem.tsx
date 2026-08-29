@@ -1,11 +1,11 @@
 // src/components/ShotListItem.tsx
 import React from "react";
 import type { ShotEntry } from "../types/shot";
+import { WASH_ANIMATION } from "../utils/wash";
 import { formatTimeForDisplay } from "../utils/datetime";
 import { daysFromPlanned } from "../utils/schedule";
 
 /** Name of the wash keyframes, shared with styles.css. */
-const WASH_ANIMATION = "shot-wash";
 
 interface ShotListItemProps {
   shot: ShotEntry;

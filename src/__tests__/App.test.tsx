@@ -1,6 +1,13 @@
 import { readFileSync } from "node:fs";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { render, screen, fireEvent, within, act, waitFor } from "@testing-library/react";
+import {
+  render,
+  screen,
+  fireEvent,
+  within,
+  act,
+  waitFor,
+} from "@testing-library/react";
 import App, { CONFIRM_MS } from "../App";
 import { ShotsProvider } from "../context/ShotsContext";
 import { ProfileProvider } from "../context/ProfileContext";
@@ -27,7 +34,7 @@ const renderApp = () =>
           <App />
         </ProfileProvider>
       </ShotsProvider>
-    </StorageHealthProvider>
+    </StorageHealthProvider>,
   );
 
 /**
@@ -51,7 +58,9 @@ const seedShots = (shots: ShotEntry[]) =>
   localStorage.setItem(STORAGE_KEYS.shots, JSON.stringify(shots));
 
 const goTo = (tab: "Home" | "History" | "Settings") =>
-  fireEvent.click(within(screen.getByRole("navigation")).getByRole("button", { name: tab }));
+  fireEvent.click(
+    within(screen.getByRole("navigation")).getByRole("button", { name: tab }),
+  );
 
 /** The sheet's removal is asynchronous: a save waits CONFIRM_MS (200ms) on the ✓
  *  and then SHEET_EXIT_MS (240ms) for the slide, so 440ms of real time passes
@@ -95,7 +104,7 @@ const setVisibility = (state: DocumentVisibilityState) => {
 /** Dismiss via the top-bar ✕ — which KEEPS the draft, like Escape and Back. */
 const dismissSheet = (name: RegExp | string = "Close") =>
   fireEvent.click(
-    within(screen.getByRole("dialog")).getByRole("button", { name })
+    within(screen.getByRole("dialog")).getByRole("button", { name }),
   );
 
 beforeEach(() => localStorage.clear());
@@ -105,24 +114,36 @@ describe("App — navigation", () => {
     seedShots([{ id: "a", date: "2026-06-01" }]);
     renderApp();
 
-    expect(screen.getByRole("heading", { name: "T-Shot Tracker" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Log a shot/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "T-Shot Tracker" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Log a shot/ }),
+    ).toBeInTheDocument();
     // Home is a teaser, not the full list: no filter controls here.
-    expect(screen.queryByPlaceholderText(/Search notes/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByPlaceholderText(/Search notes/),
+    ).not.toBeInTheDocument();
   });
 
   it("moves between the three tabs", () => {
     renderApp();
 
     goTo("History");
-    expect(screen.getByRole("heading", { name: "History" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "History" }),
+    ).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/Search notes/)).toBeInTheDocument();
 
     goTo("Settings");
-    expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Settings" }),
+    ).toBeInTheDocument();
 
     goTo("Home");
-    expect(screen.getByRole("button", { name: /Log a shot/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Log a shot/ }),
+    ).toBeInTheDocument();
   });
 
   it("marks the active tab for assistive tech, not by colour alone", () => {
@@ -130,13 +151,12 @@ describe("App — navigation", () => {
     const nav = screen.getByRole("navigation");
     expect(within(nav).getByRole("button", { name: "Home" })).toHaveAttribute(
       "aria-current",
-      "page"
+      "page",
     );
     goTo("History");
-    expect(within(nav).getByRole("button", { name: "History" })).toHaveAttribute(
-      "aria-current",
-      "page"
-    );
+    expect(
+      within(nav).getByRole("button", { name: "History" }),
+    ).toHaveAttribute("aria-current", "page");
   });
 
   it("'See all' on the Home teaser opens History", () => {
@@ -190,7 +210,9 @@ describe("App — logging via the sheet", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
     const sheet = screen.getByRole("dialog");
-    expect(within(sheet).getByRole("heading", { name: "Log a shot" })).toBeInTheDocument();
+    expect(
+      within(sheet).getByRole("heading", { name: "Log a shot" }),
+    ).toBeInTheDocument();
 
     fireEvent.click(within(sheet).getByRole("button", { name: "Save shot" }));
 
@@ -231,7 +253,9 @@ describe("App — an interrupted entry is not lost", () => {
   const openSheet = () =>
     fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
   const notesField = () =>
-    within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i);
+    within(screen.getByRole("dialog")).getByPlaceholderText(
+      /remember for later/i,
+    );
 
   it("restores what was typed when the sheet is dismissed with Escape", async () => {
     renderApp();
@@ -254,7 +278,9 @@ describe("App — an interrupted entry is not lost", () => {
 
     // Closing keeps a draft, so discarding needs its own control.
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Clear form" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Clear form",
+      }),
     );
     expect(notesField()).toHaveValue("");
 
@@ -281,13 +307,17 @@ describe("App — an interrupted entry is not lost", () => {
     fireEvent.click(clear);
 
     expect(
-      within(screen.getByRole("dialog")).queryByRole("button", { name: "Clear form" })
+      within(screen.getByRole("dialog")).queryByRole("button", {
+        name: "Clear form",
+      }),
     ).toBeNull();
     expect(document.activeElement).not.toBe(document.body);
     // The heading, not the Date field: focusing <input type="date"> from a click
     // handler makes mobile browsers throw up the native picker over the sheet.
     expect(
-      within(screen.getByRole("dialog")).getByRole("heading", { name: "Log a shot" })
+      within(screen.getByRole("dialog")).getByRole("heading", {
+        name: "Log a shot",
+      }),
     ).toHaveFocus();
   });
 
@@ -296,7 +326,9 @@ describe("App — an interrupted entry is not lost", () => {
     openSheet();
     fireEvent.change(notesField(), { target: { value: "logged for real" } });
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Save shot",
+      }),
     );
     await sheetGone();
     expect(screen.getByText("logged for real")).toBeInTheDocument();
@@ -313,12 +345,16 @@ describe("App — an interrupted entry is not lost", () => {
     openSheet();
     fireEvent.change(notesField(), { target: { value: "shot one" } });
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Save shot",
+      }),
     );
     await sheetGone();
 
     openSheet();
-    fireEvent.change(notesField(), { target: { value: "shot two, unfinished" } });
+    fireEvent.change(notesField(), {
+      target: { value: "shot two, unfinished" },
+    });
     fireEvent.keyDown(window, { key: "Escape" });
     await sheetGone();
 
@@ -328,7 +364,12 @@ describe("App — an interrupted entry is not lost", () => {
 
   it("does not treat an untouched form as a draft", async () => {
     seedShots([
-      { id: "prev", date: "2026-06-01", doseMg: 60, testosteroneEster: "cypionate" },
+      {
+        id: "prev",
+        date: "2026-06-01",
+        doseMg: 60,
+        testosteroneEster: "cypionate",
+      },
     ]);
     renderApp();
     openSheet();
@@ -393,7 +434,9 @@ describe("App — an interrupted entry is not lost", () => {
       expect(within(sheet).getByLabelText("Date")).toHaveValue("2026-07-13");
       expect(within(sheet).getByLabelText("Notes")).toHaveValue("after");
 
-      fireEvent.click(within(sheet).getByRole("button", { name: "Update shot" }));
+      fireEvent.click(
+        within(sheet).getByRole("button", { name: "Update shot" }),
+      );
       await act(async () => {
         await vi.advanceTimersByTimeAsync(250);
       });
@@ -435,7 +478,7 @@ describe("App — an interrupted entry is not lost", () => {
           key: STORAGE_KEYS.shots,
           newValue: next,
           storageArea: localStorage,
-        })
+        }),
       );
     });
     await sheetGone();
@@ -463,9 +506,12 @@ describe("App — an interrupted entry is not lost", () => {
 
     goTo("History");
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
-    fireEvent.change(within(screen.getByRole("dialog")).getByLabelText("Date"), {
-      target: { value: "" },
-    });
+    fireEvent.change(
+      within(screen.getByRole("dialog")).getByLabelText("Date"),
+      {
+        target: { value: "" },
+      },
+    );
     fireEvent.keyDown(window, { key: "Escape" });
     await sheetGone();
 
@@ -478,7 +524,7 @@ describe("App — an interrupted entry is not lost", () => {
     // And it cannot be saved in that state, so nothing can be re-dated by accident.
     fireEvent.click(within(sheet).getByRole("button", { name: "Update shot" }));
     expect(JSON.parse(localStorage.getItem(STORAGE_KEYS.shots)!)[0].date).toBe(
-      "2026-05-05"
+      "2026-05-05",
     );
   });
 
@@ -518,7 +564,9 @@ describe("App — an interrupted entry is not lost", () => {
     fireEvent.click(within(sheet).getByRole("button", { name: "Save shot" }));
     await sheetGone();
 
-    expect(JSON.parse(localStorage.getItem(STORAGE_KEYS.shots) ?? "[]")).toHaveLength(0);
+    expect(
+      JSON.parse(localStorage.getItem(STORAGE_KEYS.shots) ?? "[]"),
+    ).toHaveLength(0);
   });
 
   it("does not resurrect a just-saved shot when Back lands during the exit", async () => {
@@ -526,12 +574,17 @@ describe("App — an interrupted entry is not lost", () => {
     openSheet();
     // Backdate it: the post-save reset keeps the date, so the form still reads
     // as dirty afterwards and would republish itself as a draft.
-    fireEvent.change(within(screen.getByRole("dialog")).getByLabelText("Date"), {
-      target: { value: "2026-06-01" },
-    });
+    fireEvent.change(
+      within(screen.getByRole("dialog")).getByLabelText("Date"),
+      {
+        target: { value: "2026-06-01" },
+      },
+    );
     fireEvent.change(notesField(), { target: { value: "saved once" } });
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Save shot",
+      }),
     );
 
     // Impatient Escape inside the exit-animation window, while the sheet is still
@@ -544,9 +597,9 @@ describe("App — an interrupted entry is not lost", () => {
     // the date, so notes reads empty whether or not a draft was resurrected. The
     // backdate is the only field that gives it away — and a restored draft here
     // would invite logging the same shot twice.
-    expect(within(screen.getByRole("dialog")).getByLabelText("Date")).toHaveValue(
-      todayLocalISO()
-    );
+    expect(
+      within(screen.getByRole("dialog")).getByLabelText("Date"),
+    ).toHaveValue(todayLocalISO());
     expect(screen.getByText("saved once")).toBeInTheDocument();
   });
 
@@ -561,7 +614,9 @@ describe("App — an interrupted entry is not lost", () => {
     // Start rewriting one shot, then close without saving.
     const row = screen.getByText("first").closest("li")!;
     fireEvent.click(within(row).getByRole("button", { name: "Edit" }));
-    fireEvent.change(notesField(), { target: { value: "rewritten but unsaved" } });
+    fireEvent.change(notesField(), {
+      target: { value: "rewritten but unsaved" },
+    });
     fireEvent.keyDown(window, { key: "Escape" });
     await sheetGone();
 
@@ -570,7 +625,9 @@ describe("App — an interrupted entry is not lost", () => {
 
     // ...and reopening the SAME shot brings the unsaved rewrite back.
     fireEvent.click(
-      within(screen.getByText("first").closest("li")!).getByRole("button", { name: "Edit" })
+      within(screen.getByText("first").closest("li")!).getByRole("button", {
+        name: "Edit",
+      }),
     );
     expect(notesField()).toHaveValue("rewritten but unsaved");
     fireEvent.keyDown(window, { key: "Escape" });
@@ -578,7 +635,9 @@ describe("App — an interrupted entry is not lost", () => {
 
     // A different shot is unaffected — drafts are per shot, not global.
     fireEvent.click(
-      within(screen.getByText("second").closest("li")!).getByRole("button", { name: "Edit" })
+      within(screen.getByText("second").closest("li")!).getByRole("button", {
+        name: "Edit",
+      }),
     );
     expect(notesField()).toHaveValue("second");
   });
@@ -593,7 +652,9 @@ describe("App — an interrupted entry is not lost", () => {
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     fireEvent.change(notesField(), { target: { value: "should not land" } });
     const sheet = screen.getByRole("dialog");
-    fireEvent.click(within(sheet).getByRole("button", { name: "Cancel editing" }));
+    fireEvent.click(
+      within(sheet).getByRole("button", { name: "Cancel editing" }),
+    );
     fireEvent.click(within(sheet).getByRole("button", { name: "Update shot" }));
     await sheetGone();
 
@@ -623,7 +684,7 @@ describe("App — an interrupted entry is not lost", () => {
             { id: "a", date: "2026-06-01", notes: "restored from backup" },
           ]),
           storageArea: window.localStorage,
-        })
+        }),
       );
     });
 
@@ -640,7 +701,9 @@ describe("App — an interrupted entry is not lost", () => {
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     fireEvent.change(notesField(), { target: { value: "after" } });
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Update shot" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Update shot",
+      }),
     );
     await sheetGone();
     expect(screen.getByText("after")).toBeInTheDocument();
@@ -674,10 +737,12 @@ describe("App — editing from History", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     const sheet = screen.getByRole("dialog");
-    expect(within(sheet).getByRole("heading", { name: "Edit shot" })).toBeInTheDocument();
+    expect(
+      within(sheet).getByRole("heading", { name: "Edit shot" }),
+    ).toBeInTheDocument();
 
     const notes = within(sheet).getByPlaceholderText(
-      /remember for later/i
+      /remember for later/i,
     ) as HTMLTextAreaElement;
     expect(notes.value).toBe("original");
 
@@ -706,7 +771,9 @@ describe("App — editing from History", () => {
       });
       fireEvent.click(sheet().getByRole("button", { name: "Update shot" }));
 
-      expect(sheet().getByRole("button", { name: "Updated" })).toBeInTheDocument();
+      expect(
+        sheet().getByRole("button", { name: "Updated" }),
+      ).toBeInTheDocument();
 
       // Still confirming mid-slide, and a second press there writes nothing.
       act(() => {
@@ -721,7 +788,7 @@ describe("App — editing from History", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
       const stored: ShotEntry[] = JSON.parse(
-        localStorage.getItem(STORAGE_KEYS.shots) ?? "[]"
+        localStorage.getItem(STORAGE_KEYS.shots) ?? "[]",
       );
       expect(stored).toHaveLength(1);
       expect(stored[0].notes).toBe("updated");
@@ -829,14 +896,18 @@ describe("App — editing from History", () => {
 
     // The editor is up, on the shot that was pressed...
     const sheet = within(screen.getByRole("dialog"));
-    expect(sheet.getByRole("heading", { name: "Edit shot" })).toBeInTheDocument();
+    expect(
+      sheet.getByRole("heading", { name: "Edit shot" }),
+    ).toBeInTheDocument();
     expect(sheet.getByPlaceholderText(/remember for later/i)).toHaveValue(
-      "the one tapped"
+      "the one tapped",
     );
     // ...and History is what is behind it, so closing lands somewhere that
     // shows what you just did rather than back on Home.
     expect(
-      within(screen.getByRole("navigation")).getByRole("button", { name: "History" })
+      within(screen.getByRole("navigation")).getByRole("button", {
+        name: "History",
+      }),
     ).toHaveAttribute("aria-current", "page");
   });
 
@@ -846,15 +917,27 @@ describe("App — editing from History", () => {
     // tapped, so the sheet opens over a list not containing it and saving sends
     // the entry somewhere invisible.
     seedShots([
-      { id: "thigh", date: "2026-06-01", injectionSite: "thigh", notes: "in the filter" },
-      { id: "glute", date: "2026-06-08", injectionSite: "glute", notes: "filtered out" },
+      {
+        id: "thigh",
+        date: "2026-06-01",
+        injectionSite: "thigh",
+        notes: "in the filter",
+      },
+      {
+        id: "glute",
+        date: "2026-06-08",
+        injectionSite: "glute",
+        notes: "filtered out",
+      },
     ]);
     renderApp();
 
     // Filter History down to one site, then go back to Home.
     goTo("History");
     fireEvent.click(screen.getByRole("button", { name: /Filters/ }));
-    fireEvent.change(screen.getByLabelText("Site"), { target: { value: "thigh" } });
+    fireEvent.change(screen.getByLabelText("Site"), {
+      target: { value: "thigh" },
+    });
     goTo("Home");
 
     // Tap the shot the filter excludes.
@@ -866,7 +949,7 @@ describe("App — editing from History", () => {
     fireEvent.click(
       within(screen.getByRole("dialog")).getByRole("button", {
         name: "Cancel editing",
-      })
+      }),
     );
     return sheetGone().then(() => {
       // It is on screen behind, rather than filtered away.
@@ -879,15 +962,19 @@ describe("App — editing from History", () => {
     renderApp();
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     fireEvent.change(
-      within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i),
-      { target: { value: "after" } }
+      within(screen.getByRole("dialog")).getByPlaceholderText(
+        /remember for later/i,
+      ),
+      { target: { value: "after" } },
     );
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Update shot" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Update shot",
+      }),
     );
     return sheetGone().then(() => {
       const stored: ShotEntry[] = JSON.parse(
-        localStorage.getItem(STORAGE_KEYS.shots) ?? "[]"
+        localStorage.getItem(STORAGE_KEYS.shots) ?? "[]",
       );
       expect(stored[0].notes).toBe("after");
       expect(screen.getByText("after")).toBeInTheDocument();
@@ -904,14 +991,16 @@ describe("App — editing from History", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     expect(
-      JSON.parse(localStorage.getItem(STORAGE_KEYS.shots) ?? "[]")
+      JSON.parse(localStorage.getItem(STORAGE_KEYS.shots) ?? "[]"),
     ).toHaveLength(1); // the press asks; it does not delete
 
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Delete",
+      }),
     );
     expect(
-      JSON.parse(localStorage.getItem(STORAGE_KEYS.shots) ?? "[]")
+      JSON.parse(localStorage.getItem(STORAGE_KEYS.shots) ?? "[]"),
     ).toHaveLength(0);
     expect(screen.getByText(/No shots logged yet/i)).toBeInTheDocument();
   });
@@ -932,7 +1021,9 @@ describe("App — editing from History", () => {
     const row = screen.getByText("second").closest("li")!;
     fireEvent.click(within(row).getByRole("button", { name: "Delete" }));
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Delete",
+      }),
     );
     await expectFocusSettled("after deleting a teaser row");
 
@@ -952,7 +1043,9 @@ describe("App — editing from History", () => {
     renderApp();
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Delete",
+      }),
     );
     await expectFocusSettled("after deleting the last teaser row");
   });
@@ -964,7 +1057,9 @@ describe("App — editing from History", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     expect(
-      within(screen.getByRole("dialog")).getByRole("heading", { name: "Edit shot" })
+      within(screen.getByRole("dialog")).getByRole("heading", {
+        name: "Edit shot",
+      }),
     ).toBeInTheDocument();
 
     // Another tab removes the shot while this one is editing it. The edit must
@@ -975,7 +1070,7 @@ describe("App — editing from History", () => {
           key: STORAGE_KEYS.shots,
           newValue: JSON.stringify([]),
           storageArea: window.localStorage,
-        })
+        }),
       );
     });
 
@@ -997,7 +1092,7 @@ describe("App — editing from History", () => {
             key: STORAGE_KEYS.shots,
             newValue: JSON.stringify(next),
             storageArea: window.localStorage,
-          })
+          }),
         );
       });
 
@@ -1019,7 +1114,7 @@ describe("App — the sheet protects in-progress input", () => {
     fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
 
     const notes = within(screen.getByRole("dialog")).getByPlaceholderText(
-      /remember for later/i
+      /remember for later/i,
     );
     fireEvent.change(notes, { target: { value: "half-filled" } });
 
@@ -1049,7 +1144,9 @@ describe("App — the sheet protects in-progress input", () => {
     // These rarely change shot-to-shot, so they arrive pre-filled...
     expect(within(sheet).getByLabelText("Dose (mg)")).toHaveValue(60);
     expect(within(sheet).getByLabelText("Type of T")).toHaveValue("cypionate");
-    expect(within(sheet).getByLabelText("Carrier oil")).toHaveValue("grapeseed");
+    expect(within(sheet).getByLabelText("Carrier oil")).toHaveValue(
+      "grapeseed",
+    );
     // ...while site is per-shot (rotating it is the point) and starts empty.
     expect(within(sheet).getByLabelText("Injection site")).toHaveValue("");
   });
@@ -1085,7 +1182,7 @@ describe("App — the sheet protects in-progress input", () => {
 
     // "aaa…" sorts before "zzz…", so an id tiebreak would have chosen 10.
     expect(
-      within(screen.getByRole("dialog")).getByLabelText("Dose (mg)")
+      within(screen.getByRole("dialog")).getByLabelText("Dose (mg)"),
     ).toHaveValue(99);
   });
 });
@@ -1107,24 +1204,28 @@ describe("App — a failed save is never silent", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
     fireEvent.change(
-      within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i),
-      { target: { value: "still here" } }
+      within(screen.getByRole("dialog")).getByPlaceholderText(
+        /remember for later/i,
+      ),
+      { target: { value: "still here" } },
     );
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Save shot",
+      }),
     );
 
     const sheet = screen.getByRole("dialog");
     expect(sheet).toBeInTheDocument();
     expect(
-      within(sheet).getByPlaceholderText(/remember for later/i)
+      within(sheet).getByPlaceholderText(/remember for later/i),
     ).toHaveValue("still here");
     // The message must be INSIDE the sheet. The storage banner lives in `#root`,
     // which the sheet marks inert and covers completely on a phone, so on the one
     // failure the user is watching for it is unreadable and its buttons are
     // unclickable. Held-open-and-silent is the same silent failure one layer up.
     expect(within(sheet).getByRole("alert")).toHaveTextContent(
-      "Couldn’t save this shot"
+      "Couldn’t save this shot",
     );
   });
 
@@ -1147,7 +1248,7 @@ describe("App — a failed save is never silent", () => {
     fireEvent.click(
       within(screen.getByRole("dialog")).getByRole("button", {
         name: "Export a backup",
-      })
+      }),
     );
 
     expect(download).toHaveBeenCalledTimes(1);
@@ -1172,23 +1273,33 @@ describe("App — a failed save is never silent", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
     const notes = () =>
-      within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i);
+      within(screen.getByRole("dialog")).getByPlaceholderText(
+        /remember for later/i,
+      );
     fireEvent.change(notes(), { target: { value: "still here" } });
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Save shot",
+      }),
     );
-    expect(within(screen.getByRole("dialog")).getByRole("alert")).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("dialog")).getByRole("alert"),
+    ).toBeInTheDocument();
 
     // Dismiss, then Save again before the exit animation has finished.
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Close" })
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Close" }),
     );
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Save again" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Save again",
+      }),
     );
 
     expect(notes()).toHaveValue("still here");
-    expect(within(screen.getByRole("dialog")).getByRole("alert")).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("dialog")).getByRole("alert"),
+    ).toBeInTheDocument();
     expect(localStorage.getItem("hrt-shot-tracker:v1:shots")).toBeNull();
   });
 
@@ -1219,8 +1330,12 @@ describe("App — a failed save is never silent", () => {
     fireEvent.click(confirmed);
 
     expect(sheet().queryByRole("alert")).not.toBeInTheDocument();
-    expect(sheet().queryByRole("button", { name: "Save again" })).not.toBeInTheDocument();
-    const stored = JSON.parse(localStorage.getItem("hrt-shot-tracker:v1:shots") ?? "[]");
+    expect(
+      sheet().queryByRole("button", { name: "Save again" }),
+    ).not.toBeInTheDocument();
+    const stored = JSON.parse(
+      localStorage.getItem("hrt-shot-tracker:v1:shots") ?? "[]",
+    );
     expect(stored).toHaveLength(1);
     expect(stored[0].notes).toBe("saved fine");
   });
@@ -1253,12 +1368,16 @@ describe("App — a failed save is never silent", () => {
         vi.advanceTimersByTime(CONFIRM_MS);
       });
       const submit = sheet().getByRole("button", { name: "Saved" });
-      expect(sheet().queryByRole("button", { name: "Save shot" })).not.toBeInTheDocument();
+      expect(
+        sheet().queryByRole("button", { name: "Save shot" }),
+      ).not.toBeInTheDocument();
 
       fireEvent.click(submit);
 
       expect(sheet().queryByRole("alert")).not.toBeInTheDocument();
-      const stored = JSON.parse(localStorage.getItem("hrt-shot-tracker:v1:shots") ?? "[]");
+      const stored = JSON.parse(
+        localStorage.getItem("hrt-shot-tracker:v1:shots") ?? "[]",
+      );
       expect(stored).toHaveLength(1);
     } finally {
       vi.useRealTimers();
@@ -1286,16 +1405,18 @@ describe("App — a failed save is never silent", () => {
 
       // On the ✓, sheet motionless and fully on screen.
       expect(sheet().getByPlaceholderText(/remember for later/i)).toHaveValue(
-        "sore today, left side"
+        "sore today, left side",
       );
-      expect(sheet().getByLabelText("Injection site")).toHaveValue("Left thigh");
+      expect(sheet().getByLabelText("Injection site")).toHaveValue(
+        "Left thigh",
+      );
 
       // ...and still there through the slide, which is most of the 440ms.
       act(() => {
         vi.advanceTimersByTime(CONFIRM_MS);
       });
       expect(sheet().getByPlaceholderText(/remember for later/i)).toHaveValue(
-        "sore today, left side"
+        "sore today, left side",
       );
     } finally {
       vi.useRealTimers();
@@ -1315,11 +1436,15 @@ describe("App — a failed save is never silent", () => {
       goTo("History");
       fireEvent.click(screen.getByRole("button", { name: "Edit" }));
       fireEvent.change(
-        within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i),
-        { target: { value: "an edit" } }
+        within(screen.getByRole("dialog")).getByPlaceholderText(
+          /remember for later/i,
+        ),
+        { target: { value: "an edit" } },
       );
       fireEvent.click(
-        within(screen.getByRole("dialog")).getByRole("button", { name: "Update shot" })
+        within(screen.getByRole("dialog")).getByRole("button", {
+          name: "Update shot",
+        }),
       );
 
       // Mid-exit — the sheet is still mounted, its timer still pending.
@@ -1330,8 +1455,12 @@ describe("App — a failed save is never silent", () => {
       fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
 
       const sheet = within(screen.getByRole("dialog"));
-      expect(sheet.getByRole("heading", { name: "Log a shot" })).toBeInTheDocument();
-      expect(sheet.getByRole("button", { name: "Save shot" })).toBeInTheDocument();
+      expect(
+        sheet.getByRole("heading", { name: "Log a shot" }),
+      ).toBeInTheDocument();
+      expect(
+        sheet.getByRole("button", { name: "Save shot" }),
+      ).toBeInTheDocument();
 
       fireEvent.change(sheet.getByPlaceholderText(/remember for later/i), {
         target: { value: "a second, separate shot" },
@@ -1343,13 +1472,13 @@ describe("App — a failed save is never silent", () => {
 
       // Two entries, and the edited one still holds its edit.
       const stored: ShotEntry[] = JSON.parse(
-        localStorage.getItem(STORAGE_KEYS.shots) ?? "[]"
+        localStorage.getItem(STORAGE_KEYS.shots) ?? "[]",
       );
       expect(stored).toHaveLength(2);
       expect(stored.find((s) => s.id === "a")?.notes).toBe("an edit");
-      expect(
-        stored.some((s) => s.notes === "a second, separate shot")
-      ).toBe(true);
+      expect(stored.some((s) => s.notes === "a second, separate shot")).toBe(
+        true,
+      );
     } finally {
       vi.useRealTimers();
     }
@@ -1367,11 +1496,15 @@ describe("App — a failed save is never silent", () => {
       renderApp();
       fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
       fireEvent.change(
-        within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i),
-        { target: { value: "the saved one" } }
+        within(screen.getByRole("dialog")).getByPlaceholderText(
+          /remember for later/i,
+        ),
+        { target: { value: "the saved one" } },
       );
       fireEvent.click(
-        within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+        within(screen.getByRole("dialog")).getByRole("button", {
+          name: "Save shot",
+        }),
       );
 
       // Mid-exit, before the sheet has unmounted.
@@ -1383,7 +1516,9 @@ describe("App — a failed save is never silent", () => {
 
       const sheet = within(screen.getByRole("dialog"));
       expect(sheet.getByPlaceholderText(/remember for later/i)).toHaveValue("");
-      expect(sheet.getByRole("button", { name: "Save shot" })).toBeInTheDocument();
+      expect(
+        sheet.getByRole("button", { name: "Save shot" }),
+      ).toBeInTheDocument();
 
       // And saving that fresh form does not write the saved entry a second time.
       fireEvent.click(sheet.getByRole("button", { name: "Save shot" }));
@@ -1391,7 +1526,7 @@ describe("App — a failed save is never silent", () => {
         vi.advanceTimersByTime(CONFIRM_MS + SHEET_EXIT_MS);
       });
       const stored: ShotEntry[] = JSON.parse(
-        localStorage.getItem(STORAGE_KEYS.shots) ?? "[]"
+        localStorage.getItem(STORAGE_KEYS.shots) ?? "[]",
       );
       expect(stored.filter((s) => s.notes === "the saved one")).toHaveLength(1);
     } finally {
@@ -1411,11 +1546,15 @@ describe("App — a failed save is never silent", () => {
       renderApp();
       fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
       fireEvent.change(
-        within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i),
-        { target: { value: "impatient" } }
+        within(screen.getByRole("dialog")).getByPlaceholderText(
+          /remember for later/i,
+        ),
+        { target: { value: "impatient" } },
       );
       fireEvent.click(
-        within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+        within(screen.getByRole("dialog")).getByRole("button", {
+          name: "Save shot",
+        }),
       );
 
       // Escape 50ms in, well before the ✓ would have ended on its own.
@@ -1434,12 +1573,14 @@ describe("App — a failed save is never silent", () => {
       // Saved exactly once, and the dismissal did not park it as a draft to log
       // all over again.
       const stored: ShotEntry[] = JSON.parse(
-        localStorage.getItem(STORAGE_KEYS.shots) ?? "[]"
+        localStorage.getItem(STORAGE_KEYS.shots) ?? "[]",
       );
       expect(stored).toHaveLength(1);
       fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
       expect(
-        within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i)
+        within(screen.getByRole("dialog")).getByPlaceholderText(
+          /remember for later/i,
+        ),
       ).toHaveValue("");
     } finally {
       vi.useRealTimers();
@@ -1464,7 +1605,7 @@ describe("App — a failed save is never silent", () => {
       fireEvent.click(sheet().getByRole("button", { name: "Clear form" }));
 
       expect(sheet().getByPlaceholderText(/remember for later/i)).toHaveValue(
-        "still here"
+        "still here",
       );
       act(() => {
         vi.advanceTimersByTime(CONFIRM_MS + SHEET_EXIT_MS);
@@ -1488,7 +1629,9 @@ describe("App — a failed save is never silent", () => {
 
     breakWrites();
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Delete",
+      }),
     );
 
     const confirm = within(screen.getByRole("dialog"));
@@ -1496,7 +1639,7 @@ describe("App — a failed save is never silent", () => {
     expect(confirm.getByText(/still here/)).toBeInTheDocument();
     // And the shot really is still there, in state and in storage.
     expect(
-      JSON.parse(localStorage.getItem("hrt-shot-tracker:v1:shots") ?? "[]")
+      JSON.parse(localStorage.getItem("hrt-shot-tracker:v1:shots") ?? "[]"),
     ).toHaveLength(1);
   });
 
@@ -1506,13 +1649,15 @@ describe("App — a failed save is never silent", () => {
     goTo("History");
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Delete",
+      }),
     );
     await waitFor(() =>
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
     expect(
-      JSON.parse(localStorage.getItem("hrt-shot-tracker:v1:shots") ?? "[]")
+      JSON.parse(localStorage.getItem("hrt-shot-tracker:v1:shots") ?? "[]"),
     ).toHaveLength(0);
   });
 
@@ -1528,15 +1673,19 @@ describe("App — a failed save is never silent", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Save shot",
+      }),
     );
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Export a backup" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Export a backup",
+      }),
     );
 
-    expect(within(screen.getByRole("dialog")).getByRole("alert")).toHaveTextContent(
-      /download didn.t start/i
-    );
+    expect(
+      within(screen.getByRole("dialog")).getByRole("alert"),
+    ).toHaveTextContent(/download didn.t start/i);
   });
 
   it("relabels Save to 'Save again' after a refused write, and back on success", () => {
@@ -1549,21 +1698,29 @@ describe("App — a failed save is never silent", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
     const inSheet = () => within(screen.getByRole("dialog"));
-    expect(inSheet().getByRole("button", { name: "Save shot" })).toBeInTheDocument();
+    expect(
+      inSheet().getByRole("button", { name: "Save shot" }),
+    ).toBeInTheDocument();
 
     fireEvent.click(inSheet().getByRole("button", { name: "Save shot" }));
-    expect(inSheet().getByRole("button", { name: "Save again" })).toBeInTheDocument();
-    expect(inSheet().queryByRole("button", { name: "Save shot" })).not.toBeInTheDocument();
+    expect(
+      inSheet().getByRole("button", { name: "Save again" }),
+    ).toBeInTheDocument();
+    expect(
+      inSheet().queryByRole("button", { name: "Save shot" }),
+    ).not.toBeInTheDocument();
 
     // It stays relabelled while it keeps failing, rather than flickering back.
     fireEvent.click(inSheet().getByRole("button", { name: "Save again" }));
-    expect(inSheet().getByRole("button", { name: "Save again" })).toBeInTheDocument();
+    expect(
+      inSheet().getByRole("button", { name: "Save again" }),
+    ).toBeInTheDocument();
 
     // And the shot lands on the retry.
     spy.mockRestore();
     fireEvent.click(inSheet().getByRole("button", { name: "Save again" }));
     expect(
-      JSON.parse(localStorage.getItem("hrt-shot-tracker:v1:shots") ?? "[]")
+      JSON.parse(localStorage.getItem("hrt-shot-tracker:v1:shots") ?? "[]"),
     ).toHaveLength(1);
   });
 
@@ -1574,25 +1731,33 @@ describe("App — a failed save is never silent", () => {
     goTo("History");
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     expect(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Update shot" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Update shot",
+      }),
     ).toBeInTheDocument();
 
     // A real change, so there is genuinely something to write. Saving an
     // untouched edit writes nothing and so cannot fail — correct, but it would
     // make this test pass without exercising anything.
     fireEvent.change(
-      within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i),
-      { target: { value: "after" } }
+      within(screen.getByRole("dialog")).getByPlaceholderText(
+        /remember for later/i,
+      ),
+      { target: { value: "after" } },
     );
     breakWrites();
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Update shot" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Update shot",
+      }),
     );
 
     // "Update again", not "Save again": the retry keeps the verb the action had,
     // so the button never stops naming what it does.
     expect(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Update again" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Update again",
+      }),
     ).toBeInTheDocument();
   });
 
@@ -1606,23 +1771,31 @@ describe("App — a failed save is never silent", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Save shot",
+      }),
     );
     expect(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Save again" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Save again",
+      }),
     ).toBeInTheDocument();
 
     // Dismiss, let the sheet finish leaving, and open a fresh one.
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Close" })
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Close" }),
     );
     await sheetGone();
     spy.mockRestore();
     fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
 
     const sheet = within(screen.getByRole("dialog"));
-    expect(sheet.getByRole("button", { name: "Save shot" })).toBeInTheDocument();
-    expect(sheet.queryByRole("button", { name: "Save again" })).not.toBeInTheDocument();
+    expect(
+      sheet.getByRole("button", { name: "Save shot" }),
+    ).toBeInTheDocument();
+    expect(
+      sheet.queryByRole("button", { name: "Save again" }),
+    ).not.toBeInTheDocument();
     // ...and no stale failure message riding along with it.
     expect(sheet.queryByRole("alert")).not.toBeInTheDocument();
   });
@@ -1639,16 +1812,22 @@ describe("App — a failed save is never silent", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Save shot",
+      }),
     );
 
     const sheet = within(screen.getByRole("dialog"));
-    expect(sheet.getByRole("button", { name: "Save again" })).toBeInTheDocument();
+    expect(
+      sheet.getByRole("button", { name: "Save again" }),
+    ).toBeInTheDocument();
     // The sheet's own retry is never the banner's word...
-    expect(sheet.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
+    expect(
+      sheet.queryByRole("button", { name: "Try again" }),
+    ).not.toBeInTheDocument();
     // ...and every label the button can take still names the action.
     expect(
-      sheet.getByRole("button", { name: "Save again" }).textContent
+      sheet.getByRole("button", { name: "Save again" }).textContent,
     ).toMatch(/^Save /);
   });
 
@@ -1666,11 +1845,15 @@ describe("App — a failed save is never silent", () => {
       target: { value: "something" },
     });
     fireEvent.click(inSheet().getByRole("button", { name: "Save shot" }));
-    expect(inSheet().getByRole("button", { name: "Save again" })).toBeInTheDocument();
+    expect(
+      inSheet().getByRole("button", { name: "Save again" }),
+    ).toBeInTheDocument();
 
     fireEvent.click(inSheet().getByRole("button", { name: "Clear form" }));
 
-    expect(inSheet().getByRole("button", { name: "Save shot" })).toBeInTheDocument();
+    expect(
+      inSheet().getByRole("button", { name: "Save shot" }),
+    ).toBeInTheDocument();
     expect(inSheet().queryByRole("alert")).not.toBeInTheDocument();
   });
 
@@ -1686,11 +1869,15 @@ describe("App — a failed save is never silent", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
     fireEvent.change(
-      within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i),
-      { target: { value: "only once" } }
+      within(screen.getByRole("dialog")).getByPlaceholderText(
+        /remember for later/i,
+      ),
+      { target: { value: "only once" } },
     );
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Save shot",
+      }),
     );
     // Nothing entered the list: the form is the only copy, which is the point.
     expect(localStorage.getItem("hrt-shot-tracker:v1:shots")).toBeNull();
@@ -1698,11 +1885,13 @@ describe("App — a failed save is never silent", () => {
     // Storage comes back and the user presses the retry on the held-open sheet.
     spy.mockRestore();
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Save again" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Save again",
+      }),
     );
 
     const stored = JSON.parse(
-      localStorage.getItem("hrt-shot-tracker:v1:shots") ?? "[]"
+      localStorage.getItem("hrt-shot-tracker:v1:shots") ?? "[]",
     );
     expect(stored).toHaveLength(1);
     expect(stored[0].notes).toBe("only once");
@@ -1712,7 +1901,9 @@ describe("App — a failed save is never silent", () => {
     renderApp();
     fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Save shot",
+      }),
     );
     await sheetGone();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
@@ -1729,29 +1920,35 @@ describe("App — a failed EDIT is held open too", () => {
     goTo("History");
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     fireEvent.change(
-      within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i),
-      { target: { value: "after" } }
+      within(screen.getByRole("dialog")).getByPlaceholderText(
+        /remember for later/i,
+      ),
+      { target: { value: "after" } },
     );
 
     vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
       throw new DOMException("QuotaExceededError");
     });
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Update shot" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Update shot",
+      }),
     );
 
     const sheet = screen.getByRole("dialog");
     expect(sheet).toBeInTheDocument();
     expect(
-      within(sheet).getByPlaceholderText(/remember for later/i)
+      within(sheet).getByPlaceholderText(/remember for later/i),
     ).toHaveValue("after");
     expect(within(sheet).getByRole("alert")).toHaveTextContent(
-      "Couldn’t save this shot"
+      "Couldn’t save this shot",
     );
     // The list still shows the OLD value: refusing to commit an unwritable change
     // is what keeps the screen and storage telling the same story.
-    expect(JSON.parse(localStorage.getItem("hrt-shot-tracker:v1:shots") ?? "[]")[0].notes)
-      .toBe("before");
+    expect(
+      JSON.parse(localStorage.getItem("hrt-shot-tracker:v1:shots") ?? "[]")[0]
+        .notes,
+    ).toBe("before");
   });
 });
 
@@ -1777,7 +1974,9 @@ describe("focus is never left on <body>", () => {
     // vacuously — there is no stranding to detect if nothing was held.
     const opener = screen.getByRole("button", { name: /Log a shot/ });
     opener.focus();
-    withFocusGuard("after opening the log sheet", () => fireEvent.click(opener));
+    withFocusGuard("after opening the log sheet", () =>
+      fireEvent.click(opener),
+    );
     dismissSheet();
     await sheetGone();
     await expectFocusSettled("after dismissing the log sheet");
@@ -1788,7 +1987,9 @@ describe("focus is never left on <body>", () => {
     renderApp();
     fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Save shot",
+      }),
     );
     await sheetGone();
     await expectFocusSettled("after saving a shot");
@@ -1803,7 +2004,7 @@ describe("focus is never left on <body>", () => {
       target: { value: "something" },
     });
     withFocusGuard("after Clear form", () =>
-      fireEvent.click(sheet().getByRole("button", { name: "Clear form" }))
+      fireEvent.click(sheet().getByRole("button", { name: "Clear form" })),
     );
     expectVisibleFocusRing("after Clear form");
   });
@@ -1814,9 +2015,13 @@ describe("focus is never left on <body>", () => {
     goTo("History");
     const editBtn = screen.getByRole("button", { name: "Edit" });
     editBtn.focus(); // see the note on the log-sheet guard above
-    withFocusGuard("after opening an edit sheet", () => fireEvent.click(editBtn));
+    withFocusGuard("after opening an edit sheet", () =>
+      fireEvent.click(editBtn),
+    );
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Update shot" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Update shot",
+      }),
     );
     await sheetGone();
     await expectFocusSettled("after saving an edit");
@@ -1832,10 +2037,12 @@ describe("focus is never left on <body>", () => {
     goTo("History");
     fireEvent.click(screen.getAllByRole("button", { name: "Delete" })[0]);
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Delete",
+      }),
     );
     await waitFor(() =>
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
     await expectFocusSettled("after deleting a shot");
     expectVisibleFocusRing("after deleting a shot");
@@ -1847,10 +2054,12 @@ describe("focus is never left on <body>", () => {
     goTo("History");
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Delete",
+      }),
     );
     await waitFor(() =>
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
     await expectFocusSettled("after deleting the only shot");
     expectVisibleFocusRing("after deleting the only shot");
@@ -1865,7 +2074,9 @@ describe("focus is never left on <body>", () => {
     for (const tab of ["History", "Settings", "Home"] as const) {
       const button = nav().getByRole("button", { name: tab });
       button.focus();
-      withFocusGuard(`after navigating to ${tab}`, () => fireEvent.click(button));
+      withFocusGuard(`after navigating to ${tab}`, () =>
+        fireEvent.click(button),
+      );
     }
   });
 
@@ -1894,8 +2105,10 @@ describe("focus is never left on <body>", () => {
     fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
     withFocusGuard("after a refused save", () =>
       fireEvent.click(
-        within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
-      )
+        within(screen.getByRole("dialog")).getByRole("button", {
+          name: "Save shot",
+        }),
+      ),
     );
   });
 });
@@ -1905,7 +2118,8 @@ describe("the post-log acknowledgement", () => {
   const greeting = () => document.querySelector(".greeting")?.textContent;
   /** The portaled, always-mounted live region — the thing AT actually hears. */
   const announced = () =>
-    document.querySelector("body > .visually-hidden[role='status']")?.textContent;
+    document.querySelector("body > .visually-hidden[role='status']")
+      ?.textContent;
   const washedRows = () =>
     document.querySelectorAll(".shot-list-item--washing").length;
 
@@ -1913,11 +2127,15 @@ describe("the post-log acknowledgement", () => {
   const logAShot = async (notes = "a shot") => {
     fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
     fireEvent.change(
-      within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i),
-      { target: { value: notes } }
+      within(screen.getByRole("dialog")).getByPlaceholderText(
+        /remember for later/i,
+      ),
+      { target: { value: notes } },
     );
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Save shot",
+      }),
     );
     await sheetGone();
   };
@@ -1936,7 +2154,9 @@ describe("the post-log acknowledgement", () => {
     // lifts. The announcing region is portaled to <body> and always mounted,
     // because a live region does not announce its initial content.
     renderApp();
-    const region = document.querySelector("body > .visually-hidden[role='status']");
+    const region = document.querySelector(
+      "body > .visually-hidden[role='status']",
+    );
     expect(region).toBeTruthy();
     expect(region).not.toBe(document.querySelector(".greeting"));
     expect(announced()).toBe("");
@@ -1959,7 +2179,9 @@ describe("the post-log acknowledgement", () => {
       renderApp();
       fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
       fireEvent.click(
-        within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+        within(screen.getByRole("dialog")).getByRole("button", {
+          name: "Save shot",
+        }),
       );
       expect(announced()).toBe(""); // during the ✓
 
@@ -1986,7 +2208,7 @@ describe("the post-log acknowledgement", () => {
     // keeps this component mounted, and the line has no timer of its own.
     localStorage.setItem(
       STORAGE_KEYS.profile,
-      JSON.stringify({ startDate: yearsAgoLocal(1) })
+      JSON.stringify({ startDate: yearsAgoLocal(1) }),
     );
     renderApp();
     const milestone = greeting();
@@ -2016,7 +2238,9 @@ describe("the post-log acknowledgement", () => {
       renderApp();
       fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
       fireEvent.click(
-        within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+        within(screen.getByRole("dialog")).getByRole("button", {
+          name: "Save shot",
+        }),
       );
 
       // The ORDER is the whole point, and getting it backwards is what hid a
@@ -2036,7 +2260,7 @@ describe("the post-log acknowledgement", () => {
       expect(washedRows()).toBe(0);
       // ...and the shot is saved regardless.
       expect(
-        JSON.parse(localStorage.getItem(STORAGE_KEYS.shots) ?? "[]")
+        JSON.parse(localStorage.getItem(STORAGE_KEYS.shots) ?? "[]"),
       ).toHaveLength(1);
     } finally {
       vi.useRealTimers();
@@ -2046,7 +2270,7 @@ describe("the post-log acknowledgement", () => {
   it("uses the same words whether or not a name is set", async () => {
     localStorage.setItem(
       STORAGE_KEYS.profile,
-      JSON.stringify({ preferredName: "Lou" })
+      JSON.stringify({ preferredName: "Lou" }),
     );
     renderApp();
     expect(greeting()).toContain("Lou"); // the ordinary greeting does use it
@@ -2059,7 +2283,7 @@ describe("the post-log acknowledgement", () => {
     // eclipsed — it is still there when you look again.
     localStorage.setItem(
       STORAGE_KEYS.profile,
-      JSON.stringify({ startDate: yearsAgoLocal(1) })
+      JSON.stringify({ startDate: yearsAgoLocal(1) }),
     );
     renderApp();
     const milestone = greeting();
@@ -2102,7 +2326,7 @@ describe("the post-log acknowledgement", () => {
     renderApp();
     await logAShot("first");
     const region = document.querySelector(
-      "body > .visually-hidden[role='status']"
+      "body > .visually-hidden[role='status']",
     )!;
     const firstNode = region.firstElementChild;
     expect(announced()).toBe(ACK);
@@ -2110,16 +2334,18 @@ describe("the post-log acknowledgement", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Save shot",
+      }),
     );
     await sheetGone();
 
     // Same words, same region — a different node, which is the change an
     // assistive reader has to hear.
     expect(announced()).toBe(ACK);
-    expect(document.querySelector("body > .visually-hidden[role='status']")).toBe(
-      region
-    );
+    expect(
+      document.querySelector("body > .visually-hidden[role='status']"),
+    ).toBe(region);
     expect(region.firstElementChild).not.toBe(firstNode);
   });
 
@@ -2134,7 +2360,9 @@ describe("the post-log acknowledgement", () => {
     fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
     expect(greeting()).toBe(ACK);
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Save shot",
+      }),
     );
     await sheetGone();
     expect(greeting()).toBe(ACK);
@@ -2148,7 +2376,9 @@ describe("the post-log acknowledgement", () => {
     renderApp();
     fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Save shot",
+      }),
     );
     expect(greeting()).not.toBe(ACK);
     expect(washedRows()).toBe(0);
@@ -2167,13 +2397,17 @@ describe("the post-log acknowledgement", () => {
     renderApp();
     fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Save shot",
+      }),
     );
     expect(greeting()).not.toBe(ACK);
 
     spy.mockRestore();
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Save again" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Save again",
+      }),
     );
     await sheetGone();
 
@@ -2211,11 +2445,15 @@ describe("the post-log acknowledgement", () => {
     const row = screen.getByText("before").closest("li")!;
     fireEvent.click(within(row).getByRole("button", { name: "Edit" }));
     fireEvent.change(
-      within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i),
-      { target: { value: "after" } }
+      within(screen.getByRole("dialog")).getByPlaceholderText(
+        /remember for later/i,
+      ),
+      { target: { value: "after" } },
     );
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Update shot" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Update shot",
+      }),
     );
     await sheetGone();
 
@@ -2237,11 +2475,15 @@ describe("the post-log acknowledgement", () => {
     goTo("History");
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     fireEvent.change(
-      within(screen.getByRole("dialog")).getByPlaceholderText(/remember for later/i),
-      { target: { value: "after" } }
+      within(screen.getByRole("dialog")).getByPlaceholderText(
+        /remember for later/i,
+      ),
+      { target: { value: "after" } },
     );
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Update shot" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Update shot",
+      }),
     );
     await sheetGone();
     goTo("Home");
@@ -2265,13 +2507,15 @@ describe("the post-log wash", () => {
 
   const washed = () =>
     [...document.querySelectorAll(".shot-list-item--washing")].map(
-      (el) => el.querySelector(".shot-list-item__date")?.textContent
+      (el) => el.querySelector(".shot-list-item__date")?.textContent,
     );
 
   const logAShot = async () => {
     fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Save shot",
+      }),
     );
     await sheetGone();
   };
@@ -2286,21 +2530,29 @@ describe("the post-log wash", () => {
       renderApp();
       fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
       fireEvent.click(
-        within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+        within(screen.getByRole("dialog")).getByRole("button", {
+          name: "Save shot",
+        }),
       );
 
       // Still confirming, sheet still up: nothing washing yet.
-      expect(document.querySelectorAll(".shot-list-item--washing")).toHaveLength(0);
+      expect(
+        document.querySelectorAll(".shot-list-item--washing"),
+      ).toHaveLength(0);
       act(() => {
         vi.advanceTimersByTime(CONFIRM_MS);
       });
       // Mid-slide: still nothing.
-      expect(document.querySelectorAll(".shot-list-item--washing")).toHaveLength(0);
+      expect(
+        document.querySelectorAll(".shot-list-item--washing"),
+      ).toHaveLength(0);
 
       act(() => {
         vi.advanceTimersByTime(SHEET_EXIT_MS);
       });
-      expect(document.querySelectorAll(".shot-list-item--washing")).toHaveLength(1);
+      expect(
+        document.querySelectorAll(".shot-list-item--washing"),
+      ).toHaveLength(1);
     } finally {
       vi.useRealTimers();
     }
@@ -2322,14 +2574,24 @@ describe("the post-log wash", () => {
     // was documented, not whether it was set.
     const css = readFileSync(`${process.cwd()}/src/styles.css`, "utf8").replace(
       /\/\*[\s\S]*?\*\//g,
-      ""
+      "",
     );
     const rules = [
-      ...css.matchAll(/\.shot-list-item--washing::after\s*\{([^}]*)\}/g),
-    ];
+      // Every wash rule, whatever the selector list — the shot row and the
+      // saved-value row share one block now, so pinning one selector would stop
+      // covering whoever else is in it.
+      ...css.matchAll(/--washing::after[^{]*\{([^}]*)\}/g),
+    ]
+      // Only the rules that actually ANIMATE. A wash selector may carry
+      // presentation alone (the saved-value row overrides the radius), and
+      // demanding `forwards` of those would fail for a rule that has no
+      // animation to fill. Filtering here rather than narrowing the selector
+      // keeps the count meaningful: delete a declaration and this drops to one.
+      .filter(([, body]) => /animation:/.test(body));
 
     expect(rules).toHaveLength(2); // base + the reduced-motion override
-    for (const [, body] of rules) expect(body).toMatch(/animation:[^;]*\bforwards\b/);
+    for (const [, body] of rules)
+      expect(body).toMatch(/animation:[^;]*\bforwards\b/);
   });
 
   it("arms no wash for a shot the teaser will not show", async () => {
@@ -2346,18 +2608,24 @@ describe("the post-log wash", () => {
     renderApp();
 
     fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
-    fireEvent.change(within(screen.getByRole("dialog")).getByLabelText("Date"), {
-      target: { value: "2026-01-05" },
-    });
+    fireEvent.change(
+      within(screen.getByRole("dialog")).getByLabelText("Date"),
+      {
+        target: { value: "2026-01-05" },
+      },
+    );
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Save shot",
+      }),
     );
     await sheetGone();
 
     expect(washed()).toEqual([]);
     // The words are not conditional on a visible row: the shot was still logged.
     expect(
-      document.querySelector("body > .visually-hidden[role='status']")?.textContent
+      document.querySelector("body > .visually-hidden[role='status']")
+        ?.textContent,
     ).toBe("Logged for you.");
 
     // Nothing is left armed, so the older entry cannot wash later when it
@@ -2366,7 +2634,7 @@ describe("the post-log wash", () => {
     // invented id let this pass with the fix reverted, since nothing matched
     // whatever was armed.
     const stored: ShotEntry[] = JSON.parse(
-      localStorage.getItem(STORAGE_KEYS.shots) ?? "[]"
+      localStorage.getItem(STORAGE_KEYS.shots) ?? "[]",
     );
     const backdated = stored.find((s) => s.date === "2026-01-05");
     expect(backdated).toBeDefined();
@@ -2382,7 +2650,7 @@ describe("the post-log wash", () => {
           key: STORAGE_KEYS.shots,
           newValue: fromOtherTab,
           storageArea: localStorage,
-        })
+        }),
       );
     });
     expect(screen.getAllByRole("listitem")).toHaveLength(1); // it IS in the teaser now
@@ -2415,7 +2683,9 @@ describe("the post-log wash", () => {
 
     // Filter to thigh, then edit one of them onto a different site.
     fireEvent.click(screen.getByRole("button", { name: /Filters/ }));
-    fireEvent.change(screen.getByLabelText("Site"), { target: { value: "thigh" } });
+    fireEvent.change(screen.getByLabelText("Site"), {
+      target: { value: "thigh" },
+    });
     expect(screen.getAllByRole("listitem")).toHaveLength(2);
 
     const row = screen.getByText("another thigh shot").closest("li")!;
@@ -2423,9 +2693,11 @@ describe("the post-log wash", () => {
     const dialog = screen.getByRole("dialog");
     fireEvent.change(
       within(dialog).getByPlaceholderText(/thigh, glute, stomach/i),
-      { target: { value: "glute" } }
+      { target: { value: "glute" } },
     );
-    fireEvent.click(within(dialog).getByRole("button", { name: "Update shot" }));
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Update shot" }),
+    );
     await sheetGone();
 
     // It filtered out, so no row ever animated and nothing retired the wash.
@@ -2448,7 +2720,7 @@ describe("the post-log wash", () => {
     expect(washed()).toHaveLength(1);
 
     const stored: ShotEntry[] = JSON.parse(
-      localStorage.getItem(STORAGE_KEYS.shots) ?? "[]"
+      localStorage.getItem(STORAGE_KEYS.shots) ?? "[]",
     );
     const logged = stored[0];
     const other: ShotEntry = { id: "other", date: "2026-07-01" };
@@ -2462,7 +2734,7 @@ describe("the post-log wash", () => {
           key: STORAGE_KEYS.shots,
           newValue: withoutIt,
           storageArea: localStorage,
-        })
+        }),
       );
     });
     expect(washed()).toEqual([]);
@@ -2476,7 +2748,7 @@ describe("the post-log wash", () => {
           key: STORAGE_KEYS.shots,
           newValue: withItAgain,
           storageArea: localStorage,
-        })
+        }),
       );
     });
     expect(washed()).toEqual([]);
@@ -2524,10 +2796,14 @@ describe("the post-log wash", () => {
       renderApp();
       fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
       fireEvent.click(
-        within(screen.getByRole("dialog")).getByRole("button", { name: "Save shot" })
+        within(screen.getByRole("dialog")).getByRole("button", {
+          name: "Save shot",
+        }),
       );
       expect(
-        within(screen.getByRole("dialog")).getByRole("button", { name: "Saved" })
+        within(screen.getByRole("dialog")).getByRole("button", {
+          name: "Saved",
+        }),
       ).toBeInTheDocument();
 
       // Re-open mid-beat (jsdom does not enforce inert, which is what lets this
@@ -2535,10 +2811,12 @@ describe("the post-log wash", () => {
       fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
 
       const sheet = within(screen.getByRole("dialog"));
-      expect(sheet.getByRole("button", { name: "Save shot" })).toBeInTheDocument();
+      expect(
+        sheet.getByRole("button", { name: "Save shot" }),
+      ).toBeInTheDocument();
       expect(sheet.getByRole("button", { name: "Save shot" })).toHaveAttribute(
         "aria-disabled",
-        "false"
+        "false",
       );
     } finally {
       vi.useRealTimers();
@@ -2551,14 +2829,20 @@ describe("the post-log wash", () => {
     // what made the greeting visibly flip mid-slide.
     renderApp();
     await logAShot();
-    expect(document.querySelectorAll(".shot-list-item--washing")).toHaveLength(1);
+    expect(document.querySelectorAll(".shot-list-item--washing")).toHaveLength(
+      1,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
-    expect(document.querySelectorAll(".shot-list-item--washing")).toHaveLength(1);
+    expect(document.querySelectorAll(".shot-list-item--washing")).toHaveLength(
+      1,
+    );
 
     dismissSheet();
     await sheetGone();
-    expect(document.querySelectorAll(".shot-list-item--washing")).toHaveLength(0);
+    expect(document.querySelectorAll(".shot-list-item--washing")).toHaveLength(
+      0,
+    );
   });
 
   it("moves the wash to the newest row without recreating the older one", async () => {
@@ -2576,7 +2860,9 @@ describe("the post-log wash", () => {
     const rows = [...document.querySelectorAll(".shot-list-item")];
     expect(rows).toContain(first); // same node, not rebuilt
     expect(first.className).not.toContain("shot-list-item--washing");
-    expect(document.querySelectorAll(".shot-list-item--washing")).toHaveLength(1);
+    expect(document.querySelectorAll(".shot-list-item--washing")).toHaveLength(
+      1,
+    );
   });
 
   it("retires on its own animation end, not on a timer", async () => {
@@ -2584,9 +2870,11 @@ describe("the post-log wash", () => {
     await logAShot();
     const row = document.querySelector(".shot-list-item--washing")!;
 
-    endAnimation(row, "shot-wash");
+    endAnimation(row, "row-wash");
 
-    expect(document.querySelectorAll(".shot-list-item--washing")).toHaveLength(0);
+    expect(document.querySelectorAll(".shot-list-item--washing")).toHaveLength(
+      0,
+    );
   });
 
   it("ignores an animationend that isn't the wash", async () => {
@@ -2597,7 +2885,9 @@ describe("the post-log wash", () => {
 
     endAnimation(row, "some-other-animation");
 
-    expect(document.querySelectorAll(".shot-list-item--washing")).toHaveLength(1);
+    expect(document.querySelectorAll(".shot-list-item--washing")).toHaveLength(
+      1,
+    );
   });
 
   it("does not replay after leaving Home and coming back", async () => {
@@ -2610,6 +2900,8 @@ describe("the post-log wash", () => {
     goTo("History");
     goTo("Home");
 
-    expect(document.querySelectorAll(".shot-list-item--washing")).toHaveLength(0);
+    expect(document.querySelectorAll(".shot-list-item--washing")).toHaveLength(
+      0,
+    );
   });
 });

@@ -773,11 +773,22 @@ select {
 }
 
 .manage-row {
+  /* Anchors the wash overlay in ::after — see the acknowledgement block. */
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0.6rem;
   padding: 0.6rem 0.15rem;
   border-bottom: 1px solid rgba(31, 41, 55, 0.7);
+}
+
+.manage-row--washing::after {
+  /* `border-radius: inherit` resolves to 0 here — the row is divided by borders
+     rather than shaped — so the tint would butt hard against the dividers above
+     and below. Rounded and inset a little, it reads as a highlight ON the row
+     rather than a band between two others. */
+  border-radius: 6px;
+  inset: 1px 0;
 }
 
 .manage-row:last-child {
@@ -1829,7 +1840,7 @@ select {
 
    Animating opacity also keeps this on the compositor instead of repainting the
    gradient 60 times a second. */
-@keyframes shot-wash {
+@keyframes row-wash {
   0%,
   20% {
     opacity: 1;
@@ -1839,7 +1850,10 @@ select {
   }
 }
 
-.shot-list-item--washing::after {
+/* Both row types, one block: the hold, the timing and the fill mode are the
+   acknowledgement itself, and a second copy is a second thing to drift. */
+.shot-list-item--washing::after,
+.manage-row--washing::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -1852,7 +1866,7 @@ select {
      tint and held there until React's onAnimationEnd re-render dropped the
      class a frame or more later. The last thing you saw was a green flash,
      which is the exact opposite of a fade. */
-  animation: shot-wash 2200ms ease-out forwards;
+  animation: row-wash 2200ms ease-out forwards;
   /* Animation events from a pseudo-element are dispatched to the originating
      element, so the row's onAnimationEnd still hears this and can retire the
      state that armed it. */
@@ -1864,7 +1878,7 @@ select {
    Dropping the animation entirely would leave the row tinted forever, because
    nothing would ever tell React the wash was over. */
 @media (prefers-reduced-motion: reduce) {
-  @keyframes shot-wash {
+  @keyframes row-wash {
     0% {
       opacity: 1;
     }
@@ -1873,12 +1887,13 @@ select {
     }
   }
 
-  .shot-list-item--washing::after {
+  .shot-list-item--washing::after,
+  .manage-row--washing::after {
     /* `forwards` again, and it has to be repeated: this is the `animation`
        SHORTHAND, so it resets fill-mode to `none` and would reintroduce the
        revert-to-opacity-1 above. Here the last keyframe is the held tint, so
        forwards simply keeps it until the class goes. */
-    animation: shot-wash 2200ms step-end forwards;
+    animation: row-wash 2200ms step-end forwards;
   }
 }
 
