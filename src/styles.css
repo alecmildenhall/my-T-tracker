@@ -325,6 +325,17 @@ textarea {
    `padding-inline`, never `padding`: `min-height: 44px` is the touch target and
    must not move, and this row is the only place chips are competing for width —
    the reuse chips on the log form wrap freely and are left alone. */
+/* The free-entry box wraps under the chips at phone widths, and the 0.35rem
+   flex gap that reads as fine BETWEEN chips reads as cramped between a chip and
+   a text box — a box has its own border and 44px height, so the two edges sit
+   almost touching. Row gap only; the horizontal gap is what the measured
+   padding above is fighting for. The bottom margin does the same job for
+   whatever control follows the row (the shot-day select, in Settings). */
+.suggestion-chips--tight {
+  row-gap: 0.6rem;
+  margin-block-end: 0.35rem;
+}
+
 .suggestion-chips--tight .chip {
   /* 0.5rem, arrived at by measuring rather than taste: at 320px the row needed
      243.3px and had 227.8px, so 15.5px across six padding edges — 2.6px each.
@@ -553,6 +564,29 @@ select {
   gap: 0.7rem;
 }
 
+/* A question and its hint, grouped so the hint is nearer the control it
+   describes than the next question — at the card's 0.7rem gap an ungrouped hint
+   sits equidistant between the two and reads as belonging to either. The hint
+   is a SIBLING of the label, never inside it: text inside a <label> joins the
+   field's accessible name, so `aria-describedby` is how it reaches assistive
+   tech (the same rule the log sheet's date error follows). */
+.first-shot-card__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.first-shot-card__field .field-hint {
+  margin-bottom: 0;
+}
+
+.first-shot-card__intro {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
 .first-shot-card__title {
   margin: 0;
   font-size: 1.05rem;
@@ -671,6 +705,36 @@ select {
 
 .field-hint:last-child {
   margin-bottom: 0;
+}
+
+/* Marks the MINORITY. The log sheet has one required field and ten optional
+   ones, so tagging the one is the signal and tagging the ten would be noise —
+   see the note in ShotForm. The word carries it, not the colour (WCAG 1.4.1). */
+/* A label and its "Required" flag on one line. The label cannot wrap its input
+   here (the flag has to stay out of the accessible name — see ShotForm), so
+   this row stands in for the wrapping label's own layout. */
+.field-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+}
+
+/* The global `label` is `flex: 1 1 0` so it fills a form row; as an item in
+   this row that stretches it and pushes the flag to the far edge. */
+.field-head > label {
+  flex: 0 0 auto;
+}
+
+.field-flag {
+  /* Sized explicitly, and smaller than the 0.8rem label. It is a SIBLING of the
+     label rather than inside it, so it inherits the body's 1rem instead — which
+     rendered "Required" larger and brighter than "Date" and read as the field's
+     name. A qualifier has to be subordinate to the thing it qualifies. */
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #94a3b8;
 }
 
 .field-error {

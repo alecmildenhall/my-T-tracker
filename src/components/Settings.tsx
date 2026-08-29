@@ -33,10 +33,11 @@ export const Settings: React.FC = () => {
         >
           Your journey
         </h2>
+        {/* Says "optional" ONCE, for the panel — it used to say it twice here
+            and again under two of the four fields below. */}
         <p className="settings-section__desc">
-          Optionally add when you started T and how you&apos;d like to be
-          addressed, so the app can celebrate your milestones. Both are optional
-          and stay on this device.
+          Your name, when you started T, and the rhythm you take it on. All
+          optional, and all stored only on this device.
         </p>
         <JourneySettings headingRef={journeyHeadingRef} />
       </div>

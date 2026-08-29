@@ -196,11 +196,11 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
           onChange={(e) => setPreferredName(e.target.value || undefined)}
           placeholder="e.g. Lou"
           autoComplete="off"
+          aria-describedby="journey-name-hint"
         />
       </label>
-      <p className="field-hint">
-        Only used to personalize milestone messages, and only ever stored on
-        this device. Leave blank to skip.
+      <p className="field-hint" id="journey-name-hint">
+        Only used to say hello, in greetings and milestone messages.
       </p>
 
       <label className="form-column">
@@ -209,6 +209,7 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
           ref={dateFieldRef}
           type="date"
           value={dateDraft}
+          aria-describedby="journey-start-hint"
           // Deliberately UNBOUNDED, unlike the log sheet's date. Any real
           // calendar date is accepted: a start date is a fact about someone's
           // life that they are reporting, and we have no standing to tell them
@@ -284,10 +285,10 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
           Remove start date
         </button>
       )}
-      <p className="field-hint">
-        Used to celebrate milestones, like your first year on T. If you started
-        before installing the app, enter that date — it still counts. Planning
-        to start later? A future date works too.
+      <p className="field-hint" id="journey-start-hint">
+        Marks milestones along the way, like your first year on T. Dates before
+        you installed the app count, and a future one works if you’re planning
+        ahead.
       </p>
 
       <label className="form-column">
@@ -342,6 +343,7 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
         <select
           value={profile.shotDay ?? ""}
           disabled={shotDayUnavailable}
+          aria-describedby="interval-hint"
           onChange={(e) =>
             setShotDay(isWeekday(e.target.value) ? e.target.value : undefined)
           }
@@ -354,9 +356,14 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
           ))}
         </select>
       </label>
+      {/* No "both optional" here: the section description above says it once
+          for the whole panel, and it was being said three times on one screen.
+          No "weekly is 7, fortnightly is 14" either — the chips beside the box
+          are labelled by span for exactly that reason, so the gloss now
+          restates them in the one word we decided not to use. */}
       <p className="field-hint" id="interval-hint">
-        Both optional — fill them in and you can track how on time your shots
-        are. Weekly is 7, fortnightly is 14.
+        Fill both in and you can track how on time your shots are, and see how
+        that lines up with how you’ve been feeling.
       </p>
     </div>
   );

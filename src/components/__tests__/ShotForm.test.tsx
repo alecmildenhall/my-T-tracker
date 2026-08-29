@@ -1381,3 +1381,37 @@ describe("ShotForm — the planned date", () => {
     expect(ref.current!.plannedFor).toBe("2026-07-29");
   });
 });
+
+describe("ShotForm required/optional marking", () => {
+  // The form is one required field in eleven, so it marks the ONE rather than
+  // tagging the ten — the sentence covers the rest. Both halves are pinned
+  // here because either alone is a half-measure: the attribute without the
+  // word is invisible, and the word without the attribute is decoration.
+  it("marks the date required in both registers, without renaming the field", () => {
+    render(<ShotForm onAddShot={vi.fn()} shots={[]} />);
+
+    // The visible word, for everyone reading the form.
+    expect(screen.getByText("Required")).toBeInTheDocument();
+    // The machine-readable half, which is what assistive tech announces.
+    expect(screen.getByLabelText("Date")).toBeRequired();
+
+    // And the word must stay OUT of the accessible name. Nesting it inside the
+    // <label> is the natural way to write this and names the field "Date
+    // Required", which screen readers then read as "Date Required, required".
+    // jsdom computes the name from the label's text content, so this asserts on
+    // the same thing it does; the browser's own a11y tree was checked separately.
+    const label = document.querySelector<HTMLLabelElement>(
+      'label[for="shot-date-field"]',
+    );
+    expect(label).not.toBeNull();
+    expect(label!.textContent).toBe("Date");
+  });
+
+  it("says once that everything else is optional, rather than per field", () => {
+    render(<ShotForm onAddShot={vi.fn()} shots={[]} />);
+
+    expect(screen.getByText(/only the date is needed/i)).toBeInTheDocument();
+    // The counterpart of the rule above: no field carries an "(optional)" tag.
+    expect(screen.queryByText(/\(optional\)/i)).toBeNull();
+  });
+});

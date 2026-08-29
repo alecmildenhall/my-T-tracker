@@ -178,44 +178,68 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
   return (
     <section className="first-shot-card">
       <h2 className="first-shot-card__title">Before your first shot</h2>
+      {/* The "it's all optional" line leads, rather than closing the card.
+          Marking every field individually is what you do when SOME are
+          required — here none are, so one sentence at the top says it once for
+          all four, and there is nothing left for a footer to repeat. It also
+          has to be read BEFORE the questions to do its job: a reassurance
+          underneath four fields arrives after the moment someone decides
+          whether they are obliged to answer them. */}
+      <p className="first-shot-card__intro">
+        All optional — skip it and log a shot if you like. Everything here also
+        lives in Settings, so you can add or change any of it later.
+      </p>
 
-      <label className="form-column">
-        What should the app call you?
-        <input
-          type="text"
-          value={profile.preferredName ?? ""}
-          onChange={(e) => setPreferredName(e.target.value || undefined)}
-          placeholder="Your name, or anything you like"
-          autoComplete="off"
-        />
-      </label>
+      <div className="first-shot-card__field">
+        <label className="form-column">
+          What should the app call you?
+          <input
+            type="text"
+            value={profile.preferredName ?? ""}
+            onChange={(e) => setPreferredName(e.target.value || undefined)}
+            placeholder="Your name, or anything you like"
+            autoComplete="off"
+            aria-describedby="first-shot-name-hint"
+          />
+        </label>
+        <p className="field-hint" id="first-shot-name-hint">
+          Only used to say hello.
+        </p>
+      </div>
 
-      <label className="form-column">
-        When did you start T?
-        {/* Deliberately UNBOUNDED, and validated with `isRealDate` rather than
-            `toShotDate` — matching the same field in Settings. This is a fact
-            about someone's life, not a shot: civilDate.ts's own header says the
-            shot range must not be applied here, and the README supports setting
-            a future date to plan ahead. Bounding it here meant one field with
-            two boundaries, where a start date more than a year out was silently
-            reverted in this card and accepted in Settings. */}
-        <input
-          type="date"
-          value={startDraft}
-          onChange={(e) => setStartDraft(e.target.value)}
-          onBlur={() => {
-            if (startDraft.trim() === "") {
-              setStartDate(undefined);
-            } else if (isRealDate(startDraft)) {
-              setStartDate(startDraft);
-            } else {
-              setStartDraft(profile.startDate ?? "");
-            }
-          }}
-        />
-      </label>
+      <div className="first-shot-card__field">
+        <label className="form-column">
+          When did you start T?
+          {/* Deliberately UNBOUNDED, and validated with `isRealDate` rather than
+              `toShotDate` — matching the same field in Settings. This is a fact
+              about someone's life, not a shot: civilDate.ts's own header says the
+              shot range must not be applied here, and the README supports setting
+              a future date to plan ahead. Bounding it here meant one field with
+              two boundaries, where a start date more than a year out was silently
+              reverted in this card and accepted in Settings. */}
+          <input
+            type="date"
+            value={startDraft}
+            aria-describedby="first-shot-start-hint"
+            onChange={(e) => setStartDraft(e.target.value)}
+            onBlur={() => {
+              if (startDraft.trim() === "") {
+                setStartDate(undefined);
+              } else if (isRealDate(startDraft)) {
+                setStartDate(startDraft);
+              } else {
+                setStartDraft(profile.startDate ?? "");
+              }
+            }}
+          />
+        </label>
+        <p className="field-hint" id="first-shot-start-hint">
+          Marks milestones along the way, like your first year on T. A date from
+          before you installed the app counts just the same.
+        </p>
+      </div>
 
-      <div className="form-column">
+      <div className="first-shot-card__field">
         <span className="first-shot-card__label">
           How often do you take it?
         </span>
@@ -251,6 +275,7 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
               value={intervalDraft}
               onChange={(e) => setIntervalDraft(e.target.value)}
               onBlur={commitInterval}
+              aria-describedby="first-shot-cadence-hint"
             />
           </label>
         </div>
@@ -263,29 +288,36 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
         </p>
       )}
 
-      <label className="form-column">
-        Which day do you usually take it?
-        <select
-          ref={shotDaySelectRef}
-          value={profile.shotDay ?? ""}
-          disabled={shotDayUnavailable}
-          onChange={(e) =>
-            setShotDay(isWeekday(e.target.value) ? e.target.value : undefined)
-          }
-        >
-          <option value="">No shot day</option>
-          {WEEKDAYS.map((day) => (
-            <option key={day} value={day}>
-              {weekdayLabel(day)}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <p className="field-hint">
-        All optional, and all editable any time in Settings. Fill in how often
-        and which day, and you can track how on time your shots are.
-      </p>
+      <div className="first-shot-card__field">
+        <label className="form-column">
+          Which day do you usually take it?
+          <select
+            ref={shotDaySelectRef}
+            value={profile.shotDay ?? ""}
+            disabled={shotDayUnavailable}
+            aria-describedby="first-shot-cadence-hint"
+            onChange={(e) =>
+              setShotDay(isWeekday(e.target.value) ? e.target.value : undefined)
+            }
+          >
+            <option value="">No shot day</option>
+            {WEEKDAYS.map((day) => (
+              <option key={day} value={day}>
+                {weekdayLabel(day)}
+              </option>
+            ))}
+          </select>
+        </label>
+        {/* Describes the PAIR, and both controls point at it — the sentence is
+            about what the two together buy you, and neither one alone earns it.
+            Written as though the charts exist, which they will by the time this
+            matters; hedging it into "coming soon" would give someone no reason
+            to answer today. */}
+        <p className="field-hint" id="first-shot-cadence-hint">
+          Fill both in and you can track how on time your shots are, and see how
+          that lines up with how you’ve been feeling.
+        </p>
+      </div>
 
       {/* A returning user and a new one land on the same empty screen needing
           opposite things, and this one is protective rather than convenient:

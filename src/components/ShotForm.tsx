@@ -771,34 +771,60 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       </div>
 
       <div className="shot-form__scroll">
+        {/* Marks the MINORITY, which here is the required field rather than the
+            optional ones. Baymard's checkout research recommends marking BOTH
+            explicitly, because unmarked fields make people guess — but their
+            forms are mostly required, and this one is one-in-eleven. Tagging
+            ten fields "(optional)" would put the noise on every field to
+            disambiguate one, and the guess it protects against fails safe here:
+            assume wrongly that dose is required and you fill in a dose, where
+            assuming wrongly that a checkout field is optional blocks the order.
+            So: one sentence for the ten, an explicit flag on the one. */}
+        <p className="field-hint">
+          Only the date is needed — fill in as much or as little of the rest as
+          is useful to you.
+        </p>
         <div className="form-row">
           {/* The error is a SIBLING of the label, never inside it: text inside a
             <label> becomes part of the field's accessible name, so an error
             message there would rename the field to "Date <the whole error>".
             aria-describedby is how it reaches assistive tech. */}
           <div className="field-cell">
-            <label>
-              Date
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => {
-                  setDate(e.target.value);
-                  // Nothing to record here: the baseline already says what
-                  // "untouched" means, so the comparison below answers it.
-                  if (dateError) setDateError(null);
-                }}
-                required
-                // Keeps the native picker inside the range the form will accept,
-                // so a mistyped year is harder to produce in the first place.
-                // These are a hint, not the check — the form carries `noValidate`
-                // and `toShotDate` is what actually decides. See shotDateRange.
-                min={dateRange.min}
-                max={dateRange.max}
-                aria-invalid={dateError ? true : undefined}
-                aria-describedby={dateError ? "date-error" : undefined}
-              />
-            </label>
+            {/* The flag is a SIBLING of the label, for the same reason the
+                error below is: text inside a <label> joins the field's
+                accessible name, so nesting it names the field "Date Required"
+                and screen readers then say "Date Required, required" — the
+                `required` attribute already carries that. Hence `htmlFor`
+                rather than wrapping, which is also why the accessible name
+                stays exactly "Date". The visible word is for everyone else, and
+                it is the word rather than an asterisk or a colour so that it
+                survives being read literally (WCAG 1.4.1). */}
+            <div className="field-head">
+              <label htmlFor="shot-date-field">Date</label>
+              <span className="field-flag" aria-hidden="true">
+                Required
+              </span>
+            </div>
+            <input
+              id="shot-date-field"
+              type="date"
+              value={date}
+              onChange={(e) => {
+                setDate(e.target.value);
+                // Nothing to record here: the baseline already says what
+                // "untouched" means, so the comparison below answers it.
+                if (dateError) setDateError(null);
+              }}
+              required
+              // Keeps the native picker inside the range the form will accept,
+              // so a mistyped year is harder to produce in the first place.
+              // These are a hint, not the check — the form carries `noValidate`
+              // and `toShotDate` is what actually decides. See shotDateRange.
+              min={dateRange.min}
+              max={dateRange.max}
+              aria-invalid={dateError ? true : undefined}
+              aria-describedby={dateError ? "date-error" : undefined}
+            />
             {dateError && (
               <span id="date-error" className="field-error" role="alert">
                 {dateError}
