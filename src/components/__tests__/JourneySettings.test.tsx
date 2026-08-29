@@ -356,14 +356,14 @@ describe("JourneySettings — how often", () => {
 
   it("fills the field from a quick pick", () => {
     renderPanel();
-    fireEvent.click(screen.getByRole("button", { name: "Weekly" }));
+    fireEvent.click(screen.getByRole("button", { name: "1 week" }));
     expect(intervalField().value).toBe("7");
     expect(stored().intervalDays).toBe(7);
   });
 
   it("clearing the field removes the interval rather than storing zero", () => {
     renderPanel();
-    fireEvent.click(screen.getByRole("button", { name: "Fortnightly" }));
+    fireEvent.click(screen.getByRole("button", { name: "2 weeks" }));
     fireEvent.change(intervalField(), { target: { value: "" } });
     fireEvent.blur(intervalField());
     expect(stored().intervalDays).toBeUndefined();
@@ -371,7 +371,7 @@ describe("JourneySettings — how often", () => {
 
   it("refuses a value the schedule cannot use, and shows what is saved", () => {
     renderPanel();
-    fireEvent.click(screen.getByRole("button", { name: "Weekly" }));
+    fireEvent.click(screen.getByRole("button", { name: "1 week" }));
     fireEvent.change(intervalField(), { target: { value: "0" } });
     fireEvent.blur(intervalField());
     expect(stored().intervalDays).toBe(7);

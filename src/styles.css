@@ -318,6 +318,20 @@ textarea {
   color: #e0f2fe;
 }
 
+/* The cadence row only. Three chips plus the free-entry box do not fit on one
+   line at 320px — measured: "1 week / 2 weeks" wrapped, leaving "12 weeks" on a
+   line of its own and costing 44px on a card that already scrolls at that
+   width. Trimming the horizontal padding alone buys the ~14px needed.
+   `padding-inline`, never `padding`: `min-height: 44px` is the touch target and
+   must not move, and this row is the only place chips are competing for width —
+   the reuse chips on the log form wrap freely and are left alone. */
+.suggestion-chips--tight .chip {
+  /* 0.5rem, arrived at by measuring rather than taste: at 320px the row needed
+     243.3px and had 227.8px, so 15.5px across six padding edges — 2.6px each.
+     0.7rem was tried first and still wrapped. This leaves ~4px spare. */
+  padding-inline: 0.5rem;
+}
+
 .suggestion-chips .chip:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;

@@ -26,19 +26,34 @@ import {
 } from "../types/profile";
 
 /**
- * The cadences worth a shortcut.
+ * The cadences worth a shortcut, labelled by their span rather than by a name.
  *
- * Fortnightly is here on evidence rather than taste. UCSF's masculinising
- * therapy guidance and the gender-affirming clinics describe testosterone as
- * taken "every week or every other week", with intramuscular routinely 100–200mg
- * every 1–2 weeks and "200mg once every two weeks" named as a common primary-care
- * default. Weekly is more common, especially subcutaneous, but every-other-week
- * is a mainstream protocol rather than an edge case — dropping it would cost a
- * chunk of users two taps for no gain.
+ * "Fortnightly" is British and lands blankly on a lot of readers; "biweekly" is
+ * worse, because it genuinely means both "every two weeks" and "twice a week"
+ * and the dictionaries record both. Numbers are unambiguous in every dialect,
+ * and reading "1 week / 2 weeks / 12 weeks" as a set makes the axis obvious at
+ * a glance in a way "Weekly / Fortnightly" does not.
+ *
+ * All three are on evidence:
+ *   - 7 — weekly, the most common, especially subcutaneous.
+ *   - 14 — every other week. UCSF's masculinising guidance and the clinics
+ *     describe testosterone as "every week or every other week", with
+ *     intramuscular routinely 100–200mg every 1–2 weeks and "200mg once every
+ *     two weeks" a common primary-care default.
+ *   - 84 — testosterone undecanoate (Nebido, Aveed). Nebido is 12-weekly after
+ *     loading; the measured optimal interval in hypogonadal and transgender men
+ *     has a median of 12.0 weeks. Someone on this injects four or five times a
+ *     year, so typing 84 is a thing they would otherwise do rarely and get
+ *     wrong.
+ *
+ * Every one is a multiple of 7, so all three keep the weekday grid working.
+ * Twice-weekly is the notable absence and cannot be expressed at all — it is
+ * every 3.5 days, and the interval is whole days. See the roadmap.
  */
 const QUICK_PICKS = [
-  { label: "Weekly", days: 7 },
-  { label: "Fortnightly", days: 14 },
+  { label: "1 week", days: 7 },
+  { label: "2 weeks", days: 14 },
+  { label: "12 weeks", days: 84 },
 ];
 
 interface FirstShotCardProps {
@@ -140,7 +155,7 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
           How often do you take it?
         </span>
         <div
-          className="suggestion-chips"
+          className="suggestion-chips suggestion-chips--tight"
           role="group"
           aria-label="How often you take your shot"
         >

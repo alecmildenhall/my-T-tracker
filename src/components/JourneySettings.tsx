@@ -14,10 +14,11 @@ import {
 } from "../types/profile";
 import { handOffFocus } from "../utils/focus";
 
-/** The cadences almost everyone is on. */
+/** Kept in step with the first-run card, which carries the reasoning. */
 const COMMON_INTERVALS = [
-  { label: "Weekly", days: 7 },
-  { label: "Fortnightly", days: 14 },
+  { label: "1 week", days: 7 },
+  { label: "2 weeks", days: 14 },
+  { label: "12 weeks", days: 84 },
 ] as const;
 
 interface JourneySettingsProps {
@@ -272,7 +273,7 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
       {/* The two cadences almost everyone is on, so most people never type a
           number. Same chip pattern as the log form's reuse values. */}
       <div
-        className="suggestion-chips"
+        className="suggestion-chips suggestion-chips--tight"
         role="group"
         aria-label="Common intervals"
       >
