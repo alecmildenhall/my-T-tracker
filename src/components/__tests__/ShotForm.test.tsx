@@ -1284,7 +1284,9 @@ describe("ShotForm — the planned date", () => {
     // NO planned date, silently (the field is not rendered on a new shot) and
     // unrecoverably by this feature's own design. Measured: a normal save gave
     // a date, one after clearing gave undefined.
-    const onAddShot = vi.fn((_s: ShotEntry): SaveOutcome => "saved");
+    const onAddShot = vi.fn((shot: ShotEntry): SaveOutcome =>
+      shot ? "saved" : "ignored",
+    );
     render(<ShotForm onAddShot={onAddShot} shots={[]} profile={grid} />);
     fireEvent.change(screen.getByPlaceholderText(/remember for later/i), {
       target: { value: "something to clear" },
@@ -1327,6 +1329,35 @@ describe("ShotForm — the planned date", () => {
       />,
     );
     expect(planned().value).toBe("");
+  });
+
+  it("does not refill a planned date the user removed and saved", () => {
+    // The `||` fallback was fixed once for the parked-draft path and left on
+    // the other, which is the same bug reported twice. A shot whose planned
+    // date was deliberately cleared and SAVED came back refilled from today's
+    // computation: the form read clean, so ✕ dismissed with no confirm, and
+    // Save re-froze the value that had been removed. It also quietly attached a
+    // today's-cadence planned date to any pre-cadence shot opened to fix a typo.
+    //
+    // "This shot has no planned date" is indistinguishable from "logged before
+    // there was a cadence", so an edit takes the record verbatim and the app
+    // guesses between them not at all.
+    const onUpdateShot = vi.fn((shot: ShotEntry): SaveOutcome =>
+      shot ? "saved" : "ignored",
+    );
+    render(
+      <ShotForm
+        onAddShot={() => "saved" as const}
+        onUpdateShot={onUpdateShot}
+        editingShot={{ id: "a", date: "2026-08-12" }}
+        shots={[{ id: "a", date: "2026-08-12" }]}
+        profile={grid}
+      />,
+    );
+    expect(planned().value).toBe("");
+
+    fireEvent.click(screen.getByRole("button", { name: /Update shot/i }));
+    expect(onUpdateShot.mock.calls[0]?.[0]?.plannedFor).toBeUndefined();
   });
 
   it("counts an edited planned date as unsaved input", () => {

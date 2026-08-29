@@ -19,7 +19,7 @@ import { useProfileContext } from "../context/ProfileContext";
 import { WEEKDAYS, isWeekday, weekdayLabel } from "../utils/weekday";
 import { isWeeklyMultiple } from "../utils/schedule";
 import { handOffFocus } from "../utils/focus";
-import { toShotDate, shotDateRange } from "../utils/civilDate";
+import { isRealDate } from "../utils/civilDate";
 import {
   isValidIntervalDays,
   MIN_INTERVAL_DAYS,
@@ -72,7 +72,6 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
     setPreferredName,
     setStartDate,
   } = useProfileContext();
-  const dateRange = shotDateRange();
 
   /**
    * ONE draft for the interval, which both the chips and the box write to.
@@ -91,7 +90,11 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
   const commitInterval = () => {
     const trimmed = intervalDraft.trim();
     if (trimmed === "") {
-      setIntervalDays(undefined);
+      // Guarded like the branch below: setIntervalDays also clears the schedule
+      // anchor, and this commit runs from an effect cleanup — so every
+      // navigation away wrote the profile, and on a quota-exhausted device
+      // raised the storage-failure banner for something nobody edited.
+      if (profile.intervalDays !== undefined) setIntervalDays(undefined);
       return;
     }
     const parsed = Number(trimmed);
@@ -122,7 +125,7 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
   useEffect(() => {
     commitAllRef.current = () => {
       commitInterval();
-      if (startDraft.trim() !== "" && toShotDate(startDraft)) {
+      if (startDraft.trim() !== "" && isRealDate(startDraft)) {
         setStartDate(startDraft);
       }
     };
@@ -156,8 +159,16 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
     isValidIntervalDays(profile.intervalDays) &&
     !isWeeklyMultiple(profile.intervalDays);
 
+  // Only on the false -> true EDGE. Without the ref this also ran on MOUNT,
+  // where `document.activeElement` is `<body>` by definition — so anyone with a
+  // non-weekly interval already saved and no shots yet had focus yanked into
+  // the number box the instant Home painted, scrolling the page and raising a
+  // numeric keyboard nobody asked for.
+  const wasUnavailable = useRef(shotDayUnavailable);
   useEffect(() => {
-    if (!shotDayUnavailable) return;
+    const justDisabled = shotDayUnavailable && !wasUnavailable.current;
+    wasUnavailable.current = shotDayUnavailable;
+    if (!justDisabled) return;
     const active = document.activeElement;
     if (active === document.body || active === shotDaySelectRef.current) {
       handOffFocus(intervalRef);
@@ -181,16 +192,21 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
 
       <label className="form-column">
         When did you start T?
+        {/* Deliberately UNBOUNDED, and validated with `isRealDate` rather than
+            `toShotDate` — matching the same field in Settings. This is a fact
+            about someone's life, not a shot: civilDate.ts's own header says the
+            shot range must not be applied here, and the README supports setting
+            a future date to plan ahead. Bounding it here meant one field with
+            two boundaries, where a start date more than a year out was silently
+            reverted in this card and accepted in Settings. */}
         <input
           type="date"
           value={startDraft}
-          min={dateRange.min}
-          max={dateRange.max}
           onChange={(e) => setStartDraft(e.target.value)}
           onBlur={() => {
             if (startDraft.trim() === "") {
               setStartDate(undefined);
-            } else if (toShotDate(startDraft)) {
+            } else if (isRealDate(startDraft)) {
               setStartDate(startDraft);
             } else {
               setStartDraft(profile.startDate ?? "");

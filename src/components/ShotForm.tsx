@@ -200,6 +200,32 @@ interface ShotFormProps {
   liveDraftRef?: React.RefObject<ShotDraft | null>;
 }
 
+/**
+ * What the planned-date field starts with — three cases, one meaning each.
+ *
+ * The `||` chain this replaces was fixed once for the draft branch and left in
+ * place on the other, which is the same bug reported twice: `opened.plannedFor`
+ * is `initial.plannedFor ?? ""`, so a shot whose planned date the user
+ * deliberately cleared and saved came back refilled from today's computation —
+ * the form read clean, ✕ dismissed with no confirm, and Save re-froze the value
+ * they had removed. It also quietly attached a today's-cadence planned date to
+ * any pre-cadence shot merely opened to fix a typo.
+ *
+ * An edit takes the record VERBATIM, with no fallback: "this shot has no
+ * planned date" is a real state and indistinguishable from "logged before there
+ * was a cadence", so the app must not guess between them. Only a NEW shot —
+ * where the field is not even rendered — gets the computed value.
+ */
+function initialPlanned(
+  draft: ShotDraft | null | undefined,
+  editingShot: ShotEntry | null | undefined,
+  computed: string | undefined,
+): string {
+  if (draft) return draft.plannedFor;
+  if (editingShot) return editingShot.plannedFor ?? "";
+  return computed ?? "";
+}
+
 export const ShotForm: React.FC<ShotFormProps> = ({
   profile = {},
   onAnchorEstablished,
@@ -320,7 +346,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   // ShotDraft.plannedFor was added to carry. Whether a draft exists is the
   // question; the value inside it is taken verbatim.
   const [plannedDraft, setPlannedDraft] = useState<string>(
-    draft ? draft.plannedFor : opened.plannedFor || plan.plannedFor || "",
+    initialPlanned(draft, editingShot, plan.plannedFor),
   );
   /** The shot date `plannedBaseline` was worked out for. */
   const [plannedForDate, setPlannedForDate] = useState<string>(start.date);
@@ -344,7 +370,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   const [plannedBaseline, setPlannedBaseline] = useState<string>(
     draft
       ? draft.plannedBaseline
-      : opened.plannedBaseline || plan.plannedFor || "",
+      : initialPlanned(undefined, editingShot, plan.plannedFor),
   );
   const computed = plan.plannedFor ?? "";
   // Change the shot's date and an untouched planned date follows it; an edited

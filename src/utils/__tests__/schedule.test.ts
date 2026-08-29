@@ -3,6 +3,7 @@ import {
   addDaysCivil,
   scheduleMode,
   plannedDateRolling,
+  previousShotDateBefore,
   snapToWeekday,
   establishAnchor,
   plannedDateFor,
@@ -436,5 +437,45 @@ describe("daysFromPlanned", () => {
 
   it("is null rather than NaN for an unparseable pair", () => {
     expect(daysFromPlanned({ date: "nope", plannedFor: WED })).toBeNull();
+  });
+});
+
+describe("previousShotDateBefore", () => {
+  it("treats a shot on the SAME day as the one before this one", () => {
+    // `>=` skipped it and reached past to the shot before that, freezing a
+    // planned date measured from the wrong reference. Two entries on one day is
+    // a plausible mis-log, and the value is frozen — only a hand edit repairs it.
+    expect(
+      previousShotDateBefore("2026-08-12", [
+        { id: "old", date: "2026-08-05" },
+        { id: "same", date: "2026-08-12" },
+      ]),
+    ).toBe("2026-08-12");
+  });
+
+  it("never lets the shot being edited be its own predecessor", () => {
+    expect(
+      previousShotDateBefore(
+        "2026-08-12",
+        [
+          { id: "old", date: "2026-08-05" },
+          { id: "self", date: "2026-08-12" },
+        ],
+        "self",
+      ),
+    ).toBe("2026-08-05");
+  });
+
+  it("ignores anything after the shot being saved", () => {
+    expect(
+      previousShotDateBefore("2026-08-12", [
+        { id: "later", date: "2026-08-19" },
+        { id: "earlier", date: "2026-08-05" },
+      ]),
+    ).toBe("2026-08-05");
+  });
+
+  it("is undefined for the first shot on record", () => {
+    expect(previousShotDateBefore("2026-08-12", [])).toBeUndefined();
   });
 });

@@ -373,7 +373,13 @@ export function previousShotDateBefore(
 ): string | undefined {
   let best: string | undefined;
   for (const shot of shots) {
-    if (shot.id === exceptId || shot.date >= date) continue;
+    // `>`, not `>=`: a shot logged on the SAME civil date is still the one
+    // before this one. Skipping it reached past to the shot before that, and
+    // froze a planned date measured from the wrong reference — a plausible
+    // mis-log (two entries on one day) producing a wrong value that only a hand
+    // edit could repair. A shot cannot be its own predecessor because `exceptId`
+    // removes it, and a brand-new shot has no id in the list yet.
+    if (shot.id === exceptId || shot.date > date) continue;
     if (best === undefined || shot.date > best) best = shot.date;
   }
   return best;

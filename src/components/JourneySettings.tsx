@@ -61,7 +61,10 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
   const commitInterval = () => {
     const trimmed = intervalDraft.trim();
     if (trimmed === "") {
-      setIntervalDays(undefined);
+      // Guarded like the branch below — see FirstShotCard: this also clears the
+      // anchor and runs from an effect cleanup, so an unguarded call wrote the
+      // profile on every navigation away from Settings.
+      if (profile.intervalDays !== undefined) setIntervalDays(undefined);
       return;
     }
     const parsed = Number(trimmed);
@@ -159,10 +162,12 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
   // type 14 and switch apps without ever blurring the field, and silent loss is
   // the failure this app treats as severe. It had none — identical shape to the
   // date field above, none of its protection.
-  const intervalDraftRef = useRef(intervalDraft);
+  // Only the callback is held. The date field above also keeps a draft ref
+  // because its `commitIfReal` reads the raw string; `commitInterval` closes
+  // over its own draft, so a second ref here was written every render, read by
+  // nothing, and looked like protection it was not providing.
   const commitIntervalRef = useRef(() => {});
   useEffect(() => {
-    intervalDraftRef.current = intervalDraft;
     commitIntervalRef.current = commitInterval;
   });
   useEffect(() => {
