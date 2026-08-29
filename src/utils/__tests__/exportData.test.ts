@@ -174,6 +174,17 @@ describe("toCsv", () => {
     );
   });
 
+  it("leaves out a planned date the JSON backup would drop", () => {
+    // The two exports have to agree. sanitizeShots is deliberately lenient —
+    // it protects the shot, not each field — while pickShotFields drops an
+    // out-of-range plannedFor. Ungated, a hand-edited value was missing from
+    // the backup and present in the file a provider reads.
+    const csv = toCsv([shot({ plannedFor: "9999-01-01" })]);
+    expect(csv).not.toContain("9999-01-01");
+    const good = toCsv([shot({ plannedFor: "2026-08-05" })]);
+    expect(good).toContain("2026-08-05");
+  });
+
   it("uses CRLF line endings", () => {
     const csv = toCsv([shot({ doseMg: 50 })]);
     expect(csv).toContain("\r\n");

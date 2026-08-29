@@ -23,7 +23,7 @@
 // depends on any other shot's behaviour.** Anything with a link has a link an
 // error can travel down. So there is a fixed grid, and each shot is judged
 // against it alone.
-import { civilDateParts } from "./civilDate";
+import { civilDateParts, isShotDateInRange } from "./civilDate";
 import { weekdayOf, WEEKDAYS } from "./weekday";
 import { isValidIntervalDays } from "../types/profile";
 import type { Weekday } from "./weekday";
@@ -52,7 +52,14 @@ export function addDaysCivil(iso: string, days: number): string {
   const yyyy = String(shifted.getUTCFullYear()).padStart(4, "0");
   const mm = String(shifted.getUTCMonth() + 1).padStart(2, "0");
   const dd = String(shifted.getUTCDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
+  const result = `${yyyy}-${mm}-${dd}`;
+  // Perform, then verify — the pattern this codebase runs on. Padding fixed
+  // years 100–999 but not the ends: a year under 100 formats fine and is then
+  // rejected by `civilDateParts`, a negative year gives "00-1", and a year past
+  // 9999 gives five digits that fail CIVIL_DATE_RE. Rather than enumerate the
+  // ways the output can be unusable, hand it back through the same parser every
+  // consumer uses and return the input unchanged when it does not survive.
+  return civilDateParts(result) ? result : iso;
 }
 
 /**
@@ -107,7 +114,13 @@ export function establishAnchor(
   // guess that fails in both directions. So they get no planned dates, which is
   // the same answer this file gives to every other unknown.
   if (!isWeeklyMultiple(intervalDays)) return null;
-  return snapToWeekday(firstShotDate, shotDay);
+  const anchor = snapToWeekday(firstShotDate, shotDay);
+  // Snapping moves up to 3 days either way, so it can step outside the range
+  // every persistence boundary enforces — `establishAnchor("1900-01-01",
+  // "sunday", 7)` gives "1899-12-31". Those boundaries would each drop it
+  // silently, leaving the user with no planned dates and no explanation. The
+  // producer refuses instead of minting a value its consumers delete.
+  return anchor && isShotDateInRange(anchor) ? anchor : null;
 }
 
 /**
@@ -124,8 +137,12 @@ export function shotDayInEffect(profile: {
   intervalDays?: number;
 }): Weekday | undefined {
   if (!profile.shotDay) return undefined;
-  // No interval at all leaves shot day doing its original job: the greeting.
-  if (typeof profile.intervalDays !== "number") return profile.shotDay;
+  // An interval that is absent OR unusable leaves shot day doing its original
+  // job: the greeting. These two predicates used to disagree — `scheduleMode`
+  // treats an out-of-range interval as absent ("none") while this treated it as
+  // rolling and silently killed the greeting. For a garbage value the safe
+  // reading is "ignore it", not "act on it".
+  if (!isValidIntervalDays(profile.intervalDays)) return profile.shotDay;
   return isWeeklyMultiple(profile.intervalDays) ? profile.shotDay : undefined;
 }
 
@@ -239,31 +256,83 @@ export function plannedDateRolling(
   return planned === previousShotDate ? undefined : planned;
 }
 
+export interface PlanInput {
+  /** The date being saved. */
+  date: string;
+  /** The shot logged immediately before this one, if any — rolling mode's
+   *  reference. */
+  previousShotDate?: string;
+  /** The earliest shot on record, which a grid anchor is established from the
+   *  first time one is needed. */
+  earliestShotDate?: string;
+  profile: {
+    shotDay?: Weekday;
+    intervalDays?: number;
+    scheduleAnchor?: string;
+  };
+}
+
+export interface Plan {
+  /** Freeze this onto the shot. Absent when the settings answer no question. */
+  plannedFor?: string;
+  /** Set only when a grid anchor was established just now; the caller must
+   *  persist it to the profile, or the next save establishes a different one. */
+  anchorToPersist?: string;
+}
+
 /**
- * The planned date to freeze onto a shot being saved, or `undefined` when the
- * app has no business guessing one.
+ * The one entry point for "when was this shot meant to be", and deliberately
+ * the only place that decides.
  *
- * Takes the profile's frozen `scheduleAnchor` rather than working one out from
- * the shot list — see {@link establishAnchor} for why deriving it was a bug.
- * A caller with no anchor yet establishes one first and persists it.
+ * It recomputes the MODE on every save rather than trusting the frozen anchor,
+ * and that is not a nicety. The anchor is established once and frozen, so a user
+ * who set 7 days, logged shots, then switched to 10 kept a weekday-snapped
+ * anchor that no longer described anything: measured, a user injecting exactly
+ * every 10 days read "3 days before" on every shot, forever — the module
+ * header's own named failure, reached through the save path instead of the
+ * anchor path, because the weekly-multiple guard lived only in
+ * `establishAnchor`. Asking `scheduleMode` here makes that unreachable: the
+ * moment the interval stops being a whole number of weeks, the grid anchor
+ * stops being consulted at all.
  *
- * **Both settings are required and neither is defaulted.** No interval, no shot
- * day, or no anchor means no planned date at all — not a fallback, not a guess.
- * A default of 7 would be uniquely harmful because the value is *frozen*: a
- * fortnightly user who never opened Settings would accumulate months of shots
- * measured against a schedule they were never on, and correcting the setting
- * afterwards would repair none of them.
+ * Returning the anchor to persist rather than writing it keeps this pure, and
+ * keeps the decision in one function instead of split across the caller.
  */
-export function plannedDateOnSave(
-  actual: string,
-  anchor: string | undefined,
-  intervalDays: number | undefined,
-): string | undefined {
-  // `typeof`, not truthiness — CLAUDE.md forbids the latter on an optional
-  // number. Harmless only because 0 happens to be invalid today, which is
-  // exactly the reasoning that rule exists to stop.
-  if (!anchor || typeof intervalDays !== "number") return undefined;
-  return plannedDateFor(actual, anchor, intervalDays) ?? undefined;
+export function planShot({
+  date,
+  previousShotDate,
+  earliestShotDate,
+  profile,
+}: PlanInput): Plan {
+  const mode = scheduleMode(profile.shotDay, profile.intervalDays);
+  if (mode === "none" || typeof profile.intervalDays !== "number") return {};
+
+  if (mode === "rolling") {
+    // No anchor involved: the reference is the shot before this one, so a
+    // frozen anchor from an earlier weekly cadence cannot leak in.
+    return {
+      plannedFor: plannedDateRolling(previousShotDate, profile.intervalDays),
+    };
+  }
+
+  // Grid. `shotDay` is non-undefined here by scheduleMode's definition.
+  const existing = profile.scheduleAnchor;
+  if (existing) {
+    return {
+      plannedFor:
+        plannedDateFor(date, existing, profile.intervalDays) ?? undefined,
+    };
+  }
+  const anchor = establishAnchor(
+    earliestShotDate ?? date,
+    profile.shotDay!,
+    profile.intervalDays,
+  );
+  if (!anchor) return {};
+  return {
+    plannedFor: plannedDateFor(date, anchor, profile.intervalDays) ?? undefined,
+    anchorToPersist: anchor,
+  };
 }
 
 /**

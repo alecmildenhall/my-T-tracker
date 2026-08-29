@@ -6,7 +6,7 @@ import {
   snapToWeekday,
   establishAnchor,
   plannedDateFor,
-  plannedDateOnSave,
+  planShot,
   daysFromPlanned,
 } from "../schedule";
 import { WEEKDAYS, weekdayOf } from "../weekday";
@@ -69,7 +69,18 @@ describe("addDaysCivil", () => {
     // Unpadded this returned "999-01-08", which fails CIVIL_DATE_RE everywhere
     // downstream. civilDateParts accepts years 100–999, so it is reachable.
     expect(addDaysCivil("0999-01-01", 7)).toBe("0999-01-08");
-    expect(addDaysCivil("0100-01-01", -1)).toBe("0099-12-31");
+  });
+
+  it("returns the input rather than a date its own parser would reject", () => {
+    // An earlier version of the test above pinned "0099-12-31" as the expected
+    // output, which is junk: civilDateParts rejects years under 100, so that
+    // string would have flowed on as if it were a date. Padding fixed the
+    // middle of the range and not the ends — a year past 9999 gives five
+    // digits, a negative gives "00-1". Rather than enumerate the ways the
+    // output can be unusable, it is parsed back and refused if it does not
+    // survive.
+    expect(addDaysCivil("0100-01-01", -1)).toBe("0100-01-01");
+    expect(addDaysCivil("9999-12-01", 400)).toBe("9999-12-01");
   });
 
   it("refuses a non-finite day count rather than emitting NaN-NaN-NaN", () => {
@@ -119,6 +130,16 @@ describe("establishAnchor — cadences a weekday cannot describe", () => {
     expect(establishAnchor(WED, "wednesday", 0)).toBeNull();
     expect(establishAnchor(WED, "wednesday", 7.5)).toBeNull();
     expect(establishAnchor(WED, "wednesday", 371)).toBeNull(); // > 365
+  });
+});
+
+describe("establishAnchor — refusing to mint what the boundaries drop", () => {
+  it("returns null rather than an anchor outside the storable range", () => {
+    // Snapping moves up to 3 days either way, so it can step past the range
+    // every persistence boundary enforces. Each of them would have dropped it
+    // silently, leaving the user with no planned dates and nothing explaining
+    // why — so the producer refuses instead.
+    expect(establishAnchor("1900-01-01", "sunday", 7)).toBeNull();
   });
 });
 
@@ -330,37 +351,75 @@ describe("plannedDateRolling", () => {
   });
 });
 
-describe("plannedDateOnSave", () => {
-  it("needs an anchor and an interval, and guesses nothing without them", () => {
-    expect(plannedDateOnSave(WED, undefined, 7)).toBeUndefined();
-    expect(plannedDateOnSave(WED, WED, undefined)).toBeUndefined();
-    expect(plannedDateOnSave(WED, undefined, undefined)).toBeUndefined();
+describe("planShot — the one entry point", () => {
+  const grid = { shotDay: "wednesday" as const, intervalDays: 7 };
+
+  it("answers nothing when the settings answer no question", () => {
+    expect(planShot({ date: WED, profile: {} })).toEqual({});
+    expect(planShot({ date: WED, profile: { intervalDays: 7 } })).toEqual({});
+    expect(planShot({ date: WED, profile: { shotDay: "wednesday" } })).toEqual(
+      {},
+    );
   });
 
-  it("refuses a nonsensical interval rather than dividing by it", () => {
-    // A zero interval used to reach addDaysCivil with Infinity slots and
-    // produce the string "NaN-NaN-NaN", frozen onto the shot.
-    expect(plannedDateOnSave(WED, WED, 0)).toBeUndefined();
-    expect(plannedDateOnSave(WED, WED, -7)).toBeUndefined();
-    expect(plannedDateOnSave(WED, WED, NaN)).toBeUndefined();
-    // A fraction used to divide the grid into fractional days and still return
-    // a date, because the guard here was looser than isValidIntervalDays.
-    expect(plannedDateOnSave(WED, WED, 7.5)).toBeUndefined();
-    expect(plannedDateOnSave(WED, WED, 400)).toBeUndefined();
+  it("establishes a grid anchor once, and hands it back to be persisted", () => {
+    expect(planShot({ date: day(-1), profile: grid })).toEqual({
+      plannedFor: WED,
+      anchorToPersist: WED,
+    });
   });
 
-  it("refuses a shot date it cannot read", () => {
-    // sanitizeShots deliberately accepts a non-blank but malformed date, so an
-    // unreadable one does reach here.
-    expect(plannedDateOnSave("2026-13-40", WED, 7)).toBeUndefined();
-    expect(plannedDateOnSave("nope", WED, 7)).toBeUndefined();
+  it("uses a frozen anchor without re-establishing one", () => {
+    expect(
+      planShot({
+        date: day(8),
+        profile: { ...grid, scheduleAnchor: WED },
+      }),
+    ).toEqual({ plannedFor: day(7) });
   });
 
-  it("uses the frozen anchor, so other shots cannot move it", () => {
-    // The bug this replaced: deriving the anchor from the earliest shot meant
-    // backdating a remembered shot repointed the grid for every later save.
-    expect(plannedDateOnSave(day(8), WED, 7)).toBe(day(7));
-    expect(plannedDateOnSave(day(42), WED, 14)).toBe(day(42));
+  it("STOPS using a frozen grid anchor the moment the interval leaves weeks", () => {
+    // The bug this function exists to make unreachable. The weekly-multiple
+    // guard lived only in establishAnchor, which runs once — so a user who set
+    // 7 days, logged shots, then switched to 10 kept a weekday-snapped anchor
+    // that described nothing, and every shot read "3 days before" forever.
+    const anchor = establishAnchor("2026-08-09", "wednesday", 7)!;
+    const rolling = planShot({
+      date: "2026-08-19",
+      previousShotDate: "2026-08-09",
+      profile: {
+        shotDay: "wednesday",
+        intervalDays: 10,
+        scheduleAnchor: anchor,
+      },
+    });
+    // Rolling: one interval on from the previous shot, not the stale grid.
+    expect(rolling).toEqual({ plannedFor: "2026-08-19" });
+    expect(
+      daysFromPlanned({ date: "2026-08-19", plannedFor: rolling.plannedFor }),
+    ).toBe(0);
+  });
+
+  it("uses the previous shot for a rolling cadence, and nothing for the first", () => {
+    const profile = { intervalDays: 10 };
+    expect(planShot({ date: day(10), previousShotDate: WED, profile })).toEqual(
+      {
+        plannedFor: day(10),
+      },
+    );
+    expect(planShot({ date: WED, profile })).toEqual({
+      plannedFor: undefined,
+    });
+  });
+
+  it("anchors the grid on the EARLIEST shot, not the one being saved", () => {
+    expect(
+      planShot({
+        date: day(7),
+        earliestShotDate: day(-1),
+        profile: grid,
+      }),
+    ).toEqual({ plannedFor: day(7), anchorToPersist: WED });
   });
 });
 
