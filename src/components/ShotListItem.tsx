@@ -29,13 +29,28 @@ export const ShotListItem: React.FC<ShotListItemProps> = ({
   const dateLabel = shot.date;
 
   /**
-   * "Planned for 26 Aug · taken 2 days after", or nothing.
+   * "Planned for 26 Aug · 2 days later", or nothing.
    *
-   * A measurement, never a verdict. The word "late" appears nowhere in this
-   * app: people judge their own timing far more harshly than their clinicians
-   * do — in one study 55% of patients counted a six-hour delay as a missed
-   * dose, against a single physician who agreed — so the app reports the gap
-   * and says nothing about it.
+   * A measurement, never a verdict — and the grammar is doing that work, not a
+   * euphemism. English separates the adjective from the comparative: "2 days
+   * late" is a STATUS against an obligation you failed, while "2 days later" is
+   * a DISTANCE from a reference. The second is what the app actually knows.
+   *
+   * This follows the #LanguageMatters practice — the Diabetes Australia, NHS
+   * England and English Advisory Group position statements — whose finding is
+   * that language which blames and shames does more harm than it does
+   * motivating, and which is why that whole field moved from "compliance" to
+   * "adherence" and is now questioning "adherence" too. It matters more than
+   * usual here because people judge their own timing far more harshly than
+   * their clinicians do: in one study 55% of patients counted a six-hour delay
+   * as a missed dose, against a single physician who agreed. The app does not
+   * need to supply the judgement.
+   *
+   * An earlier version said "taken 2 days after", avoiding "early" as well as
+   * "late". That was over-applied: "early" carries no fault, and those same
+   * position statements ask for language that is *clear* as well as
+   * non-judgemental — "after" needs the line above it to mean anything, where
+   * "later" stands on its own.
    */
   const plannedLabel = (() => {
     if (!shot.plannedFor) return null;
@@ -44,7 +59,7 @@ export const ShotListItem: React.FC<ShotListItemProps> = ({
     if (delta === null) return on;
     if (delta === 0) return `${on} · taken that day`;
     const days = Math.abs(delta) === 1 ? "1 day" : `${Math.abs(delta)} days`;
-    return `${on} · taken ${days} ${delta > 0 ? "after" : "before"}`;
+    return `${on} · ${days} ${delta > 0 ? "later" : "earlier"}`;
   })();
   // Shown the way this device writes times; stored as 24-hour HH:MM either way.
   const timeLabel = shot.time ? formatTimeForDisplay(shot.time) : "—";
