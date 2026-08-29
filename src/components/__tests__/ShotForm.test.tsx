@@ -1139,8 +1139,8 @@ describe("ShotForm — the planned date", () => {
     // follow-the-date sync fires on. So reopening a shot threw its frozen
     // planned date away before the user touched anything, defeating both the
     // "frozen and NEVER recomputed" rule and the override the field invites.
-    const onUpdateShot = vi.fn(
-      (shot: ShotEntry): SaveOutcome => (shot ? "saved" : "ignored"),
+    const onUpdateShot = vi.fn((shot: ShotEntry): SaveOutcome =>
+      shot ? "saved" : "ignored",
     );
     render(
       <ShotForm
@@ -1223,6 +1223,68 @@ describe("ShotForm — the planned date", () => {
     );
     expect(planned().value).not.toBe(""); // a date WAS computed
     expect(ref.current).toBeNull(); // ...and nothing counts as entered
+  });
+
+  it("does not report unsaved input for a shot whose planned date is simply old", () => {
+    // The normal case, and the whole point of freezing: a shot logged under an
+    // older cadence no longer matches today's computation. Seeding the baseline
+    // from that computation made every such shot read as edited on open, so
+    // dismissing an untouched sheet parked a draft.
+    const ref =
+      React.createRef<ShotDraft | null>() as React.RefObject<ShotDraft | null>;
+    render(
+      <ShotForm
+        onAddShot={() => "saved" as const}
+        onUpdateShot={() => "saved" as const}
+        editingShot={{ id: "a", date: "2026-08-05", plannedFor: "2026-07-29" }}
+        shots={[{ id: "a", date: "2026-08-05", plannedFor: "2026-07-29" }]}
+        profile={grid}
+        liveDraftRef={ref}
+      />,
+    );
+    expect(planned().value).toBe("2026-07-29");
+    expect(ref.current).toBeNull();
+  });
+
+  it("an untouched planned date follows the shot's date; an edited one does not", () => {
+    render(
+      <ShotForm onAddShot={() => "saved" as const} shots={[]} profile={grid} />,
+    );
+    const dateField = screen.getByLabelText("Date");
+
+    fireEvent.change(dateField, { target: { value: "2026-08-05" } });
+    expect(planned().value).toBe("2026-08-05");
+    fireEvent.change(dateField, { target: { value: "2026-08-12" } });
+    expect(planned().value).toBe("2026-08-12"); // followed
+
+    fireEvent.change(planned(), { target: { value: "2026-07-29" } });
+    fireEvent.change(dateField, { target: { value: "2026-08-19" } });
+    expect(planned().value).toBe("2026-07-29"); // stayed put
+  });
+
+  it("Clear form clears the planned date, its baseline and its error", () => {
+    // Left behind, an override survived the reset — so the form still read as
+    // dirty, the "Clear form" link never disappeared, and tapping it again
+    // visibly did nothing.
+    const ref =
+      React.createRef<ShotDraft | null>() as React.RefObject<ShotDraft | null>;
+    render(
+      <ShotForm
+        onAddShot={() => "saved" as const}
+        shots={[]}
+        profile={grid}
+        liveDraftRef={ref}
+      />,
+    );
+    fireEvent.change(planned(), { target: { value: "9999-01-01" } });
+    fireEvent.click(screen.getByRole("button", { name: /Save shot/i }));
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Clear form/i }));
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(planned().value).not.toBe("9999-01-01");
+    expect(ref.current).toBeNull(); // and the form reads clean again
   });
 
   it("counts an edited planned date as unsaved input", () => {

@@ -165,7 +165,18 @@ export function useProfile(): UseProfile {
   );
 
   const setIntervalDays = useCallback(
-    (days: number | undefined) => updateProfile({ intervalDays: days }),
+    // Clears the anchor for the same reason setShotDay does: changing your
+    // cadence is a deliberate re-declaration of the schedule, and the anchor is
+    // frozen against ACCIDENTAL movement, not against you.
+    //
+    // Without this a weekly user switching to fortnightly kept a grid on the
+    // old phase: measured, every fortnightly shot then read "taken 7 days
+    // before", forever, frozen — schedule.ts's own named failure reaching in
+    // through the interval instead of the anchor. It was unrepairable too,
+    // since re-picking a shot day re-derives from the earliest shot, which is
+    // still on the old phase.
+    (days: number | undefined) =>
+      updateProfile({ intervalDays: days, scheduleAnchor: undefined }),
     [updateProfile],
   );
 

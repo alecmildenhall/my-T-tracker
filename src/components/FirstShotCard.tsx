@@ -71,9 +71,18 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
     const parsed = Number(trimmed);
     if (isValidIntervalDays(parsed)) {
       setIntervalDays(parsed);
-    } else {
-      setOtherDraft("");
+      return;
     }
+    // Put the box back to what is actually saved, exactly as Settings does.
+    // Blanking it instead left the card showing no interval while the profile
+    // still held one — and planned dates kept being computed from the value the
+    // screen said was gone.
+    setOtherDraft(
+      profile.intervalDays !== undefined &&
+        !QUICK_PICKS.includes(profile.intervalDays)
+        ? String(profile.intervalDays)
+        : "",
+    );
   };
 
   const pickQuick = (days: number) => {

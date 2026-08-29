@@ -17,6 +17,7 @@ import { handOffFocus } from "../utils/focus";
 import { sortShots } from "../utils/shotQuery";
 import {
   planShot,
+  scheduleMode,
   previousShotDateBefore,
   earliestShotDate,
 } from "../utils/schedule";
@@ -314,22 +315,35 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   const [plannedDraft, setPlannedDraft] = useState<string>(
     start.plannedFor || plan.plannedFor || "",
   );
-  // The BASELINE is what the app would compute, never what is stored. Seeding
-  // both from the stored value made them equal on the first render, which is
-  // exactly the condition the sync below fires on — so reopening a shot threw
-  // its frozen planned date away and repainted it from today's settings before
-  // the user touched anything. Measured: a shot overridden to 2026-07-29
-  // rendered and re-saved as 2026-08-05, defeating both the "frozen and NEVER
-  // recomputed" rule on ShotEntry and the override this field's own hint
-  // invites. Seeded from `computed`, a stored value that differs simply reads
-  // as edited, which is what it is.
+  /** The shot date `plannedBaseline` was worked out for. */
+  const [plannedForDate, setPlannedForDate] = useState<string>(start.date);
+  /**
+   * What the field would show untouched — the value it OPENED with, restored
+   * from the draft when there is one.
+   *
+   * Both obvious seeds are wrong, and each was shipped in turn. Seeding from the
+   * stored value made draft and baseline equal on the first render, which is the
+   * condition the sync below fires on, so reopening a shot repainted its frozen
+   * planned date from today's settings. Seeding from the computation instead
+   * fixed that and broke the other side: every historical shot whose frozen date
+   * no longer matches today's cadence — which is the normal case, and the whole
+   * point of freezing — read as edited before anyone touched it, parking a draft
+   * on an untouched dismissal.
+   *
+   * The seed was never the bug. The SYNC was: it fired on any disagreement,
+   * including the one present on arrival. It is keyed to the shot's date now, so
+   * it runs when the date moves and never on mount.
+   */
   const [plannedBaseline, setPlannedBaseline] = useState<string>(
-    plan.plannedFor || "",
+    start.plannedBaseline || plan.plannedFor || "",
   );
   const computed = plan.plannedFor ?? "";
-  if (plannedBaseline !== computed && plannedDraft === plannedBaseline) {
+  // Change the shot's date and an untouched planned date follows it; an edited
+  // one stays where it was put.
+  if (plannedForDate !== date) {
+    setPlannedForDate(date);
+    if (plannedDraft === plannedBaseline) setPlannedDraft(computed);
     setPlannedBaseline(computed);
-    setPlannedDraft(computed);
   }
   const [dateBaseline, setDateBaseline] = useState<string>(start.dateBaseline);
   // The sheet's landing spot. Owned by the parent when it supplies one, because
@@ -380,6 +394,15 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // what let a form cleared after midnight treat a genuine backdate as no
     // change at all, and discard it on dismissal.
     setDateBaseline(todayLocalISO());
+    // The planned date resets with everything else, baseline included. Left
+    // behind, an override survived "Clear form" — so the form still read as
+    // dirty, the link never disappeared, tapping it again visibly did nothing,
+    // and the stale value was frozen onto the next shot. A refused planned date
+    // survived too, blocking the next Save from a field the user had cleared.
+    setPlannedDraft("");
+    setPlannedBaseline("");
+    setPlannedForDate(todayLocalISO());
+    setPlannedError(null);
     setDateError(null);
     setDoseError(null);
     setPainError(null);
@@ -926,7 +949,12 @@ export const ShotForm: React.FC<ShotFormProps> = ({
         {/* Only when the settings answer the question. With no cadence there is
             nothing to show and nothing to correct, so the field is absent
             rather than empty. */}
-        {(plannedDraft || computed) && (
+        {/* Shown whenever a cadence is configured or the shot carries one, NOT
+            whenever there happens to be a value: keyed to the transient value,
+            the field could unmount while it held focus — stranding it on <body>
+            inside a dialog, where the Tab trap cannot re-engage. */}
+        {(scheduleMode(profile.shotDay, profile.intervalDays) !== "none" ||
+          Boolean(start.plannedFor)) && (
           <div className="field-cell">
             <label className="form-column">
               Planned for
