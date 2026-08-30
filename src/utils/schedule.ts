@@ -339,10 +339,16 @@ export function planShot({
     profile.intervalDays,
   );
   if (!anchor) return {};
-  return {
-    plannedFor: plannedDateFor(date, anchor, profile.intervalDays) ?? undefined,
-    anchorToPersist: anchor,
-  };
+  const planned = plannedDateFor(date, anchor, profile.intervalDays);
+  // No planned date, no anchor. `plannedDateFor` refuses a slot outside the
+  // range every persistence boundary enforces, which `establishAnchor` can
+  // still have succeeded for — a large interval with a shot dated near 1900 or
+  // near today+1y. Persisting anyway froze the grid to a shot that carries no
+  // planned date of its own, and the anchor has no UI to inspect or reset, so
+  // the state would be unrepairable. Returning the anchor only alongside the
+  // value it produced keeps the two from disagreeing.
+  if (!planned) return {};
+  return { plannedFor: planned, anchorToPersist: anchor };
 }
 
 /**

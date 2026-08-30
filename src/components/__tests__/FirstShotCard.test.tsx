@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import { FirstShotCard } from "../FirstShotCard";
 import { ProfileProvider } from "../../context/ProfileContext";
 import { STORAGE_KEYS } from "../../storageKeys";
@@ -109,5 +109,99 @@ describe("FirstShotCard — the disabled shot day", () => {
     // browser pass, because a rule existing and a rule painting are different
     // questions and only this half is answerable here.
     expectVisibleFocusRing("shot day disabled by a non-weekly interval");
+  });
+});
+
+describe("FirstShotCard — the cadence that tracks nothing", () => {
+  const needNotice = () => screen.queryByText(/a weekly rhythm needs one/i);
+
+  it("says so when a weekly interval has no shot day", () => {
+    // scheduleMode returns "none" for this, so no shot ever gets a planned
+    // date — and it was the only silent one. The non-weekly case has always
+    // explained itself ("a weekday can't describe every 10 days"), while this,
+    // the commoner of the two, said nothing. Because a planned date freezes at
+    // save time, every shot logged during the silence stays unmeasurable.
+    seedProfile({ intervalDays: 7 });
+    renderCard();
+    expect(needNotice()).not.toBeNull();
+  });
+
+  it("says nothing once a day is set, or when the interval is non-weekly", () => {
+    seedProfile({ intervalDays: 7, shotDay: "wednesday" });
+    const first = renderCard();
+    expect(needNotice()).toBeNull();
+    first.unmount();
+
+    // Non-weekly has its own notice; this one must not double up.
+    seedProfile({ intervalDays: 10 });
+    renderCard();
+    expect(needNotice()).toBeNull();
+  });
+});
+
+describe("FirstShotCard — drafts follow the profile", () => {
+  it("does not write a stale draft over a profile changed elsewhere", () => {
+    // `useLocalStorage` listens for cross-tab `storage` events, so the profile
+    // can change under this card. Without a sync the drafts keep their
+    // mount-time values and then WIN, because every exit commits them —
+    // including logging the first shot, which unmounts the card. An empty
+    // interval draft would call setIntervalDays(undefined) and delete both the
+    // cadence and the schedule anchor another tab had just set.
+    renderCard(); // mounts with an empty interval draft
+    const box = screen.getByPlaceholderText(
+      "Every ___ days",
+    ) as HTMLInputElement;
+    expect(box.value).toBe("");
+
+    // Another tab writes a cadence, and the store broadcasts it.
+    act(() => {
+      localStorage.setItem(
+        STORAGE_KEYS.profile,
+        JSON.stringify({ intervalDays: 14, scheduleAnchor: "2026-08-05" }),
+      );
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: STORAGE_KEYS.profile,
+          newValue: localStorage.getItem(STORAGE_KEYS.profile),
+          // The hook filters on storageArea, so a synthetic event without it is
+          // silently ignored — the listener is real, the event was not.
+          storageArea: localStorage,
+        }),
+      );
+    });
+
+    expect(box.value).toBe("14");
+    // And the commit on the way out agrees with it rather than clearing it.
+    fireEvent.blur(box);
+    expect(storedProfile().intervalDays).toBe(14);
+    expect(storedProfile().scheduleAnchor).toBe("2026-08-05");
+  });
+
+  it("keeps the cadence when the interval box holds unparseable text", () => {
+    // A number input reports "" for anything it cannot parse — "1e", "-",
+    // "1.2.3" — not just for empty. Reading that as a deliberate clear meant a
+    // fumbled keystroke plus a blur deleted the cadence. `validity.badInput`
+    // separates the two; jsdom does not implement it, so the flag is passed in
+    // explicitly here the way the real blur handler passes it.
+    seedProfile({ intervalDays: 14 });
+    renderCard();
+    const box = screen.getByPlaceholderText(
+      "Every ___ days",
+    ) as HTMLInputElement;
+    expect(box.value).toBe("14");
+
+    fireEvent.change(box, { target: { value: "" } });
+    // `validity` is a read-only getter, so it cannot be passed through the
+    // event — it has to be defined on the element, which is also closer to what
+    // the browser does. jsdom does not implement badInput, so the real one is
+    // always false here and only a browser exercises the true branch.
+    Object.defineProperty(box, "validity", {
+      value: { badInput: true },
+      configurable: true,
+    });
+    fireEvent.blur(box);
+
+    expect(storedProfile().intervalDays).toBe(14);
+    expect(box.value).toBe("14");
   });
 });

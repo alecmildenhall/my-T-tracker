@@ -87,8 +87,43 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
     profile.intervalDays !== undefined ? String(profile.intervalDays) : "",
   );
 
-  const commitInterval = () => {
+  // Follow the profile when it changes underneath this card, the way the same
+  // two fields in JourneySettings already do. `useLocalStorage` subscribes to
+  // cross-tab `storage` events, so `profile` can change at any moment: another
+  // tab setting a cadence in Settings, or an import replacing the whole thing.
+  //
+  // Without this the drafts stay at their mount-time values and then WIN, because
+  // every exit from this card commits them — navigating away, backgrounding, and
+  // notably logging the first shot, which unmounts the card. A draft still empty
+  // from mount would call setIntervalDays(undefined) and delete both the cadence
+  // and the schedule anchor that another tab had just set. Adjusted during
+  // render, React's documented pattern for state that follows changing props.
+  const [lastSavedInterval, setLastSavedInterval] = useState(
+    profile.intervalDays,
+  );
+  if (lastSavedInterval !== profile.intervalDays) {
+    setLastSavedInterval(profile.intervalDays);
+    setIntervalDraft(
+      profile.intervalDays !== undefined ? String(profile.intervalDays) : "",
+    );
+  }
+
+  const commitInterval = (badInput = false) => {
     const trimmed = intervalDraft.trim();
+    // `badInput` distinguishes the two things an empty `value` means, which
+    // is otherwise unanswerable: a number input reports "" both when it is
+    // genuinely empty AND when it holds something unparseable, because the
+    // HTML value-sanitization algorithm discards text that is not a valid
+    // floating-point number. Measured: "1e", "-" and "1.2.3" all read as "".
+    // Treating that as a deliberate clear meant a fumbled keystroke plus a
+    // blur deleted the cadence. `validity.badInput` is the real question —
+    // false for empty, true for garbage — rather than a proxy for it.
+    if (badInput) {
+      setIntervalDraft(
+        profile.intervalDays !== undefined ? String(profile.intervalDays) : "",
+      );
+      return;
+    }
     if (trimmed === "") {
       // Guarded like the branch below: setIntervalDays also clears the schedule
       // anchor, and this commit runs from an effect cleanup — so every
@@ -116,6 +151,14 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
    *  ones you have not typed — so committing per keystroke walks a year through
    *  0002, 0020, 0202 before it arrives. */
   const [startDraft, setStartDraft] = useState(profile.startDate ?? "");
+
+  // The start date follows the profile too, and for the same reason: the commit
+  // on unmount would otherwise write a stale draft over a date set elsewhere.
+  const [lastSavedStart, setLastSavedStart] = useState(profile.startDate);
+  if (lastSavedStart !== profile.startDate) {
+    setLastSavedStart(profile.startDate);
+    setStartDraft(profile.startDate ?? "");
+  }
 
   // Both drafts here need the same escape hatches the Settings date field has:
   // blur must not be the only commit, because on a phone you can type a value
@@ -165,6 +208,27 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
   const intervalRef = useRef<HTMLInputElement>(null);
   const shotDaySelectRef = useRef<HTMLSelectElement>(null);
   const noticeRef = useRef<HTMLParagraphElement>(null);
+
+  /**
+   * A whole-week cadence with no shot day tracks NOTHING, silently.
+   *
+   * `scheduleMode` returns "none" for it — a weekly grid has no idea which
+   * week-day its slots fall on — so no shot gets a planned date. The card
+   * invites exactly this: it asks how often under a hint promising you can
+   * "track how on time your shots are", and the day is a separate control that
+   * starts on "No shot day". Tap "1 week", move on, and nothing is measured.
+   *
+   * The asymmetry is what makes it a defect rather than a limitation: the
+   * NON-weekly case says so out loud ("a weekday can't describe every 10 days.
+   * Your gaps are still tracked."), while this one — the commoner of the two —
+   * says nothing at all. And because a planned date is frozen at save time,
+   * every shot logged during the silence stays unmeasurable even after the day
+   * is set later.
+   */
+  const shotDayNeeded =
+    isValidIntervalDays(profile.intervalDays) &&
+    isWeeklyMultiple(profile.intervalDays) &&
+    !profile.shotDay;
 
   const shotDayUnavailable =
     isValidIntervalDays(profile.intervalDays) &&
@@ -319,12 +383,19 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
               ref={intervalRef}
               value={intervalDraft}
               onChange={(e) => setIntervalDraft(e.target.value)}
-              onBlur={commitInterval}
+              onBlur={(e) => commitInterval(e.target.validity.badInput)}
               aria-describedby="first-shot-cadence-hint"
             />
           </label>
         </div>
       </div>
+
+      {shotDayNeeded && (
+        <p className="field-hint field-hint--notice" id="first-shot-day-needed">
+          Pick a day too — a weekly rhythm needs one before your shots can have
+          a planned date.
+        </p>
+      )}
 
       {/* tabIndex={-1} so it can receive focus when the select under it
           disables — it is not a control and never joins the tab order. */}
@@ -353,7 +424,9 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
             aria-describedby={
               shotDayUnavailable
                 ? "first-shot-cadence-hint first-shot-day-notice"
-                : "first-shot-cadence-hint"
+                : shotDayNeeded
+                  ? "first-shot-cadence-hint first-shot-day-needed"
+                  : "first-shot-cadence-hint"
             }
             onChange={(e) =>
               setShotDay(isWeekday(e.target.value) ? e.target.value : undefined)

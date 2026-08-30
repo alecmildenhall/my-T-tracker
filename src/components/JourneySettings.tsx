@@ -58,8 +58,22 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
     );
   }
 
-  const commitInterval = () => {
+  const commitInterval = (badInput = false) => {
     const trimmed = intervalDraft.trim();
+    // `badInput` distinguishes the two things an empty `value` means, which
+    // is otherwise unanswerable: a number input reports "" both when it is
+    // genuinely empty AND when it holds something unparseable, because the
+    // HTML value-sanitization algorithm discards text that is not a valid
+    // floating-point number. Measured: "1e", "-" and "1.2.3" all read as "".
+    // Treating that as a deliberate clear meant a fumbled keystroke plus a
+    // blur deleted the cadence. `validity.badInput` is the real question —
+    // false for empty, true for garbage — rather than a proxy for it.
+    if (badInput) {
+      setIntervalDraft(
+        profile.intervalDays !== undefined ? String(profile.intervalDays) : "",
+      );
+      return;
+    }
     if (trimmed === "") {
       // Guarded like the branch below — see FirstShotCard: this also clears the
       // anchor and runs from an effect cleanup, so an unguarded call wrote the
@@ -102,6 +116,13 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
   const intervalFieldRef = useRef<HTMLInputElement>(null);
   const shotDaySelectRef = useRef<HTMLSelectElement>(null);
   const noticeRef = useRef<HTMLParagraphElement>(null);
+
+  /** See FirstShotCard: a whole-week cadence with no shot day plans nothing,
+   *  and said nothing, while the non-weekly case explains itself. */
+  const shotDayNeeded =
+    isValidIntervalDays(profile.intervalDays) &&
+    isWeeklyMultiple(profile.intervalDays) &&
+    !profile.shotDay;
 
   const shotDayUnavailable =
     isValidIntervalDays(profile.intervalDays) &&
@@ -347,7 +368,7 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
           inputMode="numeric"
           value={intervalDraft}
           onChange={(e) => setIntervalDraft(e.target.value)}
-          onBlur={commitInterval}
+          onBlur={(e) => commitInterval(e.target.validity.badInput)}
           placeholder="Every ___ days"
           aria-describedby="interval-hint"
         />
@@ -377,6 +398,13 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
 
       {/* Above the control it disables, so the reason is read before the thing
           that looks broken. */}
+      {shotDayNeeded && (
+        <p className="field-hint field-hint--notice" id="shot-day-needed">
+          Pick a day too — a weekly rhythm needs one before your shots can have
+          a planned date.
+        </p>
+      )}
+
       {/* tabIndex={-1} so it can take focus when the select below it disables —
           not a control, never in the tab order. */}
       {shotDayUnavailable && (
@@ -402,7 +430,9 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
           aria-describedby={
             shotDayUnavailable
               ? "interval-hint shot-day-notice"
-              : "interval-hint"
+              : shotDayNeeded
+                ? "interval-hint shot-day-needed"
+                : "interval-hint"
           }
           onChange={(e) =>
             setShotDay(isWeekday(e.target.value) ? e.target.value : undefined)

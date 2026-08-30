@@ -86,14 +86,16 @@ html {
 
 body {
   margin: 0;
-  /* A base COLOUR under the gradient. `background` is a SHORTHAND, so the
-     radial-gradient below resets background-color to transparent — the same
-     missing-base-colour shape that made the row wash invisible and the canvas
-     white. Harmless while html paints behind it, and correct if it ever
-     doesn't. */
-  background-color: #020617;
   font-family: var(--font-sans);
-  background: radial-gradient(circle at top, #020617, #020617 40%, #000 100%);
+  /* A base COLOUR under the gradient, stated INSIDE the shorthand.
+     `background` is a shorthand, so it resets background-color to transparent —
+     which means a separate `background-color` declaration only survives if it
+     comes after. The first attempt at this put it before, so the shorthand wiped
+     it and `body` computed to rgba(0, 0, 0, 0) exactly as before: a comment
+     describing the trap, directly above code walking into it. Folding the colour
+     into the shorthand makes the ordering impossible to get wrong. */
+  background: radial-gradient(circle at top, #020617, #020617 40%, #000 100%)
+    #020617;
   color: var(--text);
   min-height: 100vh;
 }
