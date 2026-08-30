@@ -2947,3 +2947,41 @@ describe("the page canvas behind an overscroll bounce", () => {
     expect(root).toBe(colourIn("html"));
   });
 });
+
+describe("landing on a Settings section", () => {
+  const dataHeading = () =>
+    [...document.querySelectorAll(".settings-section__title")].find(
+      (h) => h.textContent?.trim() === "Your data",
+    )!;
+
+  it("sends focus to Your data when the first-run card asks for it", () => {
+    // The card's link exists because import REPLACES rather than merges, so a
+    // returning user has to reach it before logging anything. It used to land at
+    // the top of Settings with the import control two panels below the fold —
+    // the right screen, and no sign of where to go next.
+    renderApp();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Restore it in Settings/ }),
+    );
+
+    expect(document.activeElement).toBe(dataHeading());
+  });
+
+  it("does not land there again on a later visit to Settings", () => {
+    // The request is a ONE-SHOT. Left set, every subsequent trip to Settings
+    // would yank the page down to Your data for someone who came to change
+    // their name — and the state that armed it outlives the view, because
+    // Settings unmounts on every tab change.
+    renderApp();
+    fireEvent.click(
+      screen.getByRole("button", { name: /Restore it in Settings/ }),
+    );
+    expect(document.activeElement).toBe(dataHeading());
+
+    fireEvent.click(screen.getByRole("button", { name: "Home" }));
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+
+    expect(document.activeElement).not.toBe(dataHeading());
+  });
+});

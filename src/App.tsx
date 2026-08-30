@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ShotForm, type ShotDraft } from "./components/ShotForm";
-import { Settings } from "./components/Settings";
+import { Settings, type SettingsLanding } from "./components/Settings";
 import { Greeting, ACKNOWLEDGEMENT } from "./components/Greeting";
 import { TabBar } from "./components/TabBar";
 import { RecentShots } from "./components/RecentShots";
@@ -434,6 +434,18 @@ const App: React.FC = () => {
   // any other navigation, so a tab tap never animates — the gesture is what the
   // motion is answering.
   const [arrivedBySwipe, setArrivedBySwipe] = useState(false);
+
+  /**
+   * Which section Settings should land on, when it was opened to reach one
+   * rather than browsed to. One-shot: Settings clears it the moment it has
+   * landed, so a later trip to Settings starts at the top like any other.
+   *
+   * Set AFTER navigate(), not before — navigate scrolls the window to the top
+   * of the new view, and doing it in the other order would be a scroll fighting
+   * the landing that follows it.
+   */
+  const [settingsLanding, setSettingsLanding] =
+    useState<SettingsLanding | null>(null);
   useSwipeBack(view !== "home", () => {
     // The gesture unmounts the entire outgoing view, including whatever held
     // focus — a search field, a filter, a row. A tab TAP is safe because focus
@@ -676,7 +688,12 @@ const App: React.FC = () => {
               logging one clears it, and so does importing a backup, with no
               flag to store and no special case. */}
             {shots.length === 0 && (
-              <FirstShotCard onGoToSettings={() => navigate("settings")} />
+              <FirstShotCard
+                onGoToSettings={() => {
+                  navigate("settings");
+                  setSettingsLanding("data");
+                }}
+              />
             )}
             <button
               type="button"
@@ -714,7 +731,10 @@ const App: React.FC = () => {
           main landmark for landmark navigation. */}
         {view === "settings" && (
           <main className="app-main">
-            <Settings />
+            <Settings
+              landOn={settingsLanding}
+              onLanded={() => setSettingsLanding(null)}
+            />
           </main>
         )}
 
