@@ -199,9 +199,16 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
         />
       </label>
 
-      <label className="form-column">
-        Testosterone start date
+      {/* htmlFor, not a wrapping label: the hint sits between the question and
+          the control, and text inside a <label> joins the field's accessible
+          name. See the same field in FirstShotCard. */}
+      <label htmlFor="journey-start">Testosterone start date</label>
+      <p className="field-hint" id="journey-start-hint">
+        Marks milestones along the way, like your first year on T.
+      </p>
+      <div className="form-column">
         <input
+          id="journey-start"
           ref={dateFieldRef}
           type="date"
           value={dateDraft}
@@ -249,7 +256,7 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
             else setDateDraft(profile.startDate ?? "");
           }}
         />
-      </label>
+      </div>
       {profile.startDate && (
         <button
           type="button"
@@ -281,13 +288,18 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
           Remove start date
         </button>
       )}
-      <p className="field-hint" id="journey-start-hint">
-        Marks milestones along the way, like your first year on T.
+      {/* The pair's hint, under the FIRST of the two questions it describes —
+          it explains why you would answer either, so it arrives before both.
+          "These", not "both": the shot day only applies when the interval is a
+          whole number of weeks, and the app disables it otherwise. */}
+      <label htmlFor="journey-interval">How often do you take your shot?</label>
+      <p className="field-hint" id="interval-hint">
+        Fill these in and you can track how on time your shots are, and see how
+        that lines up with how you’ve been feeling.
       </p>
-
-      <label className="form-column">
-        How often do you take your shot?
+      <div className="form-column">
         <input
+          id="journey-interval"
           type="number"
           min={MIN_INTERVAL_DAYS}
           max={MAX_INTERVAL_DAYS}
@@ -299,7 +311,7 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
           placeholder="Every ___ days"
           aria-describedby="interval-hint"
         />
-      </label>
+      </div>
       {/* The two cadences almost everyone is on, so most people never type a
           number. Same chip pattern as the log form's reuse values. */}
       <div
@@ -350,21 +362,6 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
           ))}
         </select>
       </label>
-      {/* No "both optional" here: the section description above says it once
-          for the whole panel, and it was being said three times on one screen.
-          No "weekly is 7, fortnightly is 14" either — the chips beside the box
-          are labelled by span for exactly that reason, so the gloss now
-          restates them in the one word we decided not to use.
-
-          "These", not "both": both fields are only needed when the interval is
-          a whole number of weeks. On a 10-day cadence there is no weekday that
-          can describe the schedule, so the shot-day select disables itself and
-          timing is tracked from the previous shot instead — "fill both in" told
-          that user to do something the app had just stopped them doing. */}
-      <p className="field-hint" id="interval-hint">
-        Fill these in and you can track how on time your shots are, and see how
-        that lines up with how you’ve been feeling.
-      </p>
     </div>
   );
 };

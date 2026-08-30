@@ -199,7 +199,16 @@ body {
 
 label {
   font-size: 0.8rem;
-  color: var(--text-muted);
+  /* The question outranks the note under it, and CONTRAST is what says so.
+     Label and hint were the same colour at the same weight, 0.8px apart in size
+     — measured, both #9ca3af at 7.2:1 on the card — so nothing told the eye
+     which one was being asked, and a card of questions read as one column of
+     grey. Full text colour takes the label to 17.4:1 while the hint stays put:
+     a 2.4x gap. Size alone was never going to carry it; every design system
+     that gets this right separates the two on at least two of size, weight and
+     contrast, and we were using one lever, barely. */
+  color: var(--text);
+  font-weight: 600;
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
@@ -610,9 +619,13 @@ select {
   font-size: 1.05rem;
 }
 
+/* Matches the real <label> above. This one names a chip GROUP rather than a
+   single control, so it cannot be a <label>, but it asks the same kind of
+   question and has to carry the same weight. */
 .first-shot-card__label {
   font-size: 0.8rem;
-  color: var(--text-muted);
+  color: var(--text);
+  font-weight: 600;
 }
 
 /* Sits in the chip row, so it reads as one more way to answer the same
@@ -711,6 +724,28 @@ select {
 
 .journey-settings .form-column {
   gap: 0.3rem;
+}
+
+/* The hint sits BETWEEN the question and the control now, so its trailing
+   margin — which used to separate one field from the next, back when the hint
+   was last — would push the control away from the question it belongs to. The
+   panel's own gap handles spacing. */
+.journey-settings .field-hint {
+  margin-bottom: 0;
+}
+
+/* Field separation, now that every gap in the panel is otherwise equal. A label
+   starts each field, so the extra space goes above it: within a field the parts
+   sit 0.4rem apart, between fields 0.9rem. Grouping has to come from the ratio
+   — without it, "hint, then the NEXT question" is spaced identically to
+   "question, then its own hint", which is most of what made the panel read as
+   one column. */
+.journey-settings > label {
+  margin-top: 0.5rem;
+}
+
+.journey-settings > label:first-child {
+  margin-top: 0;
 }
 
 /* Small helper text under a field — quieter than the section description. */

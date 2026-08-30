@@ -186,8 +186,7 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
           underneath four fields arrives after the moment someone decides
           whether they are obliged to answer them. */}
       <p className="first-shot-card__intro">
-        All optional — skip it and log a shot if you like. Everything here also
-        lives in Settings, so you can add or change any of it later.
+        All optional — you can revisit any of this any time in Settings.
       </p>
 
       <div className="first-shot-card__field">
@@ -204,8 +203,17 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
       </div>
 
       <div className="first-shot-card__field">
-        <label className="form-column">
-          When did you start T?
+        {/* `htmlFor` rather than a wrapping <label>, so the hint can sit between
+            the question and the control without joining the field's accessible
+            name — text inside a <label> becomes part of it, which would rename
+            this field to "When did you start T? Marks milestones along the
+            way…". The log sheet's Date field already carries this restructure,
+            for the same reason. */}
+        <label htmlFor="first-shot-start">When did you start T?</label>
+        <p className="field-hint" id="first-shot-start-hint">
+          Marks milestones along the way, like your first year on T.
+        </p>
+        <div className="form-column">
           {/* Deliberately UNBOUNDED, and validated with `isRealDate` rather than
               `toShotDate` — matching the same field in Settings. This is a fact
               about someone's life, not a shot: civilDate.ts's own header says the
@@ -214,6 +222,7 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
               two boundaries, where a start date more than a year out was silently
               reverted in this card and accepted in Settings. */}
           <input
+            id="first-shot-start"
             type="date"
             value={startDraft}
             aria-describedby="first-shot-start-hint"
@@ -228,16 +237,20 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
               }
             }}
           />
-        </label>
-        <p className="field-hint" id="first-shot-start-hint">
-          Marks milestones along the way, like your first year on T.
-        </p>
+        </div>
       </div>
 
       <div className="first-shot-card__field">
         <span className="first-shot-card__label">
           How often do you take it?
         </span>
+        {/* The pair's hint, under the FIRST of the two questions it describes
+            rather than trailing the second — it says why you would answer
+            either, so it has to arrive before you meet them. */}
+        <p className="field-hint" id="first-shot-cadence-hint">
+          Fill these in and you can track how on time your shots are, and see
+          how that lines up with how you’ve been feeling.
+        </p>
         <div
           className="suggestion-chips suggestion-chips--tight"
           role="group"
@@ -303,15 +316,6 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
             ))}
           </select>
         </label>
-        {/* Describes the PAIR, and both controls point at it — the sentence is
-            about what the two together buy you, and neither one alone earns it.
-            Written as though the charts exist, which they will by the time this
-            matters; hedging it into "coming soon" would give someone no reason
-            to answer today. */}
-        <p className="field-hint" id="first-shot-cadence-hint">
-          Fill these in and you can track how on time your shots are, and see
-          how that lines up with how you’ve been feeling.
-        </p>
       </div>
 
       {/* A returning user and a new one land on the same empty screen needing
