@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { FirstShotCard } from "../FirstShotCard";
 import { ProfileProvider } from "../../context/ProfileContext";
 import { STORAGE_KEYS } from "../../storageKeys";
+import { expectVisibleFocusRing } from "../../test/focusRing";
 
 beforeEach(() => localStorage.clear());
 
@@ -102,5 +103,11 @@ describe("FirstShotCard — the disabled shot day", () => {
 
     expect(document.activeElement).toBe(notice());
     expect(document.activeElement).not.toBe(interval);
+    // Landing correctly is half of it. Focus that moves with nothing on screen
+    // changing is one of slice B's nine defects (WCAG 2.4.7), and this target
+    // was relying on the browser's own ring rather than the app's — found in a
+    // browser pass, because a rule existing and a rule painting are different
+    // questions and only this half is answerable here.
+    expectVisibleFocusRing("shot day disabled by a non-weekly interval");
   });
 });
