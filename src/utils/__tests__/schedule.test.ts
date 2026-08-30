@@ -9,6 +9,7 @@ import {
   plannedDateFor,
   planShot,
   daysFromPlanned,
+  anchorReferenceDate,
 } from "../schedule";
 import { WEEKDAYS, weekdayOf } from "../weekday";
 
@@ -413,14 +414,57 @@ describe("planShot — the one entry point", () => {
     });
   });
 
-  it("anchors the grid on the EARLIEST shot, not the one being saved", () => {
+  it("anchors the grid on the date it is given, not the one being saved", () => {
+    // This test used to assert the anchor came from the EARLIEST shot, and that
+    // was the defect rather than the contract: an anchor is re-derived whenever
+    // the cadence changes, and the earliest shot is the same date before and
+    // after — so the new cadence inherited the old grid's phase and every
+    // subsequent shot froze a fixed, permanent offset. See anchorReferenceDate.
     expect(
-      planShot({
-        date: day(7),
-        earliestShotDate: day(-1),
-        profile: grid,
-      }),
+      planShot({ date: day(7), anchorFrom: day(-1), profile: grid }),
     ).toEqual({ plannedFor: day(7), anchorToPersist: WED });
+  });
+
+  it("falls back to the shot being saved when given no reference", () => {
+    expect(planShot({ date: day(7), profile: grid })).toEqual({
+      plannedFor: day(7),
+      anchorToPersist: day(7),
+    });
+  });
+});
+
+describe("anchorReferenceDate", () => {
+  it("is the shot being saved when it is the most recent thing known", () => {
+    expect(
+      anchorReferenceDate(day(7), [
+        { id: "a", date: WED },
+        { id: "b", date: day(-14) },
+      ]),
+    ).toBe(day(7));
+  });
+
+  it("is a later existing shot when this save is backdated", () => {
+    // The case that rules out simply anchoring on the shot being saved: type in
+    // a forgotten entry from months ago as your first save after changing
+    // cadence, and the whole future grid would hang off it.
+    expect(
+      anchorReferenceDate(day(-90), [
+        { id: "a", date: WED },
+        { id: "b", date: day(7) },
+      ]),
+    ).toBe(day(7));
+  });
+
+  it("is the shot being saved when there is no history", () => {
+    expect(anchorReferenceDate(WED, [])).toBe(WED);
+  });
+
+  it("does not exclude any shot, including one being edited", () => {
+    // Deliberate, and the opposite of previousShotDateBefore: a shot is still
+    // part of the history the grid aligns to while you are editing it, and
+    // excluding it made which shot you happened to open decide where the anchor
+    // landed.
+    expect(anchorReferenceDate(WED, [{ id: "a", date: day(7) }])).toBe(day(7));
   });
 });
 

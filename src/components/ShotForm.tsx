@@ -18,7 +18,7 @@ import { sortShots } from "../utils/shotQuery";
 import {
   planShot,
   previousShotDateBefore,
-  earliestShotDate,
+  anchorReferenceDate,
   scheduleMode,
 } from "../utils/schedule";
 
@@ -321,7 +321,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
         // fortnightly grid, a 7-day different schedule, then frozen. The
         // exclusion is right for `previousShotDateBefore`, where a shot must not
         // be its own predecessor, and wrong here.
-        earliestShotDate: earliestShotDate(shots),
+        anchorFrom: anchorReferenceDate(date, shots),
         profile,
       }),
     [date, shots, editingShot?.id, profile],
