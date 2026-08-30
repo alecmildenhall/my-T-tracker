@@ -36,7 +36,7 @@ export const Settings: React.FC = () => {
         {/* Says "optional" ONCE, for the panel — it used to say it twice here
             and again under two of the four fields below. */}
         <p className="settings-section__desc">
-          Your name, when you started T, and the rhythm you take it on. All
+          Your name, when you started T, and how often you take it. All
           optional, and all stored only on this device.
         </p>
         <JourneySettings headingRef={journeyHeadingRef} />
@@ -45,8 +45,8 @@ export const Settings: React.FC = () => {
       <div className="settings-section">
         <h2 className="settings-section__title">Saved values</h2>
         <p className="settings-section__desc">
-          Rename or remove the values suggested while logging. Changes update your
-          past entries too.
+          Rename or remove the values suggested while logging. Changes update
+          your past entries too.
         </p>
         <ManageValues
           shots={shots}
@@ -58,8 +58,9 @@ export const Settings: React.FC = () => {
       <div className="settings-section">
         <h2 className="settings-section__title">Your data</h2>
         <p className="settings-section__desc">
-          Export a backup to move or restore your entries, or a CSV to share with a
-          provider. Importing a backup replaces what&apos;s on this device.
+          Export a backup to move or restore your entries, or a CSV to share
+          with a provider. Importing a backup replaces what&apos;s on this
+          device.
         </p>
         <DataManagement
           shots={shots}

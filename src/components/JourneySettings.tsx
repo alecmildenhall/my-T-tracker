@@ -196,12 +196,8 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
           onChange={(e) => setPreferredName(e.target.value || undefined)}
           placeholder="e.g. Lou"
           autoComplete="off"
-          aria-describedby="journey-name-hint"
         />
       </label>
-      <p className="field-hint" id="journey-name-hint">
-        Only used to say hello, in greetings and milestone messages.
-      </p>
 
       <label className="form-column">
         Testosterone start date
@@ -286,9 +282,7 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
         </button>
       )}
       <p className="field-hint" id="journey-start-hint">
-        Marks milestones along the way, like your first year on T. Dates before
-        you installed the app count, and a future one works if you’re planning
-        ahead.
+        Marks milestones along the way, like your first year on T.
       </p>
 
       <label className="form-column">
@@ -360,9 +354,15 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
           for the whole panel, and it was being said three times on one screen.
           No "weekly is 7, fortnightly is 14" either — the chips beside the box
           are labelled by span for exactly that reason, so the gloss now
-          restates them in the one word we decided not to use. */}
+          restates them in the one word we decided not to use.
+
+          "These", not "both": both fields are only needed when the interval is
+          a whole number of weeks. On a 10-day cadence there is no weekday that
+          can describe the schedule, so the shot-day select disables itself and
+          timing is tracked from the previous shot instead — "fill both in" told
+          that user to do something the app had just stopped them doing. */}
       <p className="field-hint" id="interval-hint">
-        Fill both in and you can track how on time your shots are, and see how
+        Fill these in and you can track how on time your shots are, and see how
         that lines up with how you’ve been feeling.
       </p>
     </div>

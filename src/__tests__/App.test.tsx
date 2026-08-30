@@ -2905,3 +2905,45 @@ describe("the post-log wash", () => {
     );
   });
 });
+
+describe("the page canvas behind an overscroll bounce", () => {
+  it("declares the canvas colour at :root, not only at html", () => {
+    // `html` and `:root` are the same element, but `html` is a type selector
+    // (0,0,1) and `:root` a pseudo-class (0,1,0). A stylesheet that loads after
+    // ours and sets `html { background }` at equal weight therefore takes the
+    // canvas back — which is what an embedding host's reset does, and what
+    // turned the elastic overscroll above the page the platform's default grey
+    // while the app itself stayed dark.
+    //
+    // Measured, not reasoned: with the :root rule removed, injecting
+    // `html { background-color: #2a2a2a }` after our styles moved the computed
+    // root background to rgb(42, 42, 42); with it, the value held. jsdom does
+    // not cascade stylesheets it never loaded, so this pins the DECLARATION and
+    // the browser check is what proved it matters.
+    const css = readFileSync(`${process.cwd()}/src/styles.css`, "utf8").replace(
+      /\/\*[\s\S]*?\*\//g,
+      "",
+    );
+    // Every rule with exactly this selector, not the first — `:root` appears
+    // twice (the design tokens, then the canvas), and taking the first found a
+    // block with no background at all and reported the declaration missing.
+    const colourIn = (selector: string) => {
+      const rules = [
+        ...css.matchAll(
+          new RegExp(`(?:^|\\})\\s*${selector}\\s*\\{([^}]*)\\}`, "g"),
+        ),
+      ];
+      for (const [, body] of rules) {
+        const hit = /background-color:\s*([^;]+)/.exec(body);
+        if (hit) return hit[1].trim();
+      }
+      return undefined;
+    };
+
+    const root = colourIn(":root");
+    expect(root).toBeDefined();
+    // And the same colour in both, or the seam at the top of the page — exactly
+    // where overscroll happens — becomes visible instead of the bug it fixes.
+    expect(root).toBe(colourIn("html"));
+  });
+});

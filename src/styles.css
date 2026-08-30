@@ -72,8 +72,26 @@ html {
   scrollbar-gutter: stable;
 }
 
+/* The same declaration again, at a selector that wins.
+   `:root` and `html` are the SAME element, but `html` is a type selector
+   (0,0,1) while `:root` is a pseudo-class (0,1,0) — so any stylesheet that
+   loads after ours and sets `html { background }` at equal weight takes the
+   canvas back, and the elastic overscroll above the page turns the platform's
+   default grey again. That is exactly what happens when this app is embedded
+   under a host's own reset. Repeating it here costs one declaration and makes
+   the page's own background independent of load order. */
+:root {
+  background-color: #020617;
+}
+
 body {
   margin: 0;
+  /* A base COLOUR under the gradient. `background` is a SHORTHAND, so the
+     radial-gradient below resets background-color to transparent — the same
+     missing-base-colour shape that made the row wash invisible and the canvas
+     white. Harmless while html paints behind it, and correct if it ever
+     doesn't. */
+  background-color: #020617;
   font-family: var(--font-sans);
   background: radial-gradient(circle at top, #020617, #020617 40%, #000 100%);
   color: var(--text);

@@ -199,12 +199,8 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
             onChange={(e) => setPreferredName(e.target.value || undefined)}
             placeholder="Your name, or anything you like"
             autoComplete="off"
-            aria-describedby="first-shot-name-hint"
           />
         </label>
-        <p className="field-hint" id="first-shot-name-hint">
-          Only used to say hello.
-        </p>
       </div>
 
       <div className="first-shot-card__field">
@@ -234,8 +230,7 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
           />
         </label>
         <p className="field-hint" id="first-shot-start-hint">
-          Marks milestones along the way, like your first year on T. A date from
-          before you installed the app counts just the same.
+          Marks milestones along the way, like your first year on T.
         </p>
       </div>
 
@@ -314,8 +309,8 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
             matters; hedging it into "coming soon" would give someone no reason
             to answer today. */}
         <p className="field-hint" id="first-shot-cadence-hint">
-          Fill both in and you can track how on time your shots are, and see how
-          that lines up with how you’ve been feeling.
+          Fill these in and you can track how on time your shots are, and see
+          how that lines up with how you’ve been feeling.
         </p>
       </div>
 
