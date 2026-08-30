@@ -164,6 +164,7 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
    */
   const intervalRef = useRef<HTMLInputElement>(null);
   const shotDaySelectRef = useRef<HTMLSelectElement>(null);
+  const noticeRef = useRef<HTMLParagraphElement>(null);
 
   const shotDayUnavailable =
     isValidIntervalDays(profile.intervalDays) &&
@@ -181,7 +182,26 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
     if (!justDisabled) return;
     const active = document.activeElement;
     if (active === document.body || active === shotDaySelectRef.current) {
-      handOffFocus(intervalRef);
+      // The NOTICE first, not the number input. `<body>` here is a proxy for
+      // two different situations and cannot tell them apart: focus was on the
+      // select we just disabled (the case this exists for), or the user tapped
+      // blank card background to dismiss the keyboard and focus was simply
+      // nowhere. Both look identical by the time a passive effect runs, because
+      // disabling a focused element blurs it.
+      //
+      // So the target is chosen to be harmless under the false positive rather
+      // than the check being sharpened past what it can know. Landing in the
+      // number input re-raised the numeric keyboard the user had just
+      // dismissed; landing on the notice is silent, and it is the sentence
+      // explaining why the control below it went away — which is what a screen
+      // reader should hear at that moment anyway. Same reasoning as
+      // JourneySettings' "Remove start date", which avoids the date field
+      // precisely because focusing one summons a picker.
+      //
+      // The `<body>` case stays, deliberately: a false positive now costs a
+      // silent focus move, where a false negative strands focus on <body>
+      // inside the page, which is the failure this project treats as severe.
+      handOffFocus(noticeRef, intervalRef);
     }
   }, [shotDayUnavailable]);
 
@@ -237,14 +257,22 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
             value={startDraft}
             aria-describedby="first-shot-start-hint"
             onChange={(e) => setStartDraft(e.target.value)}
+            // An empty field is NOT taken as "delete this", and the same
+            // field in Settings carries the full reasoning: an empty date input
+            // cannot separate "I cleared this" from "I am retyping and the
+            // segments are incomplete", and both report "". Blur does not
+            // distinguish them — it picks one, and picking the destructive one
+            // silently deletes the milestone base with no undo and, on this
+            // card, no "Remove start date" control to have meant it with.
+            //
+            // Two identical fields answered this opposite ways, which is worse
+            // than either answer. They agree now: leaving a date field empty
+            // restores what is stored, and removing is its own action in
+            // Settings. This card's own commit-on-unmount path already declined
+            // to clear, so blur and backgrounding no longer disagree either.
             onBlur={() => {
-              if (startDraft.trim() === "") {
-                setStartDate(undefined);
-              } else if (isRealDate(startDraft)) {
-                setStartDate(startDraft);
-              } else {
-                setStartDraft(profile.startDate ?? "");
-              }
+              if (isRealDate(startDraft)) setStartDate(startDraft);
+              else setStartDraft(profile.startDate ?? "");
             }}
           />
         </div>
@@ -298,8 +326,15 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
         </div>
       </div>
 
+      {/* tabIndex={-1} so it can receive focus when the select under it
+          disables — it is not a control and never joins the tab order. */}
       {shotDayUnavailable && (
-        <p className="field-hint field-hint--notice" id="first-shot-day-notice">
+        <p
+          className="field-hint field-hint--notice"
+          id="first-shot-day-notice"
+          ref={noticeRef}
+          tabIndex={-1}
+        >
           No shot day with a non-weekly interval — a weekday can’t describe
           every {profile.intervalDays} days. Your gaps are still tracked.
         </p>

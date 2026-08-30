@@ -390,6 +390,14 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     () =>
       Boolean(editingShot) &&
       (Boolean(editingShot?.plannedFor) ||
+        // A parked draft counts too. Dismiss the sheet with a planned date
+        // typed, clear the cadence in Settings, then reopen the same shot: the
+        // draft restores that value while the field it belongs to would be
+        // gone, so it would be saved from an input the user cannot see — and if
+        // it were out of range, the error would block Save while its message
+        // was never rendered. The field is where a planned date is corrected,
+        // so a pending one is a reason to show it, not to hide it.
+        Boolean(draft?.plannedFor.trim()) ||
         scheduleMode(profile.shotDay, profile.intervalDays) !== "none"),
   );
   const [plannedBaseline, setPlannedBaseline] = useState<string>(
@@ -607,8 +615,13 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // The planned input renders for an EDIT only, so an unshowable error would
     // have made Save do nothing at all with nothing said anywhere: the dead
     // button the noValidate comment above exists to prevent.
+    // Gated on whether the field is SHOWN, not on whether this is an edit —
+    // `showsPlannedField` is the narrower of the two, so keying off `editingShot`
+    // could raise an error for an input that is not on screen. That is exactly
+    // the dead Save button the noValidate comment above exists to prevent: the
+    // submit blocked, and #planned-error never rendered to say why.
     const nextPlannedError =
-      !editingShot || plannedDraft.trim() === "" || parsedPlanned
+      !showsPlannedField || plannedDraft.trim() === "" || parsedPlanned
         ? null
         : isRealDate(plannedDraft)
           ? `Check the year — dates run from ${range.min} to ${range.max}.`
@@ -1088,7 +1101,14 @@ export const ShotForm: React.FC<ShotFormProps> = ({
                   if (plannedError) setPlannedError(null);
                 }}
                 aria-invalid={plannedError ? true : undefined}
-                aria-describedby={plannedError ? "planned-error" : undefined}
+                // The hint explains what this field IS — the only place a
+                // frozen planned date can be corrected — so it has to reach
+                // assistive tech, not just sighted readers. Every other new
+                // field on this branch wires its hint up; this one was the odd
+                // one out. The error joins it rather than replacing it.
+                aria-describedby={
+                  plannedError ? "planned-error planned-hint" : "planned-hint"
+                }
               />
             </label>
             {plannedError && (
@@ -1096,7 +1116,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
                 {plannedError}
               </span>
             )}
-            <p className="field-hint">
+            <p className="field-hint" id="planned-hint">
               Worked out from how often you inject, and kept as it was when you
               logged it. Change it here if this shot was always meant to be a
               different day.

@@ -1309,6 +1309,61 @@ describe("ShotForm — the planned date", () => {
     );
   });
 
+  it("points the planned field at its hint, not only at its error", () => {
+    // The hint explains what the field IS — the only place a frozen planned
+    // date can be corrected — so it has to reach assistive tech. Every other
+    // new field on this branch wires its hint up; this one was the odd one out.
+    render(
+      <ShotForm
+        onAddShot={() => "saved" as const}
+        onUpdateShot={() => "saved" as const}
+        editingShot={{ id: "a", date: "2026-08-05", plannedFor: "2026-08-05" }}
+        shots={[]}
+        profile={{}}
+      />,
+    );
+
+    expect(planned().getAttribute("aria-describedby")).toContain(
+      "planned-hint",
+    );
+    expect(document.getElementById("planned-hint")).not.toBeNull();
+  });
+
+  it("shows the field when a parked draft carries a planned date", () => {
+    // Dismiss the sheet with a planned date typed, clear the cadence in
+    // Settings, reopen the same shot: the draft restores that value. Gated on
+    // the shot and the cadence alone, the field would be gone while its value
+    // was still there — saved from an input the user cannot see, and if it were
+    // out of range, blocking Save with a message that never rendered.
+    render(
+      <ShotForm
+        onAddShot={() => "saved" as const}
+        onUpdateShot={() => "saved" as const}
+        editingShot={{ id: "a", date: "2026-08-05" }}
+        shots={[]}
+        profile={{}}
+        draft={{
+          date: "2026-08-05",
+          dateBaseline: "2026-08-05",
+          plannedFor: "2026-08-12",
+          plannedBaseline: "",
+          time: "",
+          doseMg: "",
+          injectionSite: "",
+          injectionSitePosition: "",
+          testosteroneEster: "",
+          carrierOil: "",
+          painScore: "",
+          mood: "",
+          notes: "",
+        }}
+      />,
+    );
+
+    expect(planned()).not.toBeNull();
+    expect(planned().value).toBe("2026-08-12");
+  });
+
   it("offers the field for a frozen date even with no cadence, and not otherwise", () => {
     // With no cadence there is nothing to compute and nothing to correct, so an
     // empty "Planned for" input hinted "Worked out from how often you inject"

@@ -89,6 +89,20 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
   /** Shot day is inert while a weekday cannot describe the cadence — the grid
    *  would walk across the week. Disabled, never cleared, so switching back to
    *  a weekly interval brings the saved day straight back. */
+  /**
+   * The same disable-under-focus hazard FirstShotCard guards, which this panel
+   * was assumed to escape "by accident, because three chips sit between its
+   * input and its select". That holds for Tab and not for a pointer: with a
+   * non-weekly value uncommitted in the interval box, tapping the shot-day
+   * select fires the input's blur FIRST, the commit disables the select, and
+   * the tap can no longer land focus on it — leaving focus on <body> inside
+   * Settings. Same class as the nine hand-off defects in slice B, and invisible
+   * to jsdom, which is how "three chips away" read as safety.
+   */
+  const intervalFieldRef = useRef<HTMLInputElement>(null);
+  const shotDaySelectRef = useRef<HTMLSelectElement>(null);
+  const noticeRef = useRef<HTMLParagraphElement>(null);
+
   const shotDayUnavailable =
     isValidIntervalDays(profile.intervalDays) &&
     !isWeeklyMultiple(profile.intervalDays);
@@ -185,6 +199,26 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
     setLastSaved(profile.startDate);
     setDateDraft(profile.startDate ?? "");
   }
+
+  // Only on the false -> true EDGE, never on mount: on mount
+  // `document.activeElement` is <body> by definition, so an unguarded version
+  // would yank focus the instant the panel painted for anyone who already has a
+  // non-weekly interval saved.
+  const wasUnavailable = useRef(shotDayUnavailable);
+  useEffect(() => {
+    const justDisabled = shotDayUnavailable && !wasUnavailable.current;
+    wasUnavailable.current = shotDayUnavailable;
+    if (!justDisabled) return;
+    const active = document.activeElement;
+    if (active === document.body || active === shotDaySelectRef.current) {
+      // The notice first, for the reason FirstShotCard's copy of this explains
+      // at length: <body> cannot distinguish "the select we just disabled had
+      // focus" from "focus was nowhere", so the target is chosen to be harmless
+      // when the guess is wrong. A paragraph is silent; the interval box would
+      // raise a numeric keyboard nobody asked for.
+      handOffFocus(noticeRef, intervalFieldRef);
+    }
+  }, [shotDayUnavailable]);
 
   return (
     <div className="journey-settings">
@@ -305,6 +339,7 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
       <div className="form-column">
         <input
           id="journey-interval"
+          ref={intervalFieldRef}
           type="number"
           min={MIN_INTERVAL_DAYS}
           max={MAX_INTERVAL_DAYS}
@@ -342,8 +377,15 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
 
       {/* Above the control it disables, so the reason is read before the thing
           that looks broken. */}
+      {/* tabIndex={-1} so it can take focus when the select below it disables —
+          not a control, never in the tab order. */}
       {shotDayUnavailable && (
-        <p className="field-hint field-hint--notice" id="shot-day-notice">
+        <p
+          className="field-hint field-hint--notice"
+          id="shot-day-notice"
+          ref={noticeRef}
+          tabIndex={-1}
+        >
           No shot day with a non-weekly interval — a weekday can’t describe
           every {profile.intervalDays} days. Your gaps are still tracked.
         </p>
@@ -352,6 +394,7 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
       <label className="form-column">
         Which day do you usually take it?
         <select
+          ref={shotDaySelectRef}
           value={profile.shotDay ?? ""}
           disabled={shotDayUnavailable}
           // See FirstShotCard: the reason it is disabled has to reach assistive
