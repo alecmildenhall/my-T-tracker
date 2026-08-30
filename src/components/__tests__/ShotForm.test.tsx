@@ -1309,6 +1309,99 @@ describe("ShotForm — the planned date", () => {
     );
   });
 
+  it("recomputes a restored new-shot draft's planned date rather than carrying it", () => {
+    // The planned field is never rendered for a new shot, so a value carried in
+    // a parked draft is one nobody can see or correct — and it goes stale
+    // exactly when the cadence changes, which is a large part of why someone
+    // left the sheet. Measured before the fix: a draft parked with no cadence,
+    // restored once one was set, saved `plannedFor: undefined` where a fresh
+    // form saved the date — while still persisting an anchor, so the grid was
+    // fixed by a shot that had no place on it.
+    const parked: ShotDraft = {
+      date: "2026-08-26",
+      dateBaseline: "2026-08-26",
+      plannedFor: "", // parked while no cadence was set
+      plannedBaseline: "",
+      time: "",
+      doseMg: "50",
+      injectionSite: "",
+      injectionSitePosition: "",
+      testosteroneEster: "",
+      carrierOil: "",
+      painScore: "",
+      mood: "",
+      notes: "",
+    };
+    const onAddShot = vi.fn((): SaveOutcome => "saved");
+    const onAnchorEstablished = vi.fn();
+    render(
+      <ShotForm
+        onAddShot={onAddShot}
+        shots={[]}
+        // No stored anchor, so this save is the one that establishes it — which
+        // is the half of the incoherence that mattered.
+        profile={{ shotDay: "wednesday", intervalDays: 7 }}
+        draft={parked}
+        onAnchorEstablished={onAnchorEstablished}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Save shot/i }));
+
+    expect(onAddShot).toHaveBeenCalledWith(
+      expect.objectContaining({ plannedFor: "2026-08-26" }),
+    );
+    // And the anchor it persists belongs to a shot that is actually on the grid.
+    expect(onAnchorEstablished).toHaveBeenCalledWith("2026-08-26");
+  });
+
+  it("establishes the grid anchor when logging, and never when editing", () => {
+    // An edit's anchor reference is the most recent date KNOWN, which for a
+    // shot being opened is some LATER shot rather than the one in front of you
+    // — the anchoring measured wrong in 1350 of 2250 cases. So opening a July
+    // entry to fix a typo persisted August's date as the anchor, and every
+    // on-rhythm shot logged afterwards froze a permanent "7 days earlier".
+    //
+    // Measured before the fix: onAnchorEstablished("2026-08-19").
+    const shots = [
+      { id: "a", date: "2026-07-08" },
+      { id: "b", date: "2026-08-19" },
+    ];
+    const profile = { shotDay: "wednesday" as const, intervalDays: 14 };
+
+    const onEdit = vi.fn();
+    const edit = render(
+      <ShotForm
+        onAddShot={() => "saved" as const}
+        onUpdateShot={() => "saved" as const}
+        editingShot={shots[0]}
+        shots={shots}
+        profile={profile}
+        onAnchorEstablished={onEdit}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Update shot/i }));
+    expect(onEdit).not.toHaveBeenCalled();
+    edit.unmount();
+
+    // The same profile and history, logging instead: the anchor is established,
+    // and from the shot being logged rather than from a later one.
+    const onLog = vi.fn();
+    render(
+      <ShotForm
+        onAddShot={() => "saved" as const}
+        shots={shots}
+        profile={profile}
+        onAnchorEstablished={onLog}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: "2026-09-02" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Save shot/i }));
+    expect(onLog).toHaveBeenCalledWith("2026-09-02");
+  });
+
   it("points the planned field at its hint, not only at its error", () => {
     // The hint explains what the field IS — the only place a frozen planned
     // date can be corrected — so it has to reach assistive tech. Every other

@@ -222,7 +222,18 @@ function initialPlanned(
   editingShot: ShotEntry | null | undefined,
   computed: string | undefined,
 ): string {
-  if (draft) return draft.plannedFor;
+  // A parked draft's planned date only means something for an EDIT, where the
+  // field is rendered and the user could have typed it. On a NEW shot the field
+  // is never shown, so a carried value is a stale computation nobody can see or
+  // correct — and it goes stale exactly when the cadence changes, which is a
+  // large part of why someone leaves the sheet in the first place.
+  //
+  // Measured: a draft parked with no cadence set, restored once one was, saved
+  // `plannedFor: undefined` where a fresh form saved the date — while still
+  // persisting an anchor, so the grid was fixed by a shot that had no place on
+  // it. The mirror case froze the OLD grid's date under a new cadence. By this
+  // feature's own design neither can ever be regenerated.
+  if (draft && editingShot) return draft.plannedFor;
   if (editingShot) return editingShot.plannedFor ?? "";
   return computed ?? "";
 }
@@ -400,8 +411,13 @@ export const ShotForm: React.FC<ShotFormProps> = ({
         Boolean(draft?.plannedFor.trim()) ||
         scheduleMode(profile.shotDay, profile.intervalDays) !== "none"),
   );
+  // Seeded by the same rule as the draft above, and it has to be: they are
+  // compared to answer "has the user edited this?", so seeding them from
+  // different places is how that question starts answering wrongly. A restored
+  // new-shot draft gets today's computation in both, which reads as untouched —
+  // which it is, the field having never been on screen.
   const [plannedBaseline, setPlannedBaseline] = useState<string>(
-    draft
+    draft && editingShot
       ? draft.plannedBaseline
       : initialPlanned(undefined, editingShot, plan.plannedFor),
   );
@@ -678,7 +694,19 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // was describing behaviour the code did not have: a storage refusal — the
     // very case this sheet is held open for — would have frozen the grid to a
     // shot that never existed, with no UI to reset it.
-    if (outcome === "saved" && plan.anchorToPersist) {
+    //
+    // And only when LOGGING. An edit must never establish the grid, because
+    // `anchorFrom` is the most recent date known — which, for a shot being
+    // edited, is some LATER shot rather than the one in front of you. That is
+    // precisely the anchoring measured as wrong in 1350 of 2250 cases: opening
+    // a July shot to fix a typo persisted an anchor of the August shot's date,
+    // and every on-rhythm shot logged afterwards then froze a permanent -7.
+    //
+    // The grid is something you establish by logging. Deciding it by opening an
+    // old entry is not a thing a user could predict, and the anchor is invisible
+    // with no UI to reset it. If no anchor exists yet, the next real log
+    // establishes one — which is the behaviour without the edit anyway.
+    if (outcome === "saved" && plan.anchorToPersist && !editingShot) {
       onAnchorEstablished?.(plan.anchorToPersist);
     }
 
