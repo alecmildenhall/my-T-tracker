@@ -248,8 +248,7 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
             rather than trailing the second — it says why you would answer
             either, so it has to arrive before you meet them. */}
         <p className="field-hint" id="first-shot-cadence-hint">
-          Fill these in and you can track how on time your shots are, and see
-          how that lines up with how you’ve been feeling.
+          Track how on time your shots are.
         </p>
         <div
           className="suggestion-chips suggestion-chips--tight"

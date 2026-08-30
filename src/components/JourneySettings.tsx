@@ -288,14 +288,19 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
           Remove start date
         </button>
       )}
-      {/* The pair's hint, under the FIRST of the two questions it describes —
-          it explains why you would answer either, so it arrives before both.
-          "These", not "both": the shot day only applies when the interval is a
-          whole number of weeks, and the app disables it otherwise. */}
+      {/* The pair's hint, under the FIRST of the two questions it describes,
+          because it says what answering them buys you and has to arrive before
+          you meet them.
+
+          It names NEITHER field on purpose. Earlier drafts said "fill both in",
+          which is wrong whenever the interval is not a whole number of weeks —
+          no weekday can describe a 10-day cadence, so the app disables the
+          shot-day select and times from the previous shot instead, and the hint
+          was telling that user to do the thing the app had just stopped them
+          doing. Stating only the payoff is true in both modes. */}
       <label htmlFor="journey-interval">How often do you take your shot?</label>
       <p className="field-hint" id="interval-hint">
-        Fill these in and you can track how on time your shots are, and see how
-        that lines up with how you’ve been feeling.
+        Track how on time your shots are.
       </p>
       <div className="form-column">
         <input
