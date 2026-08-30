@@ -60,6 +60,10 @@ class Journal {
     this.profile.intervalDays = days;
     this.profile.scheduleAnchor = undefined;
   }
+  setShotDay(day: Weekday) {
+    this.profile.shotDay = day;
+    this.profile.scheduleAnchor = undefined;
+  }
 }
 
 const series = (from: string, step: number, count: number) =>
@@ -113,6 +117,59 @@ describe("perfect adherence never reads as late", () => {
     }
 
     expect(cases).toBe(2250);
+    expect(failures).toEqual([]);
+  });
+
+  it("holds when the shot DAY changes rather than the interval", () => {
+    // The sweep above only ever changes the interval, and that was a gap in the
+    // guard rather than in the fix: `setShotDay` clears the anchor too, by the
+    // same code path, so it had the same defect and nothing was asking. Measured
+    // against the old rule when this was added: 486 of the 810 combinations
+    // below were wrong, on top of the 1317 the interval sweep found.
+    //
+    // Someone who moves their injection day — a new work pattern, a clinic
+    // appointment — and then keeps it perfectly is the person this must not
+    // accuse.
+    const failures: string[] = [];
+    let cases = 0;
+
+    for (const interval of [7, 14, 21, 28, 84]) {
+      for (const fromIndex of [0, 3, 5]) {
+        for (let toIndex = 0; toIndex < 7; toIndex++) {
+          if (toIndex === fromIndex) continue;
+          for (const priorShots of [1, 3, 5]) {
+            for (const gapWeeks of [1, 2, 3]) {
+              const from = WEEKDAYS[fromIndex];
+              const to = WEEKDAYS[toIndex];
+              const start = addDaysCivil("2026-01-04", fromIndex);
+              const before = series(start, interval, priorShots);
+
+              const j = new Journal(from, interval);
+              before.forEach((d) => j.log(d));
+              j.setShotDay(to);
+              // Resume on the NEW weekday, perfectly on cadence from there.
+              const resume = addDaysCivil(
+                before[before.length - 1],
+                7 * gapWeeks + ((toIndex - fromIndex + 7) % 7),
+              );
+              series(resume, interval, 4).forEach((d) => j.log(d));
+              cases++;
+
+              const deltas = j.shots
+                .slice(before.length)
+                .map((s) => daysFromPlanned(s));
+              if (deltas.some((d) => d !== null && d !== 0)) {
+                failures.push(
+                  `i=${interval} ${from}->${to} n=${priorShots} gap=${gapWeeks}w => ${deltas.join(",")}`,
+                );
+              }
+            }
+          }
+        }
+      }
+    }
+
+    expect(cases).toBe(810);
     expect(failures).toEqual([]);
   });
 
