@@ -125,7 +125,17 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
   useEffect(() => {
     commitAllRef.current = () => {
       commitInterval();
-      if (startDraft.trim() !== "" && isRealDate(startDraft)) {
+      // Only on a real change, for the reason `commitInterval` above documents:
+      // this runs from an effect cleanup, so every navigation away wrote the
+      // profile — and `updateProfile` always returns a fresh object, so the
+      // write is real. The card unmounts the moment the first shot is logged,
+      // which on a quota-exhausted device raised the storage-failure banner on
+      // top of "Logged for you." for an edit nobody made.
+      if (
+        startDraft.trim() !== "" &&
+        isRealDate(startDraft) &&
+        startDraft !== profile.startDate
+      ) {
         setStartDate(startDraft);
       }
     };
@@ -289,7 +299,7 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
       </div>
 
       {shotDayUnavailable && (
-        <p className="field-hint field-hint--notice">
+        <p className="field-hint field-hint--notice" id="first-shot-day-notice">
           No shot day with a non-weekly interval — a weekday can’t describe
           every {profile.intervalDays} days. Your gaps are still tracked.
         </p>
@@ -302,7 +312,14 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
             ref={shotDaySelectRef}
             value={profile.shotDay ?? ""}
             disabled={shotDayUnavailable}
-            aria-describedby="first-shot-cadence-hint"
+            // The notice explaining WHY this is disabled, when it is. Without
+            // it a screen reader announces "disabled" and no reason — the one
+            // piece of the sentence a sighted user gets for free.
+            aria-describedby={
+              shotDayUnavailable
+                ? "first-shot-cadence-hint first-shot-day-notice"
+                : "first-shot-cadence-hint"
+            }
             onChange={(e) =>
               setShotDay(isWeekday(e.target.value) ? e.target.value : undefined)
             }

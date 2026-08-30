@@ -343,7 +343,7 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
       {/* Above the control it disables, so the reason is read before the thing
           that looks broken. */}
       {shotDayUnavailable && (
-        <p className="field-hint field-hint--notice">
+        <p className="field-hint field-hint--notice" id="shot-day-notice">
           No shot day with a non-weekly interval — a weekday can’t describe
           every {profile.intervalDays} days. Your gaps are still tracked.
         </p>
@@ -354,7 +354,13 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
         <select
           value={profile.shotDay ?? ""}
           disabled={shotDayUnavailable}
-          aria-describedby="interval-hint"
+          // See FirstShotCard: the reason it is disabled has to reach assistive
+          // tech too, not just the notice a sighted user can read above it.
+          aria-describedby={
+            shotDayUnavailable
+              ? "interval-hint shot-day-notice"
+              : "interval-hint"
+          }
           onChange={(e) =>
             setShotDay(isWeekday(e.target.value) ? e.target.value : undefined)
           }

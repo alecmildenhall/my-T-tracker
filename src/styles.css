@@ -835,15 +835,6 @@ select {
   border-bottom: 1px solid rgba(31, 41, 55, 0.7);
 }
 
-.manage-row--washing::after {
-  /* `border-radius: inherit` resolves to 0 here — the row is divided by borders
-     rather than shaped — so the tint would butt hard against the dividers above
-     and below. Rounded and inset a little, it reads as a highlight ON the row
-     rather than a band between two others. */
-  border-radius: 6px;
-  inset: 1px 0;
-}
-
 .manage-row:last-child {
   border-bottom: none;
 }
@@ -1923,6 +1914,19 @@ select {
   /* Animation events from a pseudo-element are dispatched to the originating
      element, so the row's onAnimationEnd still hears this and can retire the
      state that armed it. */
+}
+
+/* The saved-value row's own shape, and it has to come AFTER the shared block:
+   both selectors are (0,1,1), so at equal specificity source order decides, and
+   this sat 1000 lines EARLIER — every declaration in it was overridden by the
+   `inset: 0` and `border-radius: inherit` above, silently. The tint painted as
+   a hard-edged full-bleed band butting the row dividers, which is precisely
+   what this rule exists to prevent.
+   `border-radius: inherit` resolves to 0 on a manage row (it is divided by
+   borders rather than shaped), so the radius is stated outright. */
+.manage-row--washing::after {
+  border-radius: 6px;
+  inset: 1px 0;
 }
 
 /* Reduced motion: the tint stays, the decay goes. Still an ANIMATION, not a
