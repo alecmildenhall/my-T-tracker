@@ -186,7 +186,7 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
           underneath four fields arrives after the moment someone decides
           whether they are obliged to answer them. */}
       <p className="first-shot-card__intro">
-        All optional — you can revisit any of this any time in Settings.
+        All optional — revisit anytime in Settings.
       </p>
 
       <div className="first-shot-card__field">
