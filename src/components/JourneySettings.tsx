@@ -204,7 +204,7 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
           name. See the same field in FirstShotCard. */}
       <label htmlFor="journey-start">Testosterone start date</label>
       <p className="field-hint" id="journey-start-hint">
-        Marks milestones along the way, like your first year on T.
+        Marks milestones, like your first year on T.
       </p>
       <div className="form-column">
         <input

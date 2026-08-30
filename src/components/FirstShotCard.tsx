@@ -211,7 +211,7 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
             for the same reason. */}
         <label htmlFor="first-shot-start">When did you start T?</label>
         <p className="field-hint" id="first-shot-start-hint">
-          Marks milestones along the way, like your first year on T.
+          Marks milestones, like your first year on T.
         </p>
         <div className="form-column">
           {/* Deliberately UNBOUNDED, and validated with `isRealDate` rather than
