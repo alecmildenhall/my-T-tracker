@@ -1255,7 +1255,13 @@ describe("ShotForm — the planned date", () => {
     expect(ref.current).toBeNull();
   });
 
-  it("an untouched planned date follows the shot's date; an edited one does not", () => {
+  it("never moves a saved shot's frozen planned date when its date is edited", () => {
+    // This test used to assert the OPPOSITE — that an untouched planned date
+    // follows the shot's date. That was the bug, not the contract. The value is
+    // frozen at log time, so an unrelated edit rewriting it is a silent
+    // rewriting of history: open an old shot to fix a typo in its date and the
+    // planned date repainted from TODAY's settings. Only the user may change
+    // it, through the field itself.
     render(
       <ShotForm
         onAddShot={() => "saved" as const}
@@ -1267,14 +1273,70 @@ describe("ShotForm — the planned date", () => {
     );
     const dateField = screen.getByLabelText("Date");
 
-    fireEvent.change(dateField, { target: { value: "2026-08-05" } });
     expect(planned().value).toBe("2026-08-05");
     fireEvent.change(dateField, { target: { value: "2026-08-12" } });
-    expect(planned().value).toBe("2026-08-12"); // followed
+    expect(planned().value).toBe("2026-08-05"); // stayed put
 
+    // Explicit edits still work, and still survive a later date change.
     fireEvent.change(planned(), { target: { value: "2026-07-29" } });
     fireEvent.change(dateField, { target: { value: "2026-08-19" } });
-    expect(planned().value).toBe("2026-07-29"); // stayed put
+    expect(planned().value).toBe("2026-07-29");
+  });
+
+  it("keeps the frozen date on save after the cadence was cleared", () => {
+    // The data-loss path. Log under a cadence, clear it in Settings, then open
+    // an old shot to fix its date: the sync repainted from `computed`, which is
+    // now "", the field blanked, and Save stored `plannedFor: undefined` —
+    // destroying a value backupDto.ts states can never be regenerated.
+    const onUpdateShot = vi.fn((): SaveOutcome => "saved");
+    render(
+      <ShotForm
+        onAddShot={() => "saved" as const}
+        onUpdateShot={onUpdateShot}
+        editingShot={{ id: "a", date: "2026-08-05", plannedFor: "2026-08-05" }}
+        shots={[{ id: "a", date: "2026-08-05", plannedFor: "2026-08-05" }]}
+        profile={{}}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: "2026-08-06" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Update shot/i }));
+
+    expect(onUpdateShot).toHaveBeenCalledWith(
+      expect.objectContaining({ date: "2026-08-06", plannedFor: "2026-08-05" }),
+    );
+  });
+
+  it("offers the field for a frozen date even with no cadence, and not otherwise", () => {
+    // With no cadence there is nothing to compute and nothing to correct, so an
+    // empty "Planned for" input hinted "Worked out from how often you inject"
+    // only invited a value the app would never produce — which then rendered in
+    // History and in the CSV a provider reads. A shot that already carries one
+    // still gets the field: correcting or clearing it is what it is for.
+    const { unmount } = render(
+      <ShotForm
+        onAddShot={() => "saved" as const}
+        onUpdateShot={() => "saved" as const}
+        editingShot={{ id: "a", date: "2026-08-05", plannedFor: "2026-08-05" }}
+        shots={[]}
+        profile={{}}
+      />,
+    );
+    expect(screen.queryByLabelText(/Planned for/i)).not.toBeNull();
+    unmount();
+
+    render(
+      <ShotForm
+        onAddShot={() => "saved" as const}
+        onUpdateShot={() => "saved" as const}
+        editingShot={{ id: "b", date: "2026-08-05" }}
+        shots={[]}
+        profile={{}}
+      />,
+    );
+    expect(screen.queryByLabelText(/Planned for/i)).toBeNull();
   });
 
   it("still plans the shot after Clear form", () => {

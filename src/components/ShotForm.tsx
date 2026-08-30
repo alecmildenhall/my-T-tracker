@@ -19,6 +19,7 @@ import {
   planShot,
   previousShotDateBefore,
   earliestShotDate,
+  scheduleMode,
 } from "../utils/schedule";
 
 /**
@@ -367,18 +368,56 @@ export const ShotForm: React.FC<ShotFormProps> = ({
    * including the one present on arrival. It is keyed to the shot's date now, so
    * it runs when the date moves and never on mount.
    */
+  /**
+   * Whether the "Planned for" field is offered at all.
+   *
+   * Editing alone was not the right condition, and the comment beside the field
+   * already claimed this one: with no cadence set there is nothing to show and
+   * nothing to correct, so an empty date input labelled "Planned for" and
+   * hinted "Worked out from how often you inject" invited a value the app would
+   * never compute — which then rendered in History and in the CSV a provider
+   * reads. A shot that ALREADY carries a frozen planned date still gets the
+   * field even with no cadence, because correcting or clearing it is exactly
+   * what it is for.
+   *
+   * Frozen for the sheet's lifetime, deliberately. The condition now depends on
+   * the profile, which a cross-tab storage event can change at any moment — and
+   * a field that unmounts from under the focus it holds strands focus on <body>
+   * inside a dialog, where the Tab trap cannot re-engage. `useState` with an
+   * initializer answers once, at open, like `editingShot` did by nature.
+   */
+  const [showsPlannedField] = useState(
+    () =>
+      Boolean(editingShot) &&
+      (Boolean(editingShot?.plannedFor) ||
+        scheduleMode(profile.shotDay, profile.intervalDays) !== "none"),
+  );
   const [plannedBaseline, setPlannedBaseline] = useState<string>(
     draft
       ? draft.plannedBaseline
       : initialPlanned(undefined, editingShot, plan.plannedFor),
   );
   const computed = plan.plannedFor ?? "";
-  // Change the shot's date and an untouched planned date follows it; an edited
-  // one stays where it was put.
+  // On a NEW shot, changing the date moves an untouched planned date with it —
+  // nothing is frozen yet, so following is the only sensible thing to do.
+  //
+  // On a SAVED one, nothing follows. The planned date was frozen at log time
+  // and only the user may change it, through the field below. Following was a
+  // silent rewrite of history triggered by an unrelated edit: open an old shot
+  // to fix a typo in its date, and the field repainted from TODAY's settings —
+  // onto the new grid if the cadence had changed, and to empty if the cadence
+  // had since been cleared, whereupon Save stored `undefined` and destroyed a
+  // value backupDto.ts states can never be regenerated. Freezing at log time is
+  // what makes that permanent rather than self-correcting, so the guard has to
+  // be here.
   if (plannedForDate !== date) {
     setPlannedForDate(date);
-    if (plannedDraft === plannedBaseline) setPlannedDraft(computed);
-    setPlannedBaseline(computed);
+    if (!editingShot) {
+      if (plannedDraft === plannedBaseline) setPlannedDraft(computed);
+      // The baseline moves with the draft, or the pair falls out of step and
+      // the "has the user edited this?" question starts answering wrongly.
+      setPlannedBaseline(computed);
+    }
   }
   const [dateBaseline, setDateBaseline] = useState<string>(start.dateBaseline);
   // The sheet's landing spot. Owned by the parent when it supplies one, because
@@ -1035,7 +1074,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             so the field can never unmount from under the focus it holds — a
             transient condition here would strand focus on <body> inside a
             dialog, where the Tab trap cannot re-engage. */}
-        {Boolean(editingShot) && (
+        {showsPlannedField && (
           <div className="field-cell">
             <label className="form-column">
               Planned for
