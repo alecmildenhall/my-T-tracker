@@ -12,6 +12,7 @@ import {
   anchorReferenceDate,
 } from "../schedule";
 import { WEEKDAYS, weekdayOf } from "../weekday";
+import { shotDateRange, isShotDateInRange } from "../civilDate";
 
 /** 5 Aug 2026 is a Wednesday — the anchor day for every scenario below. */
 const WED = "2026-08-05";
@@ -430,6 +431,39 @@ describe("planShot — the one entry point", () => {
       plannedFor: day(7),
       anchorToPersist: day(7),
     });
+  });
+});
+
+describe("planShot at the edge of the supported range", () => {
+  it("returns no anchor when it could not produce a planned date", () => {
+    // `establishAnchor` can succeed while `plannedDateFor` refuses: the rounded
+    // slot lands up to half an interval past the shot, so a year-long cadence
+    // near the top of the range overshoots it. Persisting the anchor anyway
+    // froze the grid to a shot carrying no planned date of its own — and the
+    // anchor has no UI to inspect or reset, so that state is unrepairable.
+    //
+    // Built relative to the range rather than from fixed dates, because the
+    // upper bound is today + 1 year and moves every day; hardcoding would make
+    // this pass today and rot silently.
+    const max = shotDateRange().max;
+    const anchor = snapToWeekday(addDaysCivil(max, -360), "wednesday")!;
+    const date = addDaysCivil(anchor, 200); // rounds to slot 1, i.e. anchor + 364
+
+    // The premise: both dates are storable, and the anchor itself is fine.
+    expect(isShotDateInRange(anchor)).toBe(true);
+    expect(isShotDateInRange(date)).toBe(true);
+    expect(establishAnchor(anchor, "wednesday", 364)).toBe(anchor);
+    // But the slot it would plan is not.
+    expect(plannedDateFor(date, anchor, 364)).toBeNull();
+
+    // So nothing is returned — not a planned date, and not an anchor.
+    expect(
+      planShot({
+        date,
+        anchorFrom: anchor,
+        profile: { shotDay: "wednesday", intervalDays: 364 },
+      }),
+    ).toEqual({});
   });
 });
 
