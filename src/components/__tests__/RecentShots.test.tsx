@@ -15,7 +15,7 @@ const makeShots = (n: number): ShotEntry[] =>
 /** The teaser, with both required callbacks. Defaults so a test only names the
  *  one it cares about. */
 const renderTeaser = (
-  props: Partial<React.ComponentProps<typeof RecentShots>> = {}
+  props: Partial<React.ComponentProps<typeof RecentShots>> = {},
 ) =>
   render(
     <RecentShots
@@ -24,7 +24,7 @@ const renderTeaser = (
       onEditShot={vi.fn()}
       onDeleteShot={vi.fn(() => true)}
       {...props}
-    />
+    />,
   );
 
 describe("RecentShots", () => {
@@ -57,7 +57,9 @@ describe("RecentShots", () => {
     expect(dialog).toHaveTextContent("Delete this shot?");
 
     // "Keep it" is the initially focused control, so a stray Enter keeps it.
-    expect(within(dialog).getByRole("button", { name: "Keep it" })).toHaveFocus();
+    expect(
+      within(dialog).getByRole("button", { name: "Keep it" }),
+    ).toHaveFocus();
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
     expect(onDeleteShot).toHaveBeenCalledWith("s2"); // newest first
   });
@@ -68,10 +70,14 @@ describe("RecentShots", () => {
     renderTeaser({ onDeleteShot: vi.fn(() => false) });
     fireEvent.click(screen.getAllByRole("button", { name: "Delete" })[0]);
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" })
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Delete",
+      }),
     );
     expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByRole("alert")).toHaveTextContent(/isn.t accepting changes/i);
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      /isn.t accepting changes/i,
+    );
   });
 
   it("edits a shot from its own Edit button", () => {
@@ -91,7 +97,9 @@ describe("RecentShots", () => {
     // The only buttons in a teaser row are the ones you aim at.
     renderTeaser();
     document.querySelectorAll("li.shot-list-item").forEach((row) => {
-      const names = [...row.querySelectorAll("button")].map((b) => b.textContent);
+      const names = [...row.querySelectorAll("button")].map(
+        (b) => b.textContent,
+      );
       expect(names).toEqual(["Edit", "Delete"]);
     });
   });
@@ -115,9 +123,11 @@ describe("RecentShots", () => {
         onSeeAll={onSeeAll}
         onEditShot={vi.fn()}
         onDeleteShot={vi.fn(() => true)}
-      />
+      />,
     );
-    expect(screen.queryByRole("button", { name: /See all/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /See all/ }),
+    ).not.toBeInTheDocument();
     expect(screen.getByText(/No shots logged yet/)).toBeInTheDocument();
 
     rerender(
@@ -126,9 +136,93 @@ describe("RecentShots", () => {
         onSeeAll={onSeeAll}
         onEditShot={vi.fn()}
         onDeleteShot={vi.fn(() => true)}
-      />
+      />,
     );
     fireEvent.click(screen.getByRole("button", { name: /See all/ }));
     expect(onSeeAll).toHaveBeenCalledOnce();
+  });
+});
+
+describe("the planned date line", () => {
+  const withPlan = (date: string, plannedFor: string): ShotEntry[] => [
+    { id: "a", date, plannedFor },
+  ];
+
+  it("measures the gap with a comparative, never a verdict", () => {
+    // The grammar is the whole point: "2 days late" is a STATUS against an
+    // obligation you failed, "2 days later" is a DISTANCE from a reference —
+    // and only the second is something the app knows. Following the
+    // #LanguageMatters practice, whose finding is that language which blames
+    // does more harm than it does motivating.
+    render(
+      <RecentShots
+        shots={withPlan("2026-08-07", "2026-08-05")}
+        onSeeAll={vi.fn()}
+        onEditShot={vi.fn()}
+        onDeleteShot={vi.fn(() => true)}
+      />,
+    );
+    expect(
+      screen.getByText(/Planned for 2026-08-05 · 2 days later/),
+    ).toBeInTheDocument();
+  });
+
+  it("says earlier for a shot before its planned day", () => {
+    render(
+      <RecentShots
+        shots={withPlan("2026-08-04", "2026-08-05")}
+        onSeeAll={vi.fn()}
+        onEditShot={vi.fn()}
+        onDeleteShot={vi.fn(() => true)}
+      />,
+    );
+    expect(screen.getByText(/1 day earlier/)).toBeInTheDocument();
+  });
+
+  it("says nothing evaluative when it landed on the day", () => {
+    render(
+      <RecentShots
+        shots={withPlan("2026-08-05", "2026-08-05")}
+        onSeeAll={vi.fn()}
+        onEditShot={vi.fn()}
+        onDeleteShot={vi.fn(() => true)}
+      />,
+    );
+    expect(screen.getByText(/taken that day/)).toBeInTheDocument();
+  });
+
+  it("never uses the words late or early", () => {
+    // Pinned as a rule rather than trusted per string: the roadmap's tone
+    // section forbids implying lateness, and this is the surface that reports
+    // timing.
+    for (const [date, planned] of [
+      ["2026-08-12", "2026-08-05"],
+      ["2026-07-29", "2026-08-05"],
+      ["2026-08-05", "2026-08-05"],
+    ]) {
+      const { container, unmount } = render(
+        <RecentShots
+          shots={withPlan(date, planned)}
+          onSeeAll={vi.fn()}
+          onEditShot={vi.fn()}
+          onDeleteShot={vi.fn(() => true)}
+        />,
+      );
+      expect(container.textContent).not.toMatch(/\blate\b/i);
+      expect(container.textContent).not.toMatch(/\bearly\b/i);
+      unmount();
+    }
+  });
+
+  it("shows no line when the shot has no planned date", () => {
+    render(
+      <RecentShots
+        shots={[{ id: "a", date: "2026-08-05" }]}
+        onSeeAll={vi.fn()}
+        onEditShot={vi.fn()}
+        onDeleteShot={vi.fn(() => true)}
+      />,
+    );
+    expect(screen.queryByText(/Planned for/)).not.toBeInTheDocument();
   });
 });

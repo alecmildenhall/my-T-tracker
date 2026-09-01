@@ -72,10 +72,30 @@ html {
   scrollbar-gutter: stable;
 }
 
+/* The same declaration again, at a selector that wins.
+   `:root` and `html` are the SAME element, but `html` is a type selector
+   (0,0,1) while `:root` is a pseudo-class (0,1,0) — so any stylesheet that
+   loads after ours and sets `html { background }` at equal weight takes the
+   canvas back, and the elastic overscroll above the page turns the platform's
+   default grey again. That is exactly what happens when this app is embedded
+   under a host's own reset. Repeating it here costs one declaration and makes
+   the page's own background independent of load order. */
+:root {
+  background-color: #020617;
+}
+
 body {
   margin: 0;
   font-family: var(--font-sans);
-  background: radial-gradient(circle at top, #020617, #020617 40%, #000 100%);
+  /* A base COLOUR under the gradient, stated INSIDE the shorthand.
+     `background` is a shorthand, so it resets background-color to transparent —
+     which means a separate `background-color` declaration only survives if it
+     comes after. The first attempt at this put it before, so the shorthand wiped
+     it and `body` computed to rgba(0, 0, 0, 0) exactly as before: a comment
+     describing the trap, directly above code walking into it. Folding the colour
+     into the shorthand makes the ordering impossible to get wrong. */
+  background: radial-gradient(circle at top, #020617, #020617 40%, #000 100%)
+    #020617;
   color: var(--text);
   min-height: 100vh;
 }
@@ -181,7 +201,16 @@ body {
 
 label {
   font-size: 0.8rem;
-  color: var(--text-muted);
+  /* The question outranks the note under it, and CONTRAST is what says so.
+     Label and hint were the same colour at the same weight, 0.8px apart in size
+     — measured, both #9ca3af at 7.2:1 on the card — so nothing told the eye
+     which one was being asked, and a card of questions read as one column of
+     grey. Full text colour takes the label to 17.4:1 while the hint stays put:
+     a 2.4x gap. Size alone was never going to carry it; every design system
+     that gets this right separates the two on at least two of size, weight and
+     contrast, and we were using one lever, barely. */
+  color: var(--text);
+  font-weight: 600;
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
@@ -228,6 +257,19 @@ select {
        at every root size and still scales past it. */
     font-size: max(1rem, 16px);
   }
+}
+
+/* A disabled control has to LOOK disabled. The dark theme sets its own
+   background and border on inputs and selects, which overrides the greying a
+   browser would otherwise apply — so shot day sat there looking tappable while
+   a non-weekly interval had made it inert. Checked in a browser: without this
+   the disabled select is indistinguishable from an enabled one. */
+input:disabled,
+textarea:disabled,
+select:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: var(--surface-subtle);
 }
 
 input::placeholder,
@@ -303,6 +345,31 @@ textarea {
   background: var(--accent-soft);
   border-color: rgba(56, 189, 248, 0.6);
   color: #e0f2fe;
+}
+
+/* The cadence row only. Three chips plus the free-entry box do not fit on one
+   line at 320px — measured: "1 week / 2 weeks" wrapped, leaving "12 weeks" on a
+   line of its own and costing 44px on a card that already scrolls at that
+   width. Trimming the horizontal padding alone buys the ~14px needed.
+   `padding-inline`, never `padding`: `min-height: 44px` is the touch target and
+   must not move, and this row is the only place chips are competing for width —
+   the reuse chips on the log form wrap freely and are left alone. */
+/* The free-entry box wraps under the chips at phone widths, and the 0.35rem
+   flex gap that reads as fine BETWEEN chips reads as cramped between a chip and
+   a text box — a box has its own border and 44px height, so the two edges sit
+   almost touching. Row gap only; the horizontal gap is what the measured
+   padding above is fighting for. The bottom margin does the same job for
+   whatever control follows the row (the shot-day select, in Settings). */
+.suggestion-chips--tight {
+  row-gap: 0.6rem;
+  margin-block-end: 0.35rem;
+}
+
+.suggestion-chips--tight .chip {
+  /* 0.5rem, arrived at by measuring rather than taste: at 320px the row needed
+     243.3px and had 227.8px, so 15.5px across six padding edges — 2.6px each.
+     0.7rem was tried first and still wrapped. This leaves ~4px spare. */
+  padding-inline: 0.5rem;
 }
 
 .suggestion-chips .chip:focus-visible {
@@ -479,7 +546,14 @@ select {
 /* Where "Remove start date" hands focus once it removes itself — added with
    that control, because a hand-off target with no ring is a keyboard user
    losing their place silently (WCAG 2.4.7). */
-.settings-section__title:focus-visible {
+.settings-section__title:focus-visible,
+/* Where the shot-day select hands focus when a non-weekly interval disables it,
+   in both the first-run card and Settings. Added in a browser pass: focus
+   landed correctly and the element fell back to the UA's own ring, which is
+   visible in Chromium and is not this app's ring — so it looked different from
+   every other hand-off, and a `<p tabindex="-1">` is exactly the kind of target
+   other engines decline to outline at all. */
+.field-hint--notice:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -513,6 +587,94 @@ select {
   font-size: 0.78rem;
   color: var(--text-muted);
   margin-bottom: 0.35rem;
+}
+
+.first-shot-card {
+  background: radial-gradient(circle at top left, #111827, #020617 60%);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 1.1rem;
+  box-shadow: var(--shadow-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+/* A question and its hint, grouped so the hint is nearer the control it
+   describes than the next question — at the card's 0.7rem gap an ungrouped hint
+   sits equidistant between the two and reads as belonging to either. The hint
+   is a SIBLING of the label, never inside it: text inside a <label> joins the
+   field's accessible name, so `aria-describedby` is how it reaches assistive
+   tech (the same rule the log sheet's date error follows). */
+.first-shot-card__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.first-shot-card__field .field-hint {
+  margin-bottom: 0;
+}
+
+.first-shot-card__intro {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.first-shot-card__title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+/* Matches the real <label> above. This one names a chip GROUP rather than a
+   single control, so it cannot be a <label>, but it asks the same kind of
+   question and has to carry the same weight. */
+.first-shot-card__label {
+  font-size: 0.8rem;
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* Sits in the chip row, so it reads as one more way to answer the same
+   question rather than a separate field. */
+.first-shot-card__other {
+  display: inline-flex;
+  flex: 1 1 9rem;
+  min-width: 9rem;
+}
+
+.first-shot-card__other input {
+  width: 100%;
+  border-radius: 999px;
+  padding-inline: 0.85rem;
+}
+
+.first-shot-card__restore {
+  margin: 0;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.shot-list-item__planned {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  margin: 0 0 0.3rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A note that explains why the control under it is disabled, so it reads before
+   the thing that looks broken rather than after. */
+.field-hint--notice {
+  color: #e0f2fe;
+  background: var(--accent-soft);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 6px 6px 0;
+  padding: 0.5rem 0.7rem;
+  margin-bottom: 0.6rem;
 }
 
 .shot-list-item__notes {
@@ -573,6 +735,28 @@ select {
   gap: 0.3rem;
 }
 
+/* The hint sits BETWEEN the question and the control now, so its trailing
+   margin — which used to separate one field from the next, back when the hint
+   was last — would push the control away from the question it belongs to. The
+   panel's own gap handles spacing. */
+.journey-settings .field-hint {
+  margin-bottom: 0;
+}
+
+/* Field separation, now that every gap in the panel is otherwise equal. A label
+   starts each field, so the extra space goes above it: within a field the parts
+   sit 0.4rem apart, between fields 0.9rem. Grouping has to come from the ratio
+   — without it, "hint, then the NEXT question" is spaced identically to
+   "question, then its own hint", which is most of what made the panel read as
+   one column. */
+.journey-settings > label {
+  margin-top: 0.5rem;
+}
+
+.journey-settings > label:first-child {
+  margin-top: 0;
+}
+
 /* Small helper text under a field — quieter than the section description. */
 .field-hint {
   margin: 0 0 0.9rem;
@@ -583,6 +767,36 @@ select {
 
 .field-hint:last-child {
   margin-bottom: 0;
+}
+
+/* Marks the MINORITY. The log sheet has one required field and ten optional
+   ones, so tagging the one is the signal and tagging the ten would be noise —
+   see the note in ShotForm. The word carries it, not the colour (WCAG 1.4.1). */
+/* A label and its "Required" flag on one line. The label cannot wrap its input
+   here (the flag has to stay out of the accessible name — see ShotForm), so
+   this row stands in for the wrapping label's own layout. */
+.field-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+}
+
+/* The global `label` is `flex: 1 1 0` so it fills a form row; as an item in
+   this row that stretches it and pushes the flag to the far edge. */
+.field-head > label {
+  flex: 0 0 auto;
+}
+
+.field-flag {
+  /* Sized explicitly, and smaller than the 0.8rem label. It is a SIBLING of the
+     label rather than inside it, so it inherits the body's 1rem instead — which
+     rendered "Required" larger and brighter than "Date" and read as the field's
+     name. A qualifier has to be subordinate to the thing it qualifies. */
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #94a3b8;
 }
 
 .field-error {
@@ -621,6 +835,8 @@ select {
 }
 
 .manage-row {
+  /* Anchors the wash overlay in ::after — see the acknowledgement block. */
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0.6rem;
@@ -1677,7 +1893,7 @@ select {
 
    Animating opacity also keeps this on the compositor instead of repainting the
    gradient 60 times a second. */
-@keyframes shot-wash {
+@keyframes row-wash {
   0%,
   20% {
     opacity: 1;
@@ -1687,7 +1903,10 @@ select {
   }
 }
 
-.shot-list-item--washing::after {
+/* Both row types, one block: the hold, the timing and the fill mode are the
+   acknowledgement itself, and a second copy is a second thing to drift. */
+.shot-list-item--washing::after,
+.manage-row--washing::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -1700,10 +1919,23 @@ select {
      tint and held there until React's onAnimationEnd re-render dropped the
      class a frame or more later. The last thing you saw was a green flash,
      which is the exact opposite of a fade. */
-  animation: shot-wash 2200ms ease-out forwards;
+  animation: row-wash 2200ms ease-out forwards;
   /* Animation events from a pseudo-element are dispatched to the originating
      element, so the row's onAnimationEnd still hears this and can retire the
      state that armed it. */
+}
+
+/* The saved-value row's own shape, and it has to come AFTER the shared block:
+   both selectors are (0,1,1), so at equal specificity source order decides, and
+   this sat 1000 lines EARLIER — every declaration in it was overridden by the
+   `inset: 0` and `border-radius: inherit` above, silently. The tint painted as
+   a hard-edged full-bleed band butting the row dividers, which is precisely
+   what this rule exists to prevent.
+   `border-radius: inherit` resolves to 0 on a manage row (it is divided by
+   borders rather than shaped), so the radius is stated outright. */
+.manage-row--washing::after {
+  border-radius: 6px;
+  inset: 1px 0;
 }
 
 /* Reduced motion: the tint stays, the decay goes. Still an ANIMATION, not a
@@ -1712,7 +1944,7 @@ select {
    Dropping the animation entirely would leave the row tinted forever, because
    nothing would ever tell React the wash was over. */
 @media (prefers-reduced-motion: reduce) {
-  @keyframes shot-wash {
+  @keyframes row-wash {
     0% {
       opacity: 1;
     }
@@ -1721,12 +1953,13 @@ select {
     }
   }
 
-  .shot-list-item--washing::after {
+  .shot-list-item--washing::after,
+  .manage-row--washing::after {
     /* `forwards` again, and it has to be repeated: this is the `animation`
        SHORTHAND, so it resets fill-mode to `none` and would reintroduce the
        revert-to-opacity-1 above. Here the last keyframe is the held tint, so
        forwards simply keeps it until the class goes. */
-    animation: shot-wash 2200ms step-end forwards;
+    animation: row-wash 2200ms step-end forwards;
   }
 }
 

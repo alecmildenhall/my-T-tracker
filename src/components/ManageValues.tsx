@@ -1,10 +1,15 @@
 // src/components/ManageValues.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { ShotEntry } from "../types/shot";
-import { normalizeValue, valueGroupsFor, type TextField } from "../utils/suggestions";
+import {
+  normalizeValue,
+  valueGroupsFor,
+  type TextField,
+} from "../utils/suggestions";
 import { pluralizeEntries as entries } from "../utils/format";
 import { Modal } from "./Modal";
 import { handOffFocus } from "../utils/focus";
+import { WASH_ANIMATION } from "../utils/wash";
 
 interface ManageValuesProps {
   shots: ShotEntry[];
@@ -24,7 +29,13 @@ const FIELDS: { field: TextField; title: string }[] = [
 type Dialog =
   | { mode: "remove"; field: TextField; value: string; count: number }
   | { mode: "rename"; field: TextField; value: string; count: number }
-  | { mode: "combine"; field: TextField; value: string; count: number; target: string };
+  | {
+      mode: "combine";
+      field: TextField;
+      value: string;
+      count: number;
+      target: string;
+    };
 
 export const ManageValues: React.FC<ManageValuesProps> = ({
   shots,
@@ -33,8 +44,36 @@ export const ManageValues: React.FC<ManageValuesProps> = ({
 }) => {
   const groups = useMemo(
     () => FIELDS.map((f) => ({ ...f, values: valueGroupsFor(shots, f.field) })),
-    [shots]
+    [shots],
   );
+
+  /**
+   * The value whose row is owed a wash, or null. Armed ONLY where a rename
+   * actually altered stored data and the write came back landed — the two are
+   * separate conditions and both have to hold:
+   *
+   *   - Nothing changed (an empty box, or the same name back) closes the dialog
+   *     and arms nothing. A wash means "that did something"; playing it for a
+   *     no-op teaches you to stop believing it.
+   *   - A REFUSED write arms nothing either, and keeps the dialog open with its
+   *     error. `onRenameValue` returning true is the verification that storage
+   *     matches the request, so celebrating before checking it would be the
+   *     silent-success bug this panel was already fixed for once.
+   *
+   * Identified by NORMALIZED value plus field, not by the string typed. The
+   * display name a group shows is "most recent display form wins"
+   * (`accumulate`), so after combining "thigh" into "Glute" the surviving row
+   * may read a different casing than the name that was submitted — matching
+   * exactly would find no row and silently skip the wash. Field too, because the
+   * same word can be saved under two fields ("left" as a position and a site)
+   * and only one of them changed.
+   */
+  const [washed, setWashed] = useState<{
+    field: TextField;
+    key: string;
+  } | null>(null);
+  const armWash = (field: TextField, value: string) =>
+    setWashed({ field, key: normalizeValue(value) });
 
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [renameInput, setRenameInput] = useState("");
@@ -64,16 +103,27 @@ export const ManageValues: React.FC<ManageValuesProps> = ({
     if (dialog?.mode === "combine") handOffFocus(cancelRef, dialogTitleRef);
   }, [dialog?.mode]);
 
+  // Closing ANY dialog retires an outstanding wash — the same "clears on your
+  // next deliberate action" rule the post-log line follows, and it doubles as
+  // the guard the shot lists need an effect for.
+  //
+  // A wash is an animation on a row, so one whose row never mounts (or unmounts
+  // mid-play) never fires `animationend` and never retires by itself. RecentShots
+  // and HistoryView watch for that in an effect because their rows come and go
+  // underneath them. Here every route into and out of this panel's dialogs runs
+  // `close()`, so retiring there covers it without a render-phase setState — and
+  // the arming sites below deliberately call `close()` FIRST, then arm.
   const close = () => {
     setDialog(null);
     setWriteFailed(false);
+    setWashed(null);
   };
 
   const openRemove = (
     opener: HTMLElement,
     field: TextField,
     value: string,
-    count: number
+    count: number,
   ) => {
     openerRef.current = opener;
     setDialog({ mode: "remove", field, value, count });
@@ -83,7 +133,7 @@ export const ManageValues: React.FC<ManageValuesProps> = ({
     opener: HTMLElement,
     field: TextField,
     value: string,
-    count: number
+    count: number,
   ) => {
     openerRef.current = opener;
     setRenameInput(value);
@@ -91,12 +141,16 @@ export const ManageValues: React.FC<ManageValuesProps> = ({
   };
 
   // Another existing value in the same field that the new name collides with.
-  const findCollision = (field: TextField, from: string, to: string): string | null => {
+  const findCollision = (
+    field: TextField,
+    from: string,
+    to: string,
+  ): string | null => {
     const values = groups.find((g) => g.field === field)?.values ?? [];
     const hit = values.find(
       (v) =>
         normalizeValue(v.value) === normalizeValue(to) &&
-        normalizeValue(v.value) !== normalizeValue(from)
+        normalizeValue(v.value) !== normalizeValue(from),
     );
     return hit ? hit.value : null;
   };
@@ -125,7 +179,11 @@ export const ManageValues: React.FC<ManageValuesProps> = ({
         setWriteFailed(true);
         return;
       }
+      // Re-casing IS a change — every entry now stores the new capitalisation —
+      // so it earns the wash like any other rename. The no-change cases were
+      // already returned above.
       close();
+      armWash(dialog.field, to);
       return;
     }
     const target = findCollision(dialog.field, dialog.value, to);
@@ -138,6 +196,7 @@ export const ManageValues: React.FC<ManageValuesProps> = ({
       return;
     }
     close();
+    armWash(dialog.field, to);
   };
 
   const confirmCombine = () => {
@@ -145,7 +204,10 @@ export const ManageValues: React.FC<ManageValuesProps> = ({
     if (!onRenameValue(dialog.field, dialog.value, dialog.target)) {
       return setWriteFailed(true);
     }
+    // The row that survives is the target's, and it is the one that changed —
+    // it absorbed the other value's entries, so its count just went up.
     close();
+    armWash(dialog.field, dialog.target);
   };
 
   return (
@@ -160,29 +222,49 @@ export const ManageValues: React.FC<ManageValuesProps> = ({
             <p className="manage-empty">Nothing saved yet.</p>
           ) : (
             <ul className="manage-list">
-              {values.map(({ value, count }) => (
-                <li className="manage-row" key={value}>
-                  <div className="manage-row__main">
-                    <span className="manage-row__name">{value}</span>
-                    <span className="manage-row__count">used in {entries(count)}</span>
-                  </div>
-                  <button
-                    type="button"
-                    className="manage-row__action"
-                    onClick={(e) => openRename(e.currentTarget, field, value, count)}
+              {values.map(({ value, count }) => {
+                const washing =
+                  washed?.field === field &&
+                  washed.key === normalizeValue(value);
+                return (
+                  <li
+                    className={`manage-row${washing ? " manage-row--washing" : ""}`}
+                    key={value}
+                    // Guarded on the animation NAME: onAnimationEnd bubbles, so
+                    // "an animation ended" is not "the wash ended" — any animation
+                    // on a descendant control would otherwise cut it short.
+                    onAnimationEnd={(e) => {
+                      if (e.animationName === WASH_ANIMATION) setWashed(null);
+                    }}
                   >
-                    Rename
-                  </button>
-                  <button
-                    type="button"
-                    className="manage-row__remove"
-                    aria-label={`Remove ${value}`}
-                    onClick={(e) => openRemove(e.currentTarget, field, value, count)}
-                  >
-                    ×
-                  </button>
-                </li>
-              ))}
+                    <div className="manage-row__main">
+                      <span className="manage-row__name">{value}</span>
+                      <span className="manage-row__count">
+                        used in {entries(count)}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className="manage-row__action"
+                      onClick={(e) =>
+                        openRename(e.currentTarget, field, value, count)
+                      }
+                    >
+                      Rename
+                    </button>
+                    <button
+                      type="button"
+                      className="manage-row__remove"
+                      aria-label={`Remove ${value}`}
+                      onClick={(e) =>
+                        openRemove(e.currentTarget, field, value, count)
+                      }
+                    >
+                      ×
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>
@@ -192,7 +274,9 @@ export const ManageValues: React.FC<ManageValuesProps> = ({
         <Modal
           labelledBy="dialog-title"
           onClose={close}
-          initialFocusRef={dialog.mode === "rename" ? renameInputRef : cancelRef}
+          initialFocusRef={
+            dialog.mode === "rename" ? renameInputRef : cancelRef
+          }
           restoreFocusRef={openerRef}
           fallbackFocusRef={containerRef}
         >
@@ -200,8 +284,8 @@ export const ManageValues: React.FC<ManageValuesProps> = ({
             <>
               <h3 id="dialog-title">Remove “{dialog.value}”?</h3>
               <p className="dialog-text">
-                This removes it from <b>{entries(dialog.count)}</b>. Those entries
-                keep everything else.
+                This removes it from <b>{entries(dialog.count)}</b>. Those
+                entries keep everything else.
               </p>
               {writeFailed && (
                 <p className="dialog-error" role="alert">
@@ -210,10 +294,19 @@ export const ManageValues: React.FC<ManageValuesProps> = ({
                 </p>
               )}
               <div className="dialog-actions">
-                <button ref={cancelRef} type="button" className="secondary-button" onClick={close}>
+                <button
+                  ref={cancelRef}
+                  type="button"
+                  className="secondary-button"
+                  onClick={close}
+                >
                   Cancel
                 </button>
-                <button type="button" className="dialog-danger" onClick={confirmRemove}>
+                <button
+                  type="button"
+                  className="dialog-danger"
+                  onClick={confirmRemove}
+                >
                   Remove
                 </button>
               </div>
@@ -239,8 +332,8 @@ export const ManageValues: React.FC<ManageValuesProps> = ({
                 />
               </label>
               <p className="dialog-text">
-                Updates the name on all <b>{entries(dialog.count)}</b>. If you rename
-                it to something you already use, they’ll be combined.
+                Updates the name on all <b>{entries(dialog.count)}</b>. If you
+                rename it to something you already use, they’ll be combined.
               </p>
               {writeFailed && (
                 <p className="dialog-error" role="alert">
@@ -249,10 +342,19 @@ export const ManageValues: React.FC<ManageValuesProps> = ({
                 </p>
               )}
               <div className="dialog-actions">
-                <button ref={cancelRef} type="button" className="secondary-button" onClick={close}>
+                <button
+                  ref={cancelRef}
+                  type="button"
+                  className="secondary-button"
+                  onClick={close}
+                >
                   Cancel
                 </button>
-                <button type="button" className="dialog-go" onClick={submitRename}>
+                <button
+                  type="button"
+                  className="dialog-go"
+                  onClick={submitRename}
+                >
                   Rename
                 </button>
               </div>
@@ -265,8 +367,8 @@ export const ManageValues: React.FC<ManageValuesProps> = ({
                 “{dialog.target}” already exists
               </h3>
               <p className="dialog-text">
-                Renaming will combine them — the <b>{entries(dialog.count)}</b> logged
-                as “{dialog.value}” will be relabeled “{dialog.target}”.
+                Renaming will combine them — the <b>{entries(dialog.count)}</b>{" "}
+                logged as “{dialog.value}” will be relabeled “{dialog.target}”.
               </p>
               {writeFailed && (
                 <p className="dialog-error" role="alert">
@@ -275,10 +377,19 @@ export const ManageValues: React.FC<ManageValuesProps> = ({
                 </p>
               )}
               <div className="dialog-actions">
-                <button ref={cancelRef} type="button" className="secondary-button" onClick={close}>
+                <button
+                  ref={cancelRef}
+                  type="button"
+                  className="secondary-button"
+                  onClick={close}
+                >
                   Cancel
                 </button>
-                <button type="button" className="dialog-go" onClick={confirmCombine}>
+                <button
+                  type="button"
+                  className="dialog-go"
+                  onClick={confirmCombine}
+                >
                   Combine
                 </button>
               </div>

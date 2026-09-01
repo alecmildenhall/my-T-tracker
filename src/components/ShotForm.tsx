@@ -7,6 +7,7 @@ import React, {
   useCallback,
 } from "react";
 import type { ShotEntry } from "../types/shot";
+import type { Profile } from "../types/profile";
 import { suggestionsFor } from "../utils/suggestions";
 import { todayLocalISO, nowHHMM } from "../utils/datetime";
 import { toShotDate, isRealDate, shotDateRange } from "../utils/civilDate";
@@ -14,6 +15,12 @@ import { newId } from "../utils/id";
 import { SuggestionChips } from "./SuggestionChips";
 import { handOffFocus } from "../utils/focus";
 import { sortShots } from "../utils/shotQuery";
+import {
+  planShot,
+  previousShotDateBefore,
+  anchorReferenceDate,
+  scheduleMode,
+} from "../utils/schedule";
 
 /**
  * The fields worth pre-filling on a new shot: dose, type of T, and carrier oil
@@ -52,6 +59,14 @@ function carryForward(shots: ShotEntry[]): {
  * a half-typed number that isn't a valid entry yet.
  */
 export interface ShotDraft {
+  /** The planned date as the field held it, and the value it would have shown
+   *  untouched. Both travel, for the same reason `date` and `dateBaseline` do:
+   *  without them, editing only the planned date left the form looking clean,
+   *  so ✕ discarded the correction with no confirm — and in the mixed case the
+   *  notes came back while the planned date silently reverted, which reads as a
+   *  complete restore that quietly dropped a field. */
+  plannedFor: string;
+  plannedBaseline: string;
   /**
    * The date exactly as the field held it — a snapshot, like every other value
    * here. Never re-derived on restore.
@@ -104,6 +119,8 @@ function freshDraft(): ShotDraft {
   return {
     date: todayLocalISO(),
     dateBaseline: todayLocalISO(),
+    plannedFor: "",
+    plannedBaseline: "",
     time: "",
     doseMg: "",
     injectionSite: "",
@@ -162,6 +179,13 @@ interface ShotFormProps {
   onDismiss?: () => void;
   /** Past shots, used to suggest previously-entered values for reuse. */
   shots?: ShotEntry[];
+  /** The cadence settings a planned date is worked out from. A prop rather than
+   *  context, matching `shots` — the form stays renderable on its own, and with
+   *  no profile it simply plans nothing. */
+  profile?: Pick<Profile, "shotDay" | "intervalDays" | "scheduleAnchor">;
+  /** Called once, after a successful save, when a schedule grid needed an
+   *  anchor and none existed. The parent persists it. */
+  onAnchorEstablished?: (date: string) => void;
   /** id for the form's heading, so a containing dialog can point
    *  `aria-labelledby` at it instead of repeating the title. */
   headingId?: string;
@@ -177,7 +201,46 @@ interface ShotFormProps {
   liveDraftRef?: React.RefObject<ShotDraft | null>;
 }
 
+/**
+ * What the planned-date field starts with — three cases, one meaning each.
+ *
+ * The `||` chain this replaces was fixed once for the draft branch and left in
+ * place on the other, which is the same bug reported twice: `opened.plannedFor`
+ * is `initial.plannedFor ?? ""`, so a shot whose planned date the user
+ * deliberately cleared and saved came back refilled from today's computation —
+ * the form read clean, ✕ dismissed with no confirm, and Save re-froze the value
+ * they had removed. It also quietly attached a today's-cadence planned date to
+ * any pre-cadence shot merely opened to fix a typo.
+ *
+ * An edit takes the record VERBATIM, with no fallback: "this shot has no
+ * planned date" is a real state and indistinguishable from "logged before there
+ * was a cadence", so the app must not guess between them. Only a NEW shot —
+ * where the field is not even rendered — gets the computed value.
+ */
+function initialPlanned(
+  draft: ShotDraft | null | undefined,
+  editingShot: ShotEntry | null | undefined,
+  computed: string | undefined,
+): string {
+  // A parked draft's planned date only means something for an EDIT, where the
+  // field is rendered and the user could have typed it. On a NEW shot the field
+  // is never shown, so a carried value is a stale computation nobody can see or
+  // correct — and it goes stale exactly when the cadence changes, which is a
+  // large part of why someone leaves the sheet in the first place.
+  //
+  // Measured: a draft parked with no cadence set, restored once one was, saved
+  // `plannedFor: undefined` where a fresh form saved the date — while still
+  // persisting an anchor, so the grid was fixed by a shot that had no place on
+  // it. The mirror case froze the OLD grid's date under a new cadence. By this
+  // feature's own design neither can ever be regenerated.
+  if (draft && editingShot) return draft.plannedFor;
+  if (editingShot) return editingShot.plannedFor ?? "";
+  return computed ?? "";
+}
+
 export const ShotForm: React.FC<ShotFormProps> = ({
+  profile = {},
+  onAnchorEstablished,
   onAddShot,
   onUpdateShot,
   onExportBackup,
@@ -225,6 +288,11 @@ export const ShotForm: React.FC<ShotFormProps> = ({
         ? {
             date: initial.date,
             dateBaseline: initial.date,
+            plannedFor: initial.plannedFor ?? "",
+            // The record's own value is what it opened with, so an untouched
+            // reopen reads as clean even though the app might now compute a
+            // different planned date.
+            plannedBaseline: initial.plannedFor ?? "",
             time: initial.time ?? "",
             doseMg: initial.doseMg?.toString() ?? "",
             injectionSite: initial.injectionSite ?? "",
@@ -251,12 +319,137 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   );
 
   const [date, setDate] = useState<string>(start.date);
+
+  /** What the app works out this shot was meant to be, given today's settings. */
+  const plan = useMemo(
+    () =>
+      planShot({
+        date,
+        previousShotDate: previousShotDateBefore(date, shots, editingShot?.id),
+        // NOT excluding the shot being edited: it is still part of the history
+        // the grid is aligned to, and excluding it meant which shot you happened
+        // to open decided where an unestablished anchor landed — on a
+        // fortnightly grid, a 7-day different schedule, then frozen. The
+        // exclusion is right for `previousShotDateBefore`, where a shot must not
+        // be its own predecessor, and wrong here.
+        anchorFrom: anchorReferenceDate(date, shots),
+        profile,
+      }),
+    [date, shots, editingShot?.id, profile],
+  );
+
+  /**
+   * The planned date as SHOWN, and the value it would show untouched.
+   *
+   * Two pieces, not one, and for the reason the date field learned the hard
+   * way: "has the user edited this?" cannot be derived from the value alone. A
+   * planned date is always populated, so emptiness is no tell; comparing
+   * against today's computation is no tell either, since correcting it TO the
+   * computed value would read as untouched. So the baseline travels alongside,
+   * and edited means simply "differs from it". Change the shot's date and an
+   * untouched planned date follows; an edited one stays put.
+   */
+  // `draft ? draft.x : …`, never `start.plannedFor || …`. The `||` treated a
+  // deliberately EMPTIED planned date — a legitimate "" meaning "this shot has
+  // none" — as absent, and fell back to today's computation: the value the user
+  // deleted reappeared on reopen, the form read clean so ✕ discarded without a
+  // confirm, and Save wrote it back. That is the overloaded-"" sentinel class
+  // CLAUDE.md calls the most expensive bug here, and it defeated the exact case
+  // ShotDraft.plannedFor was added to carry. Whether a draft exists is the
+  // question; the value inside it is taken verbatim.
+  const [plannedDraft, setPlannedDraft] = useState<string>(
+    initialPlanned(draft, editingShot, plan.plannedFor),
+  );
+  /** The shot date `plannedBaseline` was worked out for. */
+  const [plannedForDate, setPlannedForDate] = useState<string>(start.date);
+  /**
+   * What the field would show untouched — the value it OPENED with, restored
+   * from the draft when there is one.
+   *
+   * Both obvious seeds are wrong, and each was shipped in turn. Seeding from the
+   * stored value made draft and baseline equal on the first render, which is the
+   * condition the sync below fires on, so reopening a shot repainted its frozen
+   * planned date from today's settings. Seeding from the computation instead
+   * fixed that and broke the other side: every historical shot whose frozen date
+   * no longer matches today's cadence — which is the normal case, and the whole
+   * point of freezing — read as edited before anyone touched it, parking a draft
+   * on an untouched dismissal.
+   *
+   * The seed was never the bug. The SYNC was: it fired on any disagreement,
+   * including the one present on arrival. It is keyed to the shot's date now, so
+   * it runs when the date moves and never on mount.
+   */
+  /**
+   * Whether the "Planned for" field is offered at all.
+   *
+   * Editing alone was not the right condition, and the comment beside the field
+   * already claimed this one: with no cadence set there is nothing to show and
+   * nothing to correct, so an empty date input labelled "Planned for" and
+   * hinted "Worked out from how often you inject" invited a value the app would
+   * never compute — which then rendered in History and in the CSV a provider
+   * reads. A shot that ALREADY carries a frozen planned date still gets the
+   * field even with no cadence, because correcting or clearing it is exactly
+   * what it is for.
+   *
+   * Frozen for the sheet's lifetime, deliberately. The condition now depends on
+   * the profile, which a cross-tab storage event can change at any moment — and
+   * a field that unmounts from under the focus it holds strands focus on <body>
+   * inside a dialog, where the Tab trap cannot re-engage. `useState` with an
+   * initializer answers once, at open, like `editingShot` did by nature.
+   */
+  const [showsPlannedField] = useState(
+    () =>
+      Boolean(editingShot) &&
+      (Boolean(editingShot?.plannedFor) ||
+        // A parked draft counts too. Dismiss the sheet with a planned date
+        // typed, clear the cadence in Settings, then reopen the same shot: the
+        // draft restores that value while the field it belongs to would be
+        // gone, so it would be saved from an input the user cannot see — and if
+        // it were out of range, the error would block Save while its message
+        // was never rendered. The field is where a planned date is corrected,
+        // so a pending one is a reason to show it, not to hide it.
+        Boolean(draft?.plannedFor.trim()) ||
+        scheduleMode(profile.shotDay, profile.intervalDays) !== "none"),
+  );
+  // Seeded by the same rule as the draft above, and it has to be: they are
+  // compared to answer "has the user edited this?", so seeding them from
+  // different places is how that question starts answering wrongly. A restored
+  // new-shot draft gets today's computation in both, which reads as untouched —
+  // which it is, the field having never been on screen.
+  const [plannedBaseline, setPlannedBaseline] = useState<string>(
+    draft && editingShot
+      ? draft.plannedBaseline
+      : initialPlanned(undefined, editingShot, plan.plannedFor),
+  );
+  const computed = plan.plannedFor ?? "";
+  // On a NEW shot, changing the date moves an untouched planned date with it —
+  // nothing is frozen yet, so following is the only sensible thing to do.
+  //
+  // On a SAVED one, nothing follows. The planned date was frozen at log time
+  // and only the user may change it, through the field below. Following was a
+  // silent rewrite of history triggered by an unrelated edit: open an old shot
+  // to fix a typo in its date, and the field repainted from TODAY's settings —
+  // onto the new grid if the cadence had changed, and to empty if the cadence
+  // had since been cleared, whereupon Save stored `undefined` and destroyed a
+  // value backupDto.ts states can never be regenerated. Freezing at log time is
+  // what makes that permanent rather than self-correcting, so the guard has to
+  // be here.
+  if (plannedForDate !== date) {
+    setPlannedForDate(date);
+    if (!editingShot) {
+      if (plannedDraft === plannedBaseline) setPlannedDraft(computed);
+      // The baseline moves with the draft, or the pair falls out of step and
+      // the "has the user edited this?" question starts answering wrongly.
+      setPlannedBaseline(computed);
+    }
+  }
   const [dateBaseline, setDateBaseline] = useState<string>(start.dateBaseline);
   // The sheet's landing spot. Owned by the parent when it supplies one, because
   // Modal needs it as `initialFocusRef` — see the note on the <h2> below.
   const ownHeadingRef = useRef<HTMLHeadingElement>(null);
   const headingRef = externalHeadingRef ?? ownHeadingRef;
   const [dateError, setDateError] = useState<string | null>(null);
+  const [plannedError, setPlannedError] = useState<string | null>(null);
   const [saveFailed, setSaveFailed] = useState(false);
   const [exportFailed, setExportFailed] = useState(false);
   const [doseError, setDoseError] = useState<string | null>(null);
@@ -299,6 +492,25 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // what let a form cleared after midnight treat a genuine backdate as no
     // change at all, and discard it on dismissal.
     setDateBaseline(todayLocalISO());
+    // The planned date resets with everything else, baseline included.
+    //
+    // Not reachable today — "Clear form" renders only for a NEW shot and the
+    // planned field only when EDITING one, so the two never share a screen.
+    // Kept because resetForm's contract is "reset every field", and leaving one
+    // out is exactly the bug this was added for: an override survived the
+    // reset, so the form still read as dirty, the link never disappeared,
+    // tapping it again visibly did nothing, and a refused value went on
+    // blocking Save from a field the user had cleared.
+    setPlannedDraft("");
+    setPlannedBaseline("");
+    // "" — meaning "computed for no date yet" — NOT today. Setting it to today
+    // alongside the date meant the sync below saw no disagreement and never
+    // re-seeded, so a shot saved straight after "Clear form" was stored with no
+    // planned date at all: silent, invisible (the field is not rendered on a new
+    // shot), and by this feature's design impossible to regenerate. Measured: a
+    // normal save gave 2026-08-26, one after clearing gave undefined.
+    setPlannedForDate("");
+    setPlannedError(null);
     setDateError(null);
     setDoseError(null);
     setPainError(null);
@@ -406,12 +618,45 @@ export const ShotForm: React.FC<ShotFormProps> = ({
         ? "Pain must be a whole number from 0 to 10."
         : null;
 
+    // The planned date takes the SAME rule as the date, and for the same reason:
+    // the form is noValidate, so `min`/`max` on the input are hints the browser
+    // never enforces. It went through unvalidated, so typing 9999-01-01 stored
+    // it — and the three boundaries then disagreed about a value the user could
+    // see: pickShotFields drops it from the backup, toCsv blanks the cell, and
+    // History renders it. A value on screen that silently does not survive your
+    // own backup is the failure this feature's comments exist to prevent.
+    const parsedPlanned =
+      plannedDraft.trim() === "" ? null : toShotDate(plannedDraft);
+    // Only blocks the save when the field — and its message — are on screen.
+    // The planned input renders for an EDIT only, so an unshowable error would
+    // have made Save do nothing at all with nothing said anywhere: the dead
+    // button the noValidate comment above exists to prevent.
+    // Gated on whether the field is SHOWN, not on whether this is an edit —
+    // `showsPlannedField` is the narrower of the two, so keying off `editingShot`
+    // could raise an error for an input that is not on screen. That is exactly
+    // the dead Save button the noValidate comment above exists to prevent: the
+    // submit blocked, and #planned-error never rendered to say why.
+    const nextPlannedError =
+      !showsPlannedField || plannedDraft.trim() === "" || parsedPlanned
+        ? null
+        : isRealDate(plannedDraft)
+          ? `Check the year — dates run from ${range.min} to ${range.max}.`
+          : "That isn’t a real calendar date.";
+
+    setPlannedError(nextPlannedError);
     setDateError(nextDateError);
     setDoseError(nextDoseError);
     setPainError(nextPainError);
     // `!parsedDate` is implied by nextDateError, but stating it narrows the type
     // so the branded CivilDate below can't be null.
-    if (nextDateError || nextDoseError || nextPainError || !parsedDate) return;
+    if (
+      nextDateError ||
+      nextDoseError ||
+      nextPainError ||
+      nextPlannedError ||
+      !parsedDate
+    )
+      return;
 
     const newShot: ShotEntry = {
       id: editingShot ? editingShot.id : newId(),
@@ -428,10 +673,42 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       painScore: parsedPain,
       mood: mood || undefined,
       notes: notes || undefined,
+      // Frozen here and never recomputed. An emptied field means "no planned
+      // date", which is a real answer rather than a prompt to guess one.
+      // The parsed value, like `date` — the parser's result is the trust
+      // boundary, not just a yes/no gate. On a new shot the field is not
+      // rendered, so this is whatever planShot worked out, range-checked at
+      // source.
+      plannedFor: parsedPlanned ?? undefined,
     };
 
     const outcome =
       editingShot && onUpdateShot ? onUpdateShot(newShot) : onAddShot(newShot);
+
+    // Written only once the shot actually landed, and only when planShot had to
+    // establish one — otherwise a failed save would leave an anchor behind for
+    // a shot that does not exist, quietly fixing the grid to a date the user
+    // never logged.
+    // `=== "saved"`, not truthiness. SaveOutcome is a union of non-empty
+    // strings, so "refused" and "ignored" are both truthy and the comment above
+    // was describing behaviour the code did not have: a storage refusal — the
+    // very case this sheet is held open for — would have frozen the grid to a
+    // shot that never existed, with no UI to reset it.
+    //
+    // And only when LOGGING. An edit must never establish the grid, because
+    // `anchorFrom` is the most recent date known — which, for a shot being
+    // edited, is some LATER shot rather than the one in front of you. That is
+    // precisely the anchoring measured as wrong in 1350 of 2250 cases: opening
+    // a July shot to fix a typo persisted an anchor of the August shot's date,
+    // and every on-rhythm shot logged afterwards then froze a permanent -7.
+    //
+    // The grid is something you establish by logging. Deciding it by opening an
+    // old entry is not a thing a user could predict, and the anchor is invisible
+    // with no UI to reset it. If no anchor exists yet, the next real log
+    // establishes one — which is the behaviour without the edit anyway.
+    if (outcome === "saved" && plan.anchorToPersist && !editingShot) {
+      onAnchorEstablished?.(plan.anchorToPersist);
+    }
 
     // The sheet is already leaving and this submit was dropped. Say nothing: the
     // shot the user is actually thinking about was saved by the press before
@@ -474,6 +751,8 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   const current: ShotDraft = {
     date,
     dateBaseline,
+    plannedFor: plannedDraft,
+    plannedBaseline,
     time,
     doseMg,
     injectionSite,
@@ -493,18 +772,32 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   // The date is compared against its own baseline rather than against `opened`,
   // because a required, always-populated field has no "empty" to mean "nothing
   // entered". Every other field can use that test directly.
+  // `plannedFor` joins `date` in the explicit clause, and for the identical
+  // reason: it is always populated once a cadence is set, so "differs from
+  // empty" is not a test for "the user entered something". Compared generically
+  // it would make a brand-new form dirty on open — the field seeds from what
+  // the app computed, while `opened` holds "" — so "Clear form" would appear
+  // and dismissing would confirm, on a form nobody had touched.
+  const BASELINE_FIELDS: (keyof ShotDraft)[] = [
+    "date",
+    "dateBaseline",
+    "plannedFor",
+    "plannedBaseline",
+  ];
   const hasUnsavedInput =
     date !== dateBaseline ||
+    plannedDraft !== plannedBaseline ||
     (Object.keys(current) as (keyof ShotDraft)[])
-      .filter((k) => k !== "date" && k !== "dateBaseline")
+      .filter((k) => !BASELINE_FIELDS.includes(k))
       .some((k) => current[k] !== opened[k]);
 
   // Whether the form currently shows exactly what a brand-new one would, right
   // now — today's date and nothing beyond the carried-forward values.
   const looksFresh =
     date === todayLocalISO() &&
+    plannedDraft === plannedBaseline &&
     (Object.keys(current) as (keyof ShotDraft)[])
-      .filter((k) => k !== "date" && k !== "dateBaseline")
+      .filter((k) => !BASELINE_FIELDS.includes(k))
       .every((k) => current[k] === opened[k]);
 
   // Publish the live values for the parent to read on dismissal. In an effect
@@ -558,34 +851,60 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       </div>
 
       <div className="shot-form__scroll">
+        {/* Marks the MINORITY, which here is the required field rather than the
+            optional ones. Baymard's checkout research recommends marking BOTH
+            explicitly, because unmarked fields make people guess — but their
+            forms are mostly required, and this one is one-in-eleven. Tagging
+            ten fields "(optional)" would put the noise on every field to
+            disambiguate one, and the guess it protects against fails safe here:
+            assume wrongly that dose is required and you fill in a dose, where
+            assuming wrongly that a checkout field is optional blocks the order.
+            So: one sentence for the ten, an explicit flag on the one. */}
+        <p className="field-hint">
+          Only the date is needed — fill in as much or as little of the rest as
+          is useful to you.
+        </p>
         <div className="form-row">
           {/* The error is a SIBLING of the label, never inside it: text inside a
             <label> becomes part of the field's accessible name, so an error
             message there would rename the field to "Date <the whole error>".
             aria-describedby is how it reaches assistive tech. */}
           <div className="field-cell">
-            <label>
-              Date
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => {
-                  setDate(e.target.value);
-                  // Nothing to record here: the baseline already says what
-                  // "untouched" means, so the comparison below answers it.
-                  if (dateError) setDateError(null);
-                }}
-                required
-                // Keeps the native picker inside the range the form will accept,
-                // so a mistyped year is harder to produce in the first place.
-                // These are a hint, not the check — the form carries `noValidate`
-                // and `toShotDate` is what actually decides. See shotDateRange.
-                min={dateRange.min}
-                max={dateRange.max}
-                aria-invalid={dateError ? true : undefined}
-                aria-describedby={dateError ? "date-error" : undefined}
-              />
-            </label>
+            {/* The flag is a SIBLING of the label, for the same reason the
+                error below is: text inside a <label> joins the field's
+                accessible name, so nesting it names the field "Date Required"
+                and screen readers then say "Date Required, required" — the
+                `required` attribute already carries that. Hence `htmlFor`
+                rather than wrapping, which is also why the accessible name
+                stays exactly "Date". The visible word is for everyone else, and
+                it is the word rather than an asterisk or a colour so that it
+                survives being read literally (WCAG 1.4.1). */}
+            <div className="field-head">
+              <label htmlFor="shot-date-field">Date</label>
+              <span className="field-flag" aria-hidden="true">
+                Required
+              </span>
+            </div>
+            <input
+              id="shot-date-field"
+              type="date"
+              value={date}
+              onChange={(e) => {
+                setDate(e.target.value);
+                // Nothing to record here: the baseline already says what
+                // "untouched" means, so the comparison below answers it.
+                if (dateError) setDateError(null);
+              }}
+              required
+              // Keeps the native picker inside the range the form will accept,
+              // so a mistyped year is harder to produce in the first place.
+              // These are a hint, not the check — the form carries `noValidate`
+              // and `toShotDate` is what actually decides. See shotDateRange.
+              min={dateRange.min}
+              max={dateRange.max}
+              aria-invalid={dateError ? true : undefined}
+              aria-describedby={dateError ? "date-error" : undefined}
+            />
             {dateError && (
               <span id="date-error" className="field-error" role="alert">
                 {dateError}
@@ -783,6 +1102,55 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             />
           </label>
         </div>
+
+        {/* Only when the settings answer the question. With no cadence there is
+            nothing to show and nothing to correct, so the field is absent
+            rather than empty. */}
+        {/* Only when EDITING a saved shot. On a new one it was clutter in the
+            middle of the fast path — the app has just worked the date out, and
+            asking you to review it turns a two-tap log into a decision. There is
+            nothing to correct until there is something saved.
+
+            Keyed to `editingShot`, which cannot change while the sheet is open,
+            so the field can never unmount from under the focus it holds — a
+            transient condition here would strand focus on <body> inside a
+            dialog, where the Tab trap cannot re-engage. */}
+        {showsPlannedField && (
+          <div className="field-cell">
+            <label className="form-column">
+              Planned for
+              <input
+                type="date"
+                value={plannedDraft}
+                min={dateRange.min}
+                max={dateRange.max}
+                onChange={(e) => {
+                  setPlannedDraft(e.target.value);
+                  if (plannedError) setPlannedError(null);
+                }}
+                aria-invalid={plannedError ? true : undefined}
+                // The hint explains what this field IS — the only place a
+                // frozen planned date can be corrected — so it has to reach
+                // assistive tech, not just sighted readers. Every other new
+                // field on this branch wires its hint up; this one was the odd
+                // one out. The error joins it rather than replacing it.
+                aria-describedby={
+                  plannedError ? "planned-error planned-hint" : "planned-hint"
+                }
+              />
+            </label>
+            {plannedError && (
+              <span id="planned-error" className="field-error" role="alert">
+                {plannedError}
+              </span>
+            )}
+            <p className="field-hint" id="planned-hint">
+              Worked out from how often you inject, and kept as it was when you
+              logged it. Change it here if this shot was always meant to be a
+              different day.
+            </p>
+          </div>
+        )}
 
         <label className="form-column">
           Notes

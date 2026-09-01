@@ -5,6 +5,7 @@
 // CSV is export-only — we never parse it back — so it optimises for safety in
 // spreadsheet apps (formula-injection guard) and correctness (RFC 4180 quoting).
 import type { ShotEntry } from "../types/shot";
+import { isShotDateInRange } from "./civilDate";
 import type { Profile } from "../types/profile";
 import { APP_NAME, APP_VERSION, FORMAT_VERSION } from "../appMeta";
 import type { Backup } from "./shotSchema";
@@ -45,8 +46,29 @@ export function toJson(shots: ShotEntry[], profile: Profile = {}): string {
   return JSON.stringify(buildBackup(shots, profile), null, 2);
 }
 
-const CSV_COLUMNS: Array<{ header: string; key: keyof ShotEntry }> = [
+const CSV_COLUMNS: Array<{
+  header: string;
+  key: keyof ShotEntry;
+  /** Optional gate on the raw stored value, for columns whose validity the
+   *  shots store deliberately does not enforce. */
+  usable?: (value: unknown) => boolean;
+}> = [
   { header: "date", key: "date" },
+  // Beside the date it belongs to, so a provider reading the CSV can see the
+  // gap without arithmetic. Empty for shots logged before a cadence was set.
+  //
+  // Gated, unlike the other columns, because this one can disagree with the
+  // JSON backup. `sanitizeShots` is deliberately lenient — it protects the
+  // SHOT from being dropped and explicitly does not vet field validity — while
+  // `pickShotFields` drops an out-of-range plannedFor from the backup. Without
+  // this, a hand-edited or legacy value would be absent from the JSON and
+  // written verbatim into the file a provider reads, which is the wrong way
+  // round for the two.
+  {
+    header: "plannedFor",
+    key: "plannedFor",
+    usable: (v) => typeof v === "string" && isShotDateInRange(v),
+  },
   { header: "time", key: "time" },
   { header: "doseMg", key: "doseMg" },
   { header: "injectionSite", key: "injectionSite" },
@@ -95,7 +117,13 @@ export function escapeCsvCell(value: string | number | undefined): string {
 export function toCsv(shots: ShotEntry[]): string {
   const rows = [CSV_COLUMNS.map((c) => c.header).join(",")];
   for (const shot of chronological(shots)) {
-    rows.push(CSV_COLUMNS.map((c) => escapeCsvCell(shot[c.key])).join(","));
+    rows.push(
+      CSV_COLUMNS.map((c) => {
+        const value = shot[c.key];
+        if (c.usable && value !== undefined && !c.usable(value)) return "";
+        return escapeCsvCell(value);
+      }).join(","),
+    );
   }
   const BOM = "\uFEFF";
   return `${BOM}${rows.join("\r\n")}`;

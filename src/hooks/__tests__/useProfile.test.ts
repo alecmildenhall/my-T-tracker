@@ -33,7 +33,7 @@ describe("useProfile", () => {
       result.current.updateProfile({
         startDate: "2025-01-15",
         preferredName: "Lou",
-      })
+      }),
     );
 
     act(() => result.current.setPreferredName(""));
@@ -62,7 +62,7 @@ describe("useProfile", () => {
   it("drops an invalid shot day from storage (enum, not free text)", () => {
     localStorage.setItem(
       STORAGE_KEYS.profile,
-      JSON.stringify({ shotDay: "someday", preferredName: "Lou" })
+      JSON.stringify({ shotDay: "someday", preferredName: "Lou" }),
     );
     const { result } = renderHook(() => useProfile());
     expect(result.current.profile).toEqual({ preferredName: "Lou" });
@@ -79,16 +79,19 @@ describe("useProfile", () => {
     // might add (theme) is preserved rather than stripped on read/rewrite.
     localStorage.setItem(
       STORAGE_KEYS.profile,
-      JSON.stringify({ startDate: "", preferredName: "Lou", theme: "dark" })
+      JSON.stringify({ startDate: "", preferredName: "Lou", theme: "dark" }),
     );
     const { result } = renderHook(() => useProfile());
-    expect(result.current.profile).toEqual({ preferredName: "Lou", theme: "dark" });
+    expect(result.current.profile).toEqual({
+      preferredName: "Lou",
+      theme: "dark",
+    });
   });
 
   it("keeps unknown fields when updating a known one", () => {
     localStorage.setItem(
       STORAGE_KEYS.profile,
-      JSON.stringify({ theme: "dark" })
+      JSON.stringify({ theme: "dark" }),
     );
     const { result } = renderHook(() => useProfile());
     act(() => result.current.setStartDate("2025-03-01"));
@@ -108,7 +111,7 @@ describe("useProfile", () => {
       result.current.replaceProfile({
         startDate: "2024-03-01",
         preferredName: "New Name",
-      })
+      }),
     );
     expect(result.current.profile).toEqual({
       startDate: "2024-03-01",
@@ -123,7 +126,7 @@ describe("useProfile", () => {
   it("replaceProfile with {} clears an existing profile", () => {
     localStorage.setItem(
       STORAGE_KEYS.profile,
-      JSON.stringify({ startDate: "2025-01-15", preferredName: "Lou" })
+      JSON.stringify({ startDate: "2025-01-15", preferredName: "Lou" }),
     );
     const { result } = renderHook(() => useProfile());
     act(() => result.current.replaceProfile({}));
@@ -134,8 +137,40 @@ describe("useProfile", () => {
   it("replaceProfile drops a blank field rather than storing it", () => {
     const { result } = renderHook(() => useProfile());
     act(() =>
-      result.current.replaceProfile({ startDate: "2025-01-15", preferredName: "  " })
+      result.current.replaceProfile({
+        startDate: "2025-01-15",
+        preferredName: "  ",
+      }),
     );
     expect(result.current.profile).toEqual({ startDate: "2025-01-15" });
+  });
+});
+
+describe("useProfile — re-declaring the schedule clears its anchor", () => {
+  // The anchor is frozen against ACCIDENTAL movement — backdating a remembered
+  // shot, deleting the oldest one — and not against the user. Changing either
+  // half of the cadence is a deliberate re-declaration, so it repoints.
+  //
+  // Without this, a weekly user switching to fortnightly kept a grid on the old
+  // phase and every fortnightly shot read "taken 7 days before", forever and
+  // frozen — and it could not be repaired, since re-picking a shot day
+  // re-derives from the earliest shot, which is still on the old phase.
+  it("clears it when the shot day changes", () => {
+    const { result } = renderHook(() => useProfile());
+    act(() => result.current.setScheduleAnchor("2026-08-05"));
+    expect(result.current.profile.scheduleAnchor).toBe("2026-08-05");
+
+    act(() => result.current.setShotDay("friday"));
+    expect(result.current.profile.scheduleAnchor).toBeUndefined();
+    expect(result.current.profile.shotDay).toBe("friday");
+  });
+
+  it("clears it when the interval changes", () => {
+    const { result } = renderHook(() => useProfile());
+    act(() => result.current.setScheduleAnchor("2026-08-05"));
+
+    act(() => result.current.setIntervalDays(14));
+    expect(result.current.profile.scheduleAnchor).toBeUndefined();
+    expect(result.current.profile.intervalDays).toBe(14);
   });
 });

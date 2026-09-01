@@ -21,6 +21,7 @@ import { currentMilestone } from "./milestones";
 import { todayLocalISO } from "./datetime";
 import { toCivilDate, type CivilDate } from "./civilDate";
 import { weekdayOf } from "./weekday";
+import { shotDayInEffect } from "./schedule";
 
 /**
  * The greeting to show right now. `hasLoggedShots` distinguishes a brand-new user
@@ -37,7 +38,7 @@ import { weekdayOf } from "./weekday";
 export function resolveGreeting(
   profile: Profile,
   hasLoggedShots: boolean,
-  today: CivilDate = todayLocalISO()
+  today: CivilDate = todayLocalISO(),
 ): string {
   const name = profile.preferredName;
 
@@ -45,7 +46,7 @@ export function resolveGreeting(
   // or (from a hand-edit) impossible value becomes undefined, so the milestone
   // engine only ever sees a real CivilDate — no re-validation downstream.
   const startDate = profile.startDate
-    ? toCivilDate(profile.startDate) ?? undefined
+    ? (toCivilDate(profile.startDate) ?? undefined)
     : undefined;
   const milestone = currentMilestone(startDate, today);
   if (milestone) {
@@ -54,7 +55,14 @@ export function resolveGreeting(
       : `Congrats on ${milestone.label} on T!`;
   }
 
-  if (profile.shotDay && weekdayOf(today) === profile.shotDay) {
+  // `shotDayInEffect`, not `profile.shotDay`. A non-weekly interval greys the
+  // shot-day control out — the grid would walk across the week, so the weekday
+  // means nothing — and a disabled control that still fired a greeting every
+  // Wednesday would be the one place the setting was not actually off. The
+  // stored value is untouched, so both come back together when the interval
+  // returns to a whole number of weeks.
+  const shotDay = shotDayInEffect(profile);
+  if (shotDay && weekdayOf(today) === shotDay) {
     return name ? `Happy shot day, ${name}!` : "Happy shot day!";
   }
 

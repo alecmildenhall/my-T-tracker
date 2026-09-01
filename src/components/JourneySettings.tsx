@@ -6,7 +6,20 @@ import React, { useEffect, useRef, useState } from "react";
 import { useProfileContext } from "../context/ProfileContext";
 import { WEEKDAYS, isWeekday, weekdayLabel } from "../utils/weekday";
 import { isRealDate } from "../utils/civilDate";
+import { isWeeklyMultiple } from "../utils/schedule";
+import {
+  isValidIntervalDays,
+  MIN_INTERVAL_DAYS,
+  MAX_INTERVAL_DAYS,
+} from "../types/profile";
 import { handOffFocus } from "../utils/focus";
+
+/** Kept in step with the first-run card, which carries the reasoning. */
+const COMMON_INTERVALS = [
+  { label: "1 week", days: 7 },
+  { label: "2 weeks", days: 14 },
+  { label: "12 weeks", days: 84 },
+] as const;
 
 interface JourneySettingsProps {
   /** The section heading above this panel, focused when "Remove start date"
@@ -17,8 +30,103 @@ interface JourneySettingsProps {
 export const JourneySettings: React.FC<JourneySettingsProps> = ({
   headingRef,
 }) => {
-  const { profile, setStartDate, setPreferredName, setShotDay } =
-    useProfileContext();
+  const {
+    profile,
+    setStartDate,
+    setPreferredName,
+    setShotDay,
+    setIntervalDays,
+  } = useProfileContext();
+
+  /** Like the date field above: what the box SHOWS, which is not what is saved.
+   *  Committed on blur so a half-typed "1" of "14" never writes an interval,
+   *  and so a cleared box means "no interval" rather than zero. */
+  const [intervalDraft, setIntervalDraft] = useState(
+    profile.intervalDays !== undefined ? String(profile.intervalDays) : "",
+  );
+  // Follow the profile when it changes from OUTSIDE this field — a backup import
+  // replaces the whole profile — without clobbering what is being typed.
+  // Adjusted during render, React's documented pattern for state that follows
+  // changing props, and the same shape the start-date field below uses.
+  const [lastSavedInterval, setLastSavedInterval] = useState(
+    profile.intervalDays,
+  );
+  if (lastSavedInterval !== profile.intervalDays) {
+    setLastSavedInterval(profile.intervalDays);
+    setIntervalDraft(
+      profile.intervalDays !== undefined ? String(profile.intervalDays) : "",
+    );
+  }
+
+  const commitInterval = (badInput = false) => {
+    const trimmed = intervalDraft.trim();
+    // `badInput` distinguishes the two things an empty `value` means, which
+    // is otherwise unanswerable: a number input reports "" both when it is
+    // genuinely empty AND when it holds something unparseable, because the
+    // HTML value-sanitization algorithm discards text that is not a valid
+    // floating-point number. Measured: "1e", "-" and "1.2.3" all read as "".
+    // Treating that as a deliberate clear meant a fumbled keystroke plus a
+    // blur deleted the cadence. `validity.badInput` is the real question —
+    // false for empty, true for garbage — rather than a proxy for it.
+    if (badInput) {
+      setIntervalDraft(
+        profile.intervalDays !== undefined ? String(profile.intervalDays) : "",
+      );
+      return;
+    }
+    if (trimmed === "") {
+      // Guarded like the branch below — see FirstShotCard: this also clears the
+      // anchor and runs from an effect cleanup, so an unguarded call wrote the
+      // profile on every navigation away from Settings.
+      if (profile.intervalDays !== undefined) setIntervalDays(undefined);
+      return;
+    }
+    const parsed = Number(trimmed);
+    if (isValidIntervalDays(parsed)) {
+      // Only when it actually CHANGED. setIntervalDays clears the schedule
+      // anchor — deliberately, since changing your cadence re-declares the
+      // schedule — so committing unconditionally meant a no-op focus/blur, or
+      // tapping the chip already lit, silently threw the frozen anchor away.
+      // The next save then re-derived it from the earliest shot, which may have
+      // moved, shifting the grid phase by up to 7 days on a fortnightly
+      // schedule. Measured: focus + blur with no edit removed the anchor.
+      if (parsed !== profile.intervalDays) setIntervalDays(parsed);
+    } else {
+      // Refuse rather than store something the schedule cannot use, and put the
+      // field back to what is actually saved so the two never disagree.
+      setIntervalDraft(
+        profile.intervalDays !== undefined ? String(profile.intervalDays) : "",
+      );
+    }
+  };
+
+  /** Shot day is inert while a weekday cannot describe the cadence — the grid
+   *  would walk across the week. Disabled, never cleared, so switching back to
+   *  a weekly interval brings the saved day straight back. */
+  /**
+   * The same disable-under-focus hazard FirstShotCard guards, which this panel
+   * was assumed to escape "by accident, because three chips sit between its
+   * input and its select". That holds for Tab and not for a pointer: with a
+   * non-weekly value uncommitted in the interval box, tapping the shot-day
+   * select fires the input's blur FIRST, the commit disables the select, and
+   * the tap can no longer land focus on it — leaving focus on <body> inside
+   * Settings. Same class as the nine hand-off defects in slice B, and invisible
+   * to jsdom, which is how "three chips away" read as safety.
+   */
+  const intervalFieldRef = useRef<HTMLInputElement>(null);
+  const shotDaySelectRef = useRef<HTMLSelectElement>(null);
+  const noticeRef = useRef<HTMLParagraphElement>(null);
+
+  /** See FirstShotCard: a whole-week cadence with no shot day plans nothing,
+   *  and said nothing, while the non-weekly case explains itself. */
+  const shotDayNeeded =
+    isValidIntervalDays(profile.intervalDays) &&
+    isWeeklyMultiple(profile.intervalDays) &&
+    !profile.shotDay;
+
+  const shotDayUnavailable =
+    isValidIntervalDays(profile.intervalDays) &&
+    !isWeeklyMultiple(profile.intervalDays);
 
   // What the date field is SHOWING, which is not the same as what is saved.
   //
@@ -83,19 +191,83 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
       commitIfReal();
     };
   }, []);
+
+  // The interval box needs the same escape hatches, for the same reason and in
+  // the same words: blur "must not be the ONLY one", because on a phone you can
+  // type 14 and switch apps without ever blurring the field, and silent loss is
+  // the failure this app treats as severe. It had none — identical shape to the
+  // date field above, none of its protection.
+  // Only the callback is held. The date field above also keeps a draft ref
+  // because its `commitIfReal` reads the raw string; `commitInterval` closes
+  // over its own draft, so a second ref here was written every render, read by
+  // nothing, and looked like protection it was not providing.
+  const commitIntervalRef = useRef(() => {});
+  useEffect(() => {
+    commitIntervalRef.current = commitInterval;
+  });
+  useEffect(() => {
+    const commitIfUsable = () => commitIntervalRef.current();
+    const onHide = () => {
+      if (document.visibilityState === "hidden") commitIfUsable();
+    };
+    document.addEventListener("visibilitychange", onHide);
+    return () => {
+      document.removeEventListener("visibilitychange", onHide);
+      commitIfUsable();
+    };
+  }, []);
   if (profile.startDate !== lastSaved) {
     setLastSaved(profile.startDate);
     setDateDraft(profile.startDate ?? "");
   }
 
+  // Only on the false -> true EDGE, never on mount: on mount
+  // `document.activeElement` is <body> by definition, so an unguarded version
+  // would yank focus the instant the panel painted for anyone who already has a
+  // non-weekly interval saved.
+  const wasUnavailable = useRef(shotDayUnavailable);
+  useEffect(() => {
+    const justDisabled = shotDayUnavailable && !wasUnavailable.current;
+    wasUnavailable.current = shotDayUnavailable;
+    if (!justDisabled) return;
+    const active = document.activeElement;
+    if (active === document.body || active === shotDaySelectRef.current) {
+      // The notice first, for the reason FirstShotCard's copy of this explains
+      // at length: <body> cannot distinguish "the select we just disabled had
+      // focus" from "focus was nowhere", so the target is chosen to be harmless
+      // when the guess is wrong. A paragraph is silent; the interval box would
+      // raise a numeric keyboard nobody asked for.
+      handOffFocus(noticeRef, intervalFieldRef);
+    }
+  }, [shotDayUnavailable]);
+
   return (
     <div className="journey-settings">
       <label className="form-column">
-        Testosterone start date
+        Preferred name
         <input
+          type="text"
+          value={profile.preferredName ?? ""}
+          onChange={(e) => setPreferredName(e.target.value || undefined)}
+          placeholder="e.g. Lou"
+          autoComplete="off"
+        />
+      </label>
+
+      {/* htmlFor, not a wrapping label: the hint sits between the question and
+          the control, and text inside a <label> joins the field's accessible
+          name. See the same field in FirstShotCard. */}
+      <label htmlFor="journey-start">Testosterone start date</label>
+      <p className="field-hint" id="journey-start-hint">
+        Marks milestones, like your first year on T.
+      </p>
+      <div className="form-column">
+        <input
+          id="journey-start"
           ref={dateFieldRef}
           type="date"
           value={dateDraft}
+          aria-describedby="journey-start-hint"
           // Deliberately UNBOUNDED, unlike the log sheet's date. Any real
           // calendar date is accepted: a start date is a fact about someone's
           // life that they are reporting, and we have no standing to tell them
@@ -139,7 +311,7 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
             else setDateDraft(profile.startDate ?? "");
           }}
         />
-      </label>
+      </div>
       {profile.startDate && (
         <button
           type="button"
@@ -171,16 +343,97 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
           Remove start date
         </button>
       )}
-      <p className="field-hint">
-        Used to celebrate milestones, like your first year on T. If you started
-        before installing the app, enter that date — it still counts. Planning
-        to start later? A future date works too.
+      {/* The pair's hint, under the FIRST of the two questions it describes,
+          because it says what answering them buys you and has to arrive before
+          you meet them.
+
+          It names NEITHER field on purpose. Earlier drafts said "fill both in",
+          which is wrong whenever the interval is not a whole number of weeks —
+          no weekday can describe a 10-day cadence, so the app disables the
+          shot-day select and times from the previous shot instead, and the hint
+          was telling that user to do the thing the app had just stopped them
+          doing. Stating only the payoff is true in both modes. */}
+      <label htmlFor="journey-interval">How often do you take your shot?</label>
+      <p className="field-hint" id="interval-hint">
+        Track how on time your shots are.
       </p>
+      <div className="form-column">
+        <input
+          id="journey-interval"
+          ref={intervalFieldRef}
+          type="number"
+          min={MIN_INTERVAL_DAYS}
+          max={MAX_INTERVAL_DAYS}
+          step={1}
+          inputMode="numeric"
+          value={intervalDraft}
+          onChange={(e) => setIntervalDraft(e.target.value)}
+          onBlur={(e) => commitInterval(e.target.validity.badInput)}
+          placeholder="Every ___ days"
+          aria-describedby="interval-hint"
+        />
+      </div>
+      {/* The two cadences almost everyone is on, so most people never type a
+          number. Same chip pattern as the log form's reuse values. */}
+      <div
+        className="suggestion-chips suggestion-chips--tight"
+        role="group"
+        aria-label="Common intervals"
+      >
+        {COMMON_INTERVALS.map(({ label, days }) => (
+          <button
+            key={days}
+            type="button"
+            className={`chip${intervalDraft === String(days) ? " chip--active" : ""}`}
+            aria-current={intervalDraft === String(days) ? true : undefined}
+            onClick={() => {
+              setIntervalDraft(String(days));
+              if (days !== profile.intervalDays) setIntervalDays(days);
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Above the control it disables, so the reason is read before the thing
+          that looks broken. */}
+      {shotDayNeeded && (
+        <p className="field-hint field-hint--notice" id="shot-day-needed">
+          Pick a day too — a weekly rhythm needs one before your shots can have
+          a planned date.
+        </p>
+      )}
+
+      {/* tabIndex={-1} so it can take focus when the select below it disables —
+          not a control, never in the tab order. */}
+      {shotDayUnavailable && (
+        <p
+          className="field-hint field-hint--notice"
+          id="shot-day-notice"
+          ref={noticeRef}
+          tabIndex={-1}
+        >
+          No shot day with a non-weekly interval — a weekday can’t describe
+          every {profile.intervalDays} days. Your gaps are still tracked.
+        </p>
+      )}
 
       <label className="form-column">
-        Shot day
+        Which day do you usually take it?
         <select
+          ref={shotDaySelectRef}
           value={profile.shotDay ?? ""}
+          disabled={shotDayUnavailable}
+          // See FirstShotCard: the reason it is disabled has to reach assistive
+          // tech too, not just the notice a sighted user can read above it.
+          aria-describedby={
+            shotDayUnavailable
+              ? "interval-hint shot-day-notice"
+              : shotDayNeeded
+                ? "interval-hint shot-day-needed"
+                : "interval-hint"
+          }
           onChange={(e) =>
             setShotDay(isWeekday(e.target.value) ? e.target.value : undefined)
           }
@@ -193,25 +446,6 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
           ))}
         </select>
       </label>
-      <p className="field-hint">
-        Pick the day you usually take your shot for a little "Happy shot day!"
-        greeting. Leave it on "No shot day" to skip.
-      </p>
-
-      <label className="form-column">
-        Preferred name
-        <input
-          type="text"
-          value={profile.preferredName ?? ""}
-          onChange={(e) => setPreferredName(e.target.value || undefined)}
-          placeholder="e.g. Lou"
-          autoComplete="off"
-        />
-      </label>
-      <p className="field-hint">
-        Only used to personalize milestone messages, and only ever stored on
-        this device. Leave blank to skip.
-      </p>
     </div>
   );
 };

@@ -6,6 +6,7 @@ import { z } from "zod";
 import { APP_NAME, FORMAT_VERSION } from "../appMeta";
 import { isRealDate, isShotDateInRange } from "./civilDate";
 import { WEEKDAYS } from "./weekday";
+import { MIN_INTERVAL_DAYS, MAX_INTERVAL_DAYS } from "../types/profile";
 
 const TIME_RE = /^\d{2}:\d{2}$/; // HH:MM
 
@@ -34,7 +35,9 @@ export const shotEntrySchema = z.strictObject({
   // see `backupEnvelopeSchema` below and `parseBackup`. This comment used to say
   // the whole file was refused; that was true, and was the wrong answer, because
   // a backup is usually the only copy left by the time it is imported.
-  date: z.string().refine(isShotDateInRange, "date outside the supported range"),
+  date: z
+    .string()
+    .refine(isShotDateInRange, "date outside the supported range"),
   time: z.string().refine(isRealTime, "invalid time").optional(),
   doseMg: z.number().finite().nonnegative().optional(),
   injectionSite: z.string().min(1).optional(),
@@ -44,6 +47,13 @@ export const shotEntrySchema = z.strictObject({
   painScore: z.number().int().min(0).max(10).optional(),
   mood: z.string().min(1).optional(),
   notes: z.string().min(1).optional(),
+  // Same range rule as `date`: a planned date is a date the app could have
+  // produced, so it is bounded identically. Import is the other way into
+  // storage, and a bound on the form alone is a bound with a door beside it.
+  plannedFor: z
+    .string()
+    .refine(isShotDateInRange, "plannedFor outside the supported range")
+    .optional(),
 });
 
 /**
@@ -69,6 +79,19 @@ export const profileSchema = z.strictObject({
   // Shot day is an enum: only the seven weekday keys are accepted, so a hand-edit
   // or hostile file can't smuggle an arbitrary string past the boundary.
   shotDay: z.enum(WEEKDAYS).optional(),
+  // Bounds imported rather than restated, so this and the DTO allowlist cannot
+  // drift into the app exporting a file its own importer refuses.
+  intervalDays: z
+    .number()
+    .int()
+    .min(MIN_INTERVAL_DAYS)
+    .max(MAX_INTERVAL_DAYS)
+    .optional(),
+  // The date the schedule grid is aligned to. Same range rule as a shot date.
+  scheduleAnchor: z
+    .string()
+    .refine(isShotDateInRange, "scheduleAnchor outside the supported range")
+    .optional(),
 });
 
 /**
