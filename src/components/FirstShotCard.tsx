@@ -458,7 +458,11 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
           not commit, and calling it Save would promise work that already
           happened. */}
       <div className="first-shot-card__done">
-        <button type="button" className="secondary-button" onClick={onDone}>
+        <button
+          type="button"
+          className="secondary-button first-shot-card__done-button"
+          onClick={onDone}
+        >
           Done
         </button>
         <p className="field-hint">

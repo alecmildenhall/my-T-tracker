@@ -698,13 +698,53 @@ select {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  align-items: flex-start;
   padding-top: 0.7rem;
   border-top: 1px solid var(--border-subtle);
 }
 
 .first-shot-card__done .field-hint {
   margin-bottom: 0;
+  text-align: center;
+}
+
+/* Full width, filled, label centred. A left-aligned outline button read as one
+   more link in a card full of them rather than as the thing that finishes it.
+   Full width is also the one-handed choice: the bottom corners are the hardest
+   part of a phone to reach, and a full-width target has no corner.
+   Actions belong at the bottom of a card, which is where this already sat —
+   what was missing was weight, not position.
+
+   ACCENT, deliberately not the primary button's cyan-to-green. That gradient
+   belongs to "+ Log a shot", which sits directly beneath this one: two
+   identical full-width gradient buttons a thumb apart would make the less
+   important of the two look like the page's main action, and finishing setup is
+   not more important than logging a shot. Filled-accent reads as unmistakably a
+   button while staying visibly a different one. */
+.first-shot-card__done-button {
+  width: 100%;
+  justify-content: center;
+  background: var(--accent);
+  border: none;
+  color: #04121c;
+  font-weight: 700;
+  font-size: 0.95rem;
+  min-height: 48px;
+}
+
+@media (hover: hover) {
+  .first-shot-card__done-button:hover {
+    background: #38bdf8;
+  }
+}
+
+.first-shot-card__done-button:active {
+  transform: scale(0.99);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .first-shot-card__done-button:active {
+    transform: none;
+  }
 }
 
 .first-shot-card__restore {
