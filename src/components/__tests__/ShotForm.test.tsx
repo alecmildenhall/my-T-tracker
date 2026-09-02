@@ -1634,14 +1634,18 @@ describe("ShotForm — injection pain", () => {
     );
     first.unmount();
 
-    const second = vi.fn((): SaveOutcome => "saved");
+    const second = vi.fn((shot: ShotEntry): SaveOutcome =>
+      shot ? "saved" : "ignored",
+    );
     render(<ShotForm onAddShot={second} />);
     fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
     expect(second.mock.calls[0][0].pain).toBeUndefined();
   });
 
   it("offers Clear only once something is set, and it returns to unrecorded", () => {
-    const onAddShot = vi.fn((): SaveOutcome => "saved");
+    const onAddShot = vi.fn((shot: ShotEntry): SaveOutcome =>
+      shot ? "saved" : "ignored",
+    );
     render(<ShotForm onAddShot={onAddShot} />);
 
     // Nothing chosen yet: no way to clear, because there is nothing to clear.
