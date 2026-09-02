@@ -835,7 +835,14 @@ select {
    read as separate at all. */
 .pain-chips {
   display: flex;
-  flex-wrap: nowrap;
+  /* `wrap`, not `nowrap`. All four fit one row from 375px up with room to
+     spare, so this never fires today — but `.field-cell` is `flex: 1 1 0` with
+     `min-width: 0`, so the row CAN be squeezed below its min-content: text-only
+     zoom, a longer label, or a third field added to the row. `nowrap` would
+     turn that into a horizontal scroll inside the sheet — two-dimensional
+     scrolling in the primary logging flow (WCAG 1.4.10) — where wrapping costs
+     nothing while there is room. */
+  flex-wrap: wrap;
   gap: 0.3rem;
   margin-top: 0.55rem;
 }

@@ -6,7 +6,12 @@ import React, {
   useRef,
   useCallback,
 } from "react";
-import { PAIN_LEVELS, type PainLevel, type ShotEntry } from "../types/shot";
+import {
+  PAIN_LEVELS,
+  isPainLevel,
+  type PainLevel,
+  type ShotEntry,
+} from "../types/shot";
 import { painLabel } from "../utils/painLabel";
 import type { Profile } from "../types/profile";
 import { suggestionsFor } from "../utils/suggestions";
@@ -302,7 +307,16 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             injectionSitePosition: initial.injectionSitePosition ?? "",
             testosteroneEster: initial.testosteroneEster ?? "",
             carrierOil: initial.carrierOil ?? "",
-            pain: initial.pain ?? "",
+            // Validated, not trusted. `sanitizeShots` is deliberately lenient
+            // — it vets only a non-blank id and date and passes every other
+            // field through — so a stored `pain: "agony"` (a devtools edit, a
+            // value from a newer build, a hand-repaired store) reaches here.
+            // Seeded raw it checked no chip, sat invisible, and was written
+            // straight back on save: a shot the app's own importer rejects,
+            // which the README calls the worst outcome this product can
+            // produce. "Four chips cannot produce an invalid value" is true of
+            // the chips and was never true of the seed.
+            pain: isPainLevel(initial.pain) ? initial.pain : "",
             mood: initial.mood ?? "",
             notes: initial.notes ?? "",
           }
@@ -469,6 +483,8 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   );
   const [carrierOil, setCarrierOil] = useState<string>(start.carrierOil);
   const [pain, setPain] = useState<PainLevel | "">(start.pain);
+  /** Where Clear hands focus when it removes itself — see its onClick. */
+  const firstPainChipRef = useRef<HTMLInputElement>(null);
   const [mood, setMood] = useState<string>(start.mood);
   const [notes, setNotes] = useState<string>(start.notes);
 
@@ -1073,6 +1089,9 @@ export const ShotForm: React.FC<ShotFormProps> = ({
                     }`}
                   >
                     <input
+                      ref={
+                        level === PAIN_LEVELS[0] ? firstPainChipRef : undefined
+                      }
                       type="radio"
                       name="pain"
                       value={level}
@@ -1091,7 +1110,29 @@ export const ShotForm: React.FC<ShotFormProps> = ({
               <button
                 type="button"
                 className="link-button pain-clear"
-                onClick={() => setPain("")}
+                // Named for what it clears. It sits OUTSIDE the fieldset, so the
+                // group's name is not in its accessible context — a screen
+                // reader browsing by button hears only "Clear", beside a
+                // separate "Clear form" in the same dialog.
+                aria-label="Clear injection pain"
+                onClick={() => {
+                  setPain("");
+                  // This control removes ITSELF — the condition that renders it
+                  // is the value it just cleared — so it has to hand focus on
+                  // before it goes. Measured: without this, activating it left
+                  // `document.activeElement` on <body>, inside a dialog whose
+                  // #root is inert, where the next Tab has nothing to wrap from
+                  // and the trap cannot re-engage. That is the nine-defect class
+                  // from slice B, and the "Clear form" button below carries a
+                  // comment warning against exactly this shape.
+                  //
+                  // Back to the group it belongs to, not the heading: you are
+                  // still answering this question, and the first chip is where
+                  // the answer starts. Not a date input either — focusing one
+                  // from a click handler is what raises the picker on iOS, as
+                  // resetForm already documents.
+                  handOffFocus(firstPainChipRef, headingRef);
+                }}
               >
                 Clear
               </button>

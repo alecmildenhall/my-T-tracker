@@ -31,9 +31,16 @@ export const PAIN_BANDS: { id: PainLevel; label: string }[] = PAIN_LEVELS.map(
  * persisted to storage, so a fresh launch never opens into a stale filtered view
  * (predictable, and it never leaves a revealing filter on screen).
  *
- * `painBand` is kept alongside the derived `filter.painMin`/`painMax` because the
- * select needs to remember which band is chosen — the numeric bounds alone can't
- * distinguish "no band" from a band that happens to span the same range.
+ * `painBand` mirrors `filter.pain` so the <select> has a value to render. That
+ * used to earn its keep: pain was a derived `painMin`/`painMax` pair, and the
+ * bounds alone could not distinguish "no band" from a band spanning the same
+ * range. With an ordinal they carry exactly the same fact, kept in step only by
+ * `withPainBand` being the sole writer — two carriers for one meaning, which is
+ * the shape this codebase's style guide opens by warning about. Benign while
+ * nothing else writes pain into the filter; the select could read
+ * `filter.pain ?? ""` directly and retire the field. Left as one change at a
+ * time, and written down so the next person does not have to re-derive that it
+ * is redundant rather than load-bearing.
  *
  * The page window is deliberately NOT here: it's local to the History screen.
  * Only *what you asked for* is worth carrying across a trip to Home, and keeping

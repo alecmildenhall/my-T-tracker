@@ -6,6 +6,7 @@ import { ShotForm, type ShotDraft } from "../ShotForm";
 import type { ShotEntry } from "../../types/shot";
 import type { SaveOutcome } from "../ShotForm";
 import { todayLocalISO } from "../../utils/datetime";
+import { expectFocusSomewhereUseful } from "../../test/focus";
 import { isShotDateInRange, shotDateRange } from "../../utils/civilDate";
 
 beforeEach(() => {
@@ -1649,14 +1650,20 @@ describe("ShotForm — injection pain", () => {
     render(<ShotForm onAddShot={onAddShot} />);
 
     // Nothing chosen yet: no way to clear, because there is nothing to clear.
-    expect(screen.queryByRole("button", { name: "Clear" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Clear injection pain" }),
+    ).toBeNull();
 
     fireEvent.click(chip("Moderate"));
     expect(chip("Moderate")).toBeChecked();
 
-    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Clear injection pain" }),
+    );
     screen.getAllByRole("radio").forEach((c) => expect(c).not.toBeChecked());
-    expect(screen.queryByRole("button", { name: "Clear" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Clear injection pain" }),
+    ).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
     expect(onAddShot.mock.calls[0][0].pain).toBeUndefined();
@@ -1687,5 +1694,62 @@ describe("ShotForm — injection pain", () => {
 
     expect(onAddShot).toHaveBeenCalledTimes(1);
     expect(screen.queryByText(/whole number from 0 to 10/i)).toBeNull();
+  });
+});
+
+describe("ShotForm — Clear removes itself, so it hands focus on", () => {
+  it("never leaves focus on <body> when it disappears", () => {
+    // The condition that renders this button is the value it clears, so
+    // activating it unmounts the element holding focus. Measured before the
+    // fix: `document.activeElement` was <body> — inside a dialog whose #root is
+    // inert, where the next Tab has nothing to wrap from and the trap cannot
+    // re-engage. That is the nine-defect class from slice B, and the "Clear
+    // form" button in the same sheet carries a comment warning against exactly
+    // this shape.
+    render(<ShotForm onAddShot={vi.fn()} />);
+    fireEvent.click(screen.getByRole("radio", { name: "Moderate" }));
+
+    const clear = screen.getByRole("button", { name: "Clear injection pain" });
+    clear.focus();
+    expect(document.activeElement).toBe(clear);
+
+    fireEvent.click(clear);
+
+    expect(document.activeElement).not.toBe(document.body);
+    expectFocusSomewhereUseful("clearing injection pain");
+    // Back to the group it belongs to: you are still answering this question.
+    expect(document.activeElement).toBe(
+      screen.getByRole("radio", { name: "None" }),
+    );
+  });
+});
+
+describe("ShotForm — a stored level the enum does not contain", () => {
+  it("is neither shown as chosen nor written back on save", () => {
+    // `sanitizeShots` vets only a non-blank id and date, so junk reaches the
+    // form. Seeded raw it checked no chip, sat invisible, and was saved
+    // unchanged — producing a shot the app's own importer rejects, which the
+    // README calls the worst outcome this product can produce.
+    const junk = {
+      id: "a",
+      date: "2026-08-05",
+      pain: "agony",
+    } as unknown as ShotEntry;
+    const onUpdateShot = vi.fn((shot: ShotEntry): SaveOutcome =>
+      shot ? "saved" : "ignored",
+    );
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        onUpdateShot={onUpdateShot}
+        editingShot={junk}
+        shots={[]}
+      />,
+    );
+
+    screen.getAllByRole("radio").forEach((c) => expect(c).not.toBeChecked());
+    fireEvent.click(screen.getByRole("button", { name: /Update shot/i }));
+
+    expect(onUpdateShot.mock.calls[0][0].pain).toBeUndefined();
   });
 });
