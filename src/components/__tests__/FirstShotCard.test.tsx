@@ -16,7 +16,7 @@ const storedProfile = () =>
 const renderCard = () =>
   render(
     <ProfileProvider>
-      <FirstShotCard onGoToSettings={vi.fn()} />
+      <FirstShotCard onGoToSettings={vi.fn()} onDone={vi.fn()} />
     </ProfileProvider>,
   );
 
@@ -203,5 +203,33 @@ describe("FirstShotCard — drafts follow the profile", () => {
 
     expect(storedProfile().intervalDays).toBe(14);
     expect(box.value).toBe("14");
+  });
+});
+
+describe("FirstShotCard — Done", () => {
+  it("calls back so the parent can store the dismissal", () => {
+    // The card originally had no dismiss control: it vanished once a shot
+    // existed, so there was nothing to store. True, and it cost the moment
+    // where setup feels finished — the only way to make it go was to log a
+    // shot, which is not obviously connected to filling it in.
+    const onDone = vi.fn();
+    render(
+      <ProfileProvider>
+        <FirstShotCard onGoToSettings={vi.fn()} onDone={onDone} />
+      </ProfileProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it("says what Done means, and where the fields go", () => {
+    render(
+      <ProfileProvider>
+        <FirstShotCard onGoToSettings={vi.fn()} onDone={vi.fn()} />
+      </ProfileProvider>,
+    );
+    expect(
+      screen.getByText(/only shows before your first shot/i),
+    ).toBeInTheDocument();
   });
 });

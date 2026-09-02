@@ -80,6 +80,7 @@ export const profileSchema = z.strictObject({
   // Shot day is an enum: only the seven weekday keys are accepted, so a hand-edit
   // or hostile file can't smuggle an arbitrary string past the boundary.
   shotDay: z.enum(WEEKDAYS).optional(),
+  firstRunDone: z.boolean().optional(),
   // Bounds imported rather than restated, so this and the DTO allowlist cannot
   // drift into the app exporting a file its own importer refuses.
   intervalDays: z

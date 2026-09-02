@@ -7,6 +7,7 @@ import {
   within,
   act,
   waitFor,
+  cleanup,
 } from "@testing-library/react";
 import App, { CONFIRM_MS } from "../App";
 import { ShotsProvider } from "../context/ShotsContext";
@@ -2983,5 +2984,48 @@ describe("landing on a Settings section", () => {
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
 
     expect(document.activeElement).not.toBe(dataHeading());
+  });
+});
+
+describe("dismissing the first-run card", () => {
+  const card = () => document.querySelector(".first-shot-card");
+
+  it("hides it, remembers, and does not strand focus", () => {
+    // Done removes the whole card including the button that was pressed — the
+    // self-removing control this codebase has been bitten by repeatedly. Focus
+    // goes to "+ Log a shot", which is where the card was pointing anyway.
+    renderApp();
+    expect(card()).not.toBeNull();
+
+    const done = screen.getByRole("button", { name: "Done" });
+    done.focus();
+    fireEvent.click(done);
+
+    expect(card()).toBeNull();
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: /Log a shot/ }),
+    );
+    expectVisibleFocusRing("dismissing the first-run card");
+  });
+
+  it("stays dismissed across a reload", () => {
+    // The flag is stored, not session state: a card that came back every launch
+    // would make Done look broken.
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(card()).toBeNull();
+
+    cleanup();
+    renderApp();
+    expect(card()).toBeNull();
+  });
+
+  it("still disappears on its own once a shot exists", () => {
+    // The original rule survives, so an import clears the card for free and the
+    // flag is a second route rather than the only one.
+    seedShots([{ id: "a", date: "2026-08-05" }]);
+    renderApp();
+    expect(card()).toBeNull();
   });
 });

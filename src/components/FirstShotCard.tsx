@@ -60,10 +60,14 @@ const QUICK_PICKS = [
 interface FirstShotCardProps {
   /** Takes them to Settings, where all of this lives permanently. */
   onGoToSettings: () => void;
+  /** Dismiss the card for good. The parent stores the flag AND hands focus on,
+   *  because this removes the section the button lives in — see App. */
+  onDone: () => void;
 }
 
 export const FirstShotCard: React.FC<FirstShotCardProps> = ({
   onGoToSettings,
+  onDone,
 }) => {
   const {
     profile,
@@ -446,6 +450,23 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
           opposite things, and this one is protective rather than convenient:
           import REPLACES rather than merges, so logging a shot first and
           importing afterwards throws that shot away. */}
+      {/* An explicit end to the card.
+          It had none: the only way to make it go was to log a shot, which is
+          not obviously connected to filling this in, so there was no moment
+          where the setup felt finished. Everything here already saves as you
+          type, so the button says Done rather than Save — it dismisses, it does
+          not commit, and calling it Save would promise work that already
+          happened. */}
+      <div className="first-shot-card__done">
+        <button type="button" className="secondary-button" onClick={onDone}>
+          Done
+        </button>
+        <p className="field-hint">
+          This card only shows before your first shot. Everything on it stays in
+          Settings.
+        </p>
+      </div>
+
       <p className="first-shot-card__restore">
         Returning with a backup?{" "}
         <button type="button" className="link-button" onClick={onGoToSettings}>

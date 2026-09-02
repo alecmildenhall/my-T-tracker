@@ -288,3 +288,34 @@ describe("a stored level the enum does not contain never leaves the app", () => 
     expect(row).not.toContain("agony");
   });
 });
+
+describe("the first-run flag survives a backup", () => {
+  // The allowlist trap CLAUDE.md names by name: `pickProfileFields` is an
+  // allowlist and `replaceProfile` swaps the whole profile on import, so a
+  // field the picker forgets is silently missing from the user's own backup and
+  // reverts to its default on restore. Caught by mutation — removing the line
+  // from the picker broke no test until this one existed, which is exactly how
+  // the trap works.
+  it("is carried out and back", () => {
+    expect(pickProfileFields({ firstRunDone: true }).firstRunDone).toBe(true);
+    const parsed = profileSchema.safeParse(
+      pickProfileFields({ firstRunDone: true }),
+    );
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data.firstRunDone).toBe(true);
+  });
+
+  it("is dropped when it is not a boolean", () => {
+    // localStorage is hand-editable and import is untrusted; a truthy "yes"
+    // would hide the first-run card for good with no way back short of editing
+    // storage again.
+    expect(
+      "firstRunDone" in
+        pickProfileFields({ firstRunDone: "yes" } as unknown as Profile),
+    ).toBe(false);
+  });
+
+  it("does not invent a dismissal for a profile that has none", () => {
+    expect("firstRunDone" in pickProfileFields({})).toBe(false);
+  });
+});

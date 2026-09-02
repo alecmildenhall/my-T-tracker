@@ -39,7 +39,7 @@ const VIEW_TITLES: Record<View, string> = {
 
 const App: React.FC = () => {
   const { shots, addShot, updateShot, deleteShot } = useShotsContext();
-  const { profile, setScheduleAnchor } = useProfileContext();
+  const { profile, setScheduleAnchor, updateProfile } = useProfileContext();
   const exportBackup = useBackupExport();
   const [editingShot, setEditingShot] = useState<ShotEntry | null>(null);
   // The log form is a sheet rather than an always-open panel on Home, so the
@@ -446,6 +446,9 @@ const App: React.FC = () => {
    */
   const [settingsLanding, setSettingsLanding] =
     useState<SettingsLanding | null>(null);
+
+  /** Where the first-run card hands focus when Done removes it. */
+  const logCtaRef = useRef<HTMLButtonElement>(null);
   useSwipeBack(view !== "home", () => {
     // The gesture unmounts the entire outgoing view, including whatever held
     // focus — a search field, a filter, a row. A tab TAP is safe because focus
@@ -687,15 +690,25 @@ const App: React.FC = () => {
             {/* Gated on there being no shots, which IS the dismissal logic:
               logging one clears it, and so does importing a backup, with no
               flag to store and no special case. */}
-            {shots.length === 0 && (
+            {shots.length === 0 && !profile.firstRunDone && (
               <FirstShotCard
                 onGoToSettings={() => {
                   navigate("settings");
                   setSettingsLanding("data");
                 }}
+                onDone={() => {
+                  updateProfile({ firstRunDone: true });
+                  // Done removes the whole card, including the button that was
+                  // just pressed — the self-removing control this codebase has
+                  // been bitten by repeatedly. "+ Log a shot" is where the card
+                  // was pointing you anyway, so focus lands on the next thing
+                  // rather than on <body>.
+                  handOffFocus(logCtaRef, titleRef);
+                }}
               />
             )}
             <button
+              ref={logCtaRef}
               type="button"
               className="primary-button log-cta"
               onClick={() => openSheet()}

@@ -83,6 +83,12 @@ export function pickProfileFields(p: Partial<Profile>): Profile {
   // grid into something meaningless, and this is the boundary where a
   // hand-edited or hostile file arrives.
   if (isValidIntervalDays(p.intervalDays)) out.intervalDays = p.intervalDays;
+  // Carried like every other profile field. A flag-only profile does make
+  // `hasProfileData` true, so dismissing the card and importing without ever
+  // setting anything downloads a safety copy of almost nothing — harmless, and
+  // the fail-safe direction: the alternative is skipping a backup someone
+  // turned out to need.
+  if (typeof p.firstRunDone === "boolean") out.firstRunDone = p.firstRunDone;
   if (
     typeof p.scheduleAnchor === "string" &&
     isShotDateInRange(p.scheduleAnchor.trim())

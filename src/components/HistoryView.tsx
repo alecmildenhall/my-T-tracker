@@ -92,11 +92,11 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   // the list entirely, it is prepended so it stays visible.
   const facet = (
     options: string[],
-    selected?: string
+    selected?: string,
   ): { options: string[]; value: string } => {
     if (!selected) return { options, value: "" };
     const canonical = options.find(
-      (o) => normalizeValue(o) === normalizeValue(selected)
+      (o) => normalizeValue(o) === normalizeValue(selected),
     );
     return canonical
       ? { options, value: canonical }
@@ -113,21 +113,25 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
     [...values].sort((a, b) => a.localeCompare(b));
 
   const site = useMemo(
-    () => facet(stable(suggestionsFor(shots, "injectionSite")), query.filter.site),
-    [shots, query.filter.site]
+    () =>
+      facet(stable(suggestionsFor(shots, "injectionSite")), query.filter.site),
+    [shots, query.filter.site],
   );
   const position = useMemo(
     () =>
       facet(
         stable(suggestionsFor(shots, "injectionSitePosition")),
-        query.filter.position
+        query.filter.position,
       ),
-    [shots, query.filter.position]
+    [shots, query.filter.position],
   );
   const ester = useMemo(
     () =>
-      facet(stable(suggestionsFor(shots, "testosteroneEster")), query.filter.ester),
-    [shots, query.filter.ester]
+      facet(
+        stable(suggestionsFor(shots, "testosteroneEster")),
+        query.filter.ester,
+      ),
+    [shots, query.filter.ester],
   );
 
   const page = useMemo(
@@ -138,7 +142,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
         sort: "newest",
         page: { offset: 0, limit },
       }),
-    [shots, query.filter, limit, debouncedText]
+    [shots, query.filter, limit, debouncedText],
   );
 
   // Shared with the Home teaser — see useDeleteShotConfirm. Focus goes to the
@@ -266,89 +270,119 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
 
         {/* Always rendered, toggled with `hidden`, so the aria-controls above
             never points at a missing element while collapsed. */}
-        <div className="history__filters" id="history-filters" hidden={!filtersOpen}>
-            <div className="form-row">
-              <label>
-                From
-                <input
-                  type="date"
-                  min={dateRange.min}
-                  max={dateRange.max}
-                  value={query.filter.dateFrom ?? ""}
-                  onChange={(e) =>
-                    // Brand at the boundary: an incomplete or impossible date
-                    // becomes "no constraint" rather than a bad bound.
-                    setFilter({ dateFrom: toShotDate(e.target.value) ?? undefined })
-                  }
-                />
-              </label>
-              <label>
-                To
-                <input
-                  type="date"
-                  min={dateRange.min}
-                  max={dateRange.max}
-                  value={query.filter.dateTo ?? ""}
-                  onChange={(e) =>
-                    setFilter({ dateTo: toShotDate(e.target.value) ?? undefined })
-                  }
-                />
-              </label>
-            </div>
+        <div
+          className="history__filters"
+          id="history-filters"
+          hidden={!filtersOpen}
+        >
+          <div className="form-row">
+            <label>
+              From
+              <input
+                type="date"
+                min={dateRange.min}
+                max={dateRange.max}
+                value={query.filter.dateFrom ?? ""}
+                onChange={(e) =>
+                  // Brand at the boundary: an incomplete or impossible date
+                  // becomes "no constraint" rather than a bad bound.
+                  setFilter({
+                    dateFrom: toShotDate(e.target.value) ?? undefined,
+                  })
+                }
+              />
+            </label>
+            <label>
+              To
+              <input
+                type="date"
+                min={dateRange.min}
+                max={dateRange.max}
+                value={query.filter.dateTo ?? ""}
+                onChange={(e) =>
+                  setFilter({ dateTo: toShotDate(e.target.value) ?? undefined })
+                }
+              />
+            </label>
+          </div>
 
-            <div className="form-row">
-              <label>
-                Site
-                <select
-                  value={site.value}
-                  onChange={(e) => setFilter({ site: e.target.value })}
-                >
-                  <option value="">Any</option>
-                  {site.options.map((v) => (
-                    <option key={v} value={v}>{v}</option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Position
-                <select
-                  value={position.value}
-                  onChange={(e) => setFilter({ position: e.target.value })}
-                >
-                  <option value="">Any</option>
-                  {position.options.map((v) => (
-                    <option key={v} value={v}>{v}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
+          <div className="form-row">
+            <label>
+              Site
+              <select
+                value={site.value}
+                onChange={(e) => setFilter({ site: e.target.value })}
+              >
+                <option value="">Any</option>
+                {site.options.map((v) => (
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Position
+              <select
+                value={position.value}
+                onChange={(e) => setFilter({ position: e.target.value })}
+              >
+                <option value="">Any</option>
+                {position.options.map((v) => (
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
 
-            <div className="form-row">
-              <label>
-                Type of T
-                <select
-                  value={ester.value}
-                  onChange={(e) => setFilter({ ester: e.target.value })}
-                >
-                  <option value="">Any</option>
-                  {ester.options.map((v) => (
-                    <option key={v} value={v}>{v}</option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Pain
-                <select
-                  value={query.painBand}
-                  onChange={(e) => setPainBand(e.target.value)}
-                >
-                  <option value="">Any</option>
-                  {PAIN_BANDS.map((b) => (
-                    <option key={b.id} value={b.id}>{b.label}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
+          <div className="form-row">
+            <label>
+              Type of T
+              <select
+                value={ester.value}
+                onChange={(e) => setFilter({ ester: e.target.value })}
+              >
+                <option value="">Any</option>
+                {ester.options.map((v) => (
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Pain
+              {/* Coloured to match the chips on the log sheet, so a level
+                    means the same thing wherever you meet it.
+                    The colour is on the SELECT, keyed to the chosen value —
+                    that is the part you actually look at, and it is the part
+                    that is reliable. Option colours are set too and are honoured
+                    where the list is drawn by the engine; iOS renders it as a
+                    native picker that ignores author colour, so the closed
+                    control carrying the colour is what makes this work there.
+                    The label carries the meaning regardless (WCAG 1.4.1). */}
+              <select
+                className={`pain-select${
+                  query.painBand ? ` pain-select--${query.painBand}` : ""
+                }`}
+                value={query.painBand}
+                onChange={(e) => setPainBand(e.target.value)}
+              >
+                <option value="">Any</option>
+                {PAIN_BANDS.map((b) => (
+                  <option
+                    key={b.id}
+                    value={b.id}
+                    className={`pain-opt--${b.id}`}
+                  >
+                    {b.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
         </div>
       </div>
 

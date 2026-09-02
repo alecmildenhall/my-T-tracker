@@ -660,6 +660,53 @@ select {
   padding-inline: 0.85rem;
 }
 
+/* The History pain facet, tinted to match the log sheet's chips so a level
+   reads the same wherever you meet it. Only the SELECT's own colour is
+   dependable — iOS draws the open list as a native picker and ignores author
+   colour on <option> — and the select is what you see when it is closed, which
+   is nearly always. The words carry the meaning either way. */
+.pain-select--none {
+  color: var(--pain-none);
+}
+.pain-select--mild {
+  color: var(--pain-mild);
+}
+.pain-select--moderate {
+  color: var(--pain-moderate);
+}
+.pain-select--severe {
+  color: var(--pain-severe);
+}
+
+.pain-opt--none {
+  color: var(--pain-none);
+}
+.pain-opt--mild {
+  color: var(--pain-mild);
+}
+.pain-opt--moderate {
+  color: var(--pain-moderate);
+}
+.pain-opt--severe {
+  color: var(--pain-severe);
+}
+
+/* The card's end. Separated from the questions above it by the same rule the
+   restore link uses, so "Done" reads as finishing the card rather than as one
+   more field. */
+.first-shot-card__done {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-start;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.first-shot-card__done .field-hint {
+  margin-bottom: 0;
+}
+
 .first-shot-card__restore {
   margin: 0;
   padding-top: 0.6rem;

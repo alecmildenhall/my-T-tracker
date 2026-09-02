@@ -64,4 +64,18 @@ export interface Profile {
    *  schedule a 7-day shift flips which week the grid falls on, so an on-rhythm
    *  shot froze as "7 days before" and stayed there. */
   scheduleAnchor?: string;
+  /** Whether the first-run card has been dismissed with its Done button.
+   *
+   *  Stored, and that is a reversal worth naming: the card originally had no
+   *  dismiss control at all, on the reasoning that it vanishes once a shot
+   *  exists, so there was nothing to store. True, and it cost the thing this
+   *  fixes — you fill the card in and nothing acknowledges it, so the only way
+   *  to make it go is to log a shot, which is not obviously connected.
+   *
+   *  "Has the user dismissed this?" is a decision they made, not a fact about
+   *  their data, so it cannot be derived from one — which is why storing it is
+   *  the right call rather than a violation of the derive-don't-store rule. The
+   *  card still also disappears once any shot exists, so an import clears it
+   *  for free and the flag is a second route, not the only one. */
+  firstRunDone?: boolean;
 }
