@@ -6,7 +6,7 @@ import {
   pickProfileFields,
   hasProfileData,
 } from "../backupDto";
-import type { ShotEntry } from "../../types/shot";
+import { PAIN_LEVELS, type ShotEntry } from "../../types/shot";
 import type { Profile } from "../../types/profile";
 
 describe("pickShotFields", () => {
@@ -20,7 +20,7 @@ describe("pickShotFields", () => {
       injectionSitePosition: "left",
       testosteroneEster: "cypionate",
       carrierOil: "sesame",
-      painScore: 4,
+      pain: "moderate",
       mood: "okay",
       notes: "n",
     };
@@ -52,13 +52,13 @@ describe("pickShotFields", () => {
       id: "s1",
       date: "2026-07-12",
       doseMg: 0,
-      painScore: 0,
+      pain: "none",
     };
     expect(pickShotFields(shot)).toEqual({
       id: "s1",
       date: "2026-07-12",
       doseMg: 0,
-      painScore: 0,
+      pain: "none",
     });
   });
 
@@ -209,5 +209,48 @@ describe("hasProfileData", () => {
 
   it("is false when the only field is blank", () => {
     expect(hasProfileData({ preferredName: "  " } as Profile)).toBe(false);
+  });
+});
+
+describe("pain survives a backup round-trip", () => {
+  // The check that catches a missed allowlist, which is the trap CLAUDE.md
+  // names and which this codebase has fallen into before: the DTO is an
+  // allowlist, and `replaceProfile`/`replaceAll` swap wholesale on import, so a
+  // field the picker forgets is silently absent from the user's own backup and
+  // reverts on restore. Every level, because a picker can be written to carry
+  // some values and drop others (an `if (pain)` would lose nothing here, but
+  // the same shape has lost a legitimate 0 elsewhere).
+  it("carries every level out and back, unchanged", () => {
+    for (const level of PAIN_LEVELS) {
+      const shot: ShotEntry = { id: "a", date: "2026-08-05", pain: level };
+      const exported = pickShotFields(shot);
+      expect(exported.pain).toBe(level);
+
+      // And the app's own importer accepts what its exporter produced — the
+      // guarantee, rather than a per-field assertion that can drift from it.
+      const reimported = shotEntrySchema.safeParse(exported);
+      expect(reimported.success).toBe(true);
+      expect(reimported.success && reimported.data.pain).toBe(level);
+    }
+  });
+
+  it("carries 'no pain recorded' as absence, not as a level", () => {
+    const exported = pickShotFields({ id: "a", date: "2026-08-05" });
+    expect("pain" in exported).toBe(false);
+    expect(shotEntrySchema.safeParse(exported).success).toBe(true);
+  });
+
+  it("refuses a level the app could never have produced", () => {
+    // Import is the other way into storage, so the enum has to be enforced
+    // there too — a bound at the form alone is a bound with a door beside it.
+    expect(
+      shotEntrySchema.safeParse({ id: "a", date: "2026-08-05", pain: "agony" })
+        .success,
+    ).toBe(false);
+    // Including the old numeric shape, which is the accepted pre-GA cost.
+    expect(
+      shotEntrySchema.safeParse({ id: "a", date: "2026-08-05", pain: 7 })
+        .success,
+    ).toBe(false);
   });
 });

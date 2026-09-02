@@ -14,6 +14,15 @@
      acknowledgement reads as the app's own voice rather than a new signal. */
   --success: #4ade80;
   --success-wash: rgba(74, 222, 128, 0.16);
+  /* Injection-pain intensity. "None" is deliberately NEUTRAL rather than green:
+     no pain is an absence, not a success, and green already means "that worked"
+     here (the save wash). Colour rises only as pain does. All four clear 4.5:1
+     on the sheet, and the label always carries the meaning — colour is never
+     the only signal (WCAG 1.4.1). */
+  --pain-none: #94a3b8;
+  --pain-mild: #fcd34d;
+  --pain-moderate: #fb923c;
+  --pain-severe: #f87171;
   /* Subtle neutral surface, defined once. Used for the resting suggestion chip
      and for the hover/press ("engaged") fill of neutral buttons, so those
      surfaces stay in sync and can never drift apart. */
@@ -797,6 +806,122 @@ select {
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: #94a3b8;
+}
+
+/* ---- Injection pain chips ------------------------------------------------ */
+
+.pain-field {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0; /* a fieldset defaults to min-content, which breaks flex rows */
+}
+
+/* The legend takes the label styling by hand: it is not a flex item — the
+   browser lifts it into the fieldset's own legend box — so neither the parent's
+   `gap` nor the `label` rule reaches it. */
+.pain-field legend {
+  padding: 0;
+  font-size: 0.8rem;
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* A MARGIN, not the container's gap, for the same reason — and deliberately
+   larger than an ordinary field's 0.3rem label gap. Measured: without it the
+   group ran on 4px where every other field gets 4.8px, so it was genuinely
+   tighter rather than only looking it. A chip row is lighter than a bordered
+   input and sits closer in visual weight to its label, so it needs more air to
+   read as separate at all. */
+.pain-chips {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.3rem;
+  margin-top: 0.55rem;
+}
+
+.pain-chip {
+  --pain: var(--pain-none);
+  position: relative;
+  flex: 0 0 auto;
+  min-height: 44px;
+  /* And 44 WIDE. "Mild" measured 42.7px once the padding was trimmed to fit all
+     four on one row — a hair under the target the chip rule cites Apple HIG
+     for. */
+  min-width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-subtle);
+  color: var(--pain);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+/* The radio covers the chip so the whole pill is the target, and is invisible
+   rather than `display: none` — a hidden input is not focusable, which would
+   take the keyboard and arrow-key behaviour the native control is here for. */
+.pain-chip input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.pain-chip--none {
+  --pain: var(--pain-none);
+}
+.pain-chip--mild {
+  --pain: var(--pain-mild);
+}
+.pain-chip--moderate {
+  --pain: var(--pain-moderate);
+}
+.pain-chip--severe {
+  --pain: var(--pain-severe);
+}
+
+/* Selection is carried by fill, border AND weight — never hue alone, so it
+   still reads for someone who cannot separate amber from orange. A class from
+   React rather than `:has(input:checked)`: it works, and it is free to avoid. */
+.pain-chip--on {
+  border-color: var(--pain);
+  font-weight: 600;
+}
+.pain-chip--none.pain-chip--on {
+  background: rgba(148, 163, 184, 0.16);
+}
+.pain-chip--mild.pain-chip--on {
+  background: rgba(252, 211, 77, 0.16);
+}
+.pain-chip--moderate.pain-chip--on {
+  background: rgba(251, 146, 60, 0.16);
+}
+.pain-chip--severe.pain-chip--on {
+  background: rgba(248, 113, 113, 0.16);
+}
+
+/* The ring goes on the LABEL, because the input it belongs to is transparent
+   and stretched over the pill — an outline on that would trace the same box
+   invisibly. */
+.pain-chip:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.pain-clear {
+  align-self: flex-start;
+  margin-top: 0.4rem;
+  font-size: 0.78rem;
 }
 
 .field-error {

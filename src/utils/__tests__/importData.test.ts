@@ -23,7 +23,7 @@ const wrap = (shots: unknown) =>
 describe("parseBackup — happy path", () => {
   it("round-trips a real export", () => {
     const shots = [
-      shot({ doseMg: 50, injectionSite: "thigh", painScore: 3 }),
+      shot({ doseMg: 50, injectionSite: "thigh", pain: "mild" }),
       shot({ date: "2026-07-05", mood: "good", notes: "fine" }),
     ];
     const result = parseBackup(toJson(shots));
@@ -45,7 +45,7 @@ describe("parseBackup — happy path", () => {
       injectionSitePosition: "left",
       testosteroneEster: "cypionate",
       carrierOil: "sesame",
-      painScore: 4,
+      pain: "moderate",
       mood: "okay",
       notes: "n",
     });
@@ -234,7 +234,7 @@ describe("parseBackup — a bad entry is skipped, not the file", () => {
     ["a non-existent day (Feb 30)", { id: "x", date: "2026-02-30" }],
     ["a date outside the supported range", { id: "x", date: "9999-01-01" }],
     ["an out-of-range time", { id: "x", date: "2026-07-12", time: "24:99" }],
-    ["an out-of-range painScore", { id: "x", date: "2026-07-12", painScore: 99 }],
+    ["an unknown pain level", { id: "x", date: "2026-07-12", pain: "excruciating" }],
     ["an unexpected extra key", { id: "x", date: "2026-07-12", evil: "surprise" }],
     ["an empty-string optional field", { id: "x", date: "2026-07-12", mood: "" }],
   ])("restores the good entry and skips one with %s", (_label, bad) => {
@@ -350,7 +350,7 @@ describe("parseBackup — size cap", () => {
           injectionSitePosition: "left",
           testosteroneEster: "cypionate",
           carrierOil: "sesame",
-          painScore: 3,
+          pain: "mild",
           mood: "okay",
           notes: "a fairly typical note about how the shot felt today",
         })

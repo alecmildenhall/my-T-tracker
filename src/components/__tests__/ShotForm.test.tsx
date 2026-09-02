@@ -99,9 +99,7 @@ describe("ShotForm suggestion chips", () => {
     fireEvent.change(screen.getByPlaceholderText(/left, right, upper left/i), {
       target: { value: "left" },
     });
-    fireEvent.change(screen.getByPlaceholderText("e.g. 3"), {
-      target: { value: "4" },
-    });
+    fireEvent.click(screen.getByRole("radio", { name: "Moderate" }));
     fireEvent.change(screen.getByPlaceholderText(/low, okay, good/i), {
       target: { value: "good" },
     });
@@ -138,9 +136,11 @@ describe("ShotForm suggestion chips", () => {
         ) as HTMLInputElement
       ).value,
     ).toBe("");
-    expect(
-      (screen.getByPlaceholderText("e.g. 3") as HTMLInputElement).value,
-    ).toBe("");
+    // Pain resets to nothing selected, not to "None" — which would put an
+    // answer on a shot nobody answered for.
+    screen
+      .getAllByRole("radio")
+      .forEach((chip) => expect(chip).not.toBeChecked());
     expect(
       (screen.getByPlaceholderText(/low, okay, good/i) as HTMLInputElement)
         .value,
@@ -167,13 +167,16 @@ describe("ShotForm suggestion chips", () => {
     const onAddShot = vi.fn();
     render(<ShotForm onAddShot={onAddShot} shots={history} />);
 
-    const pain = screen.getByPlaceholderText("e.g. 3") as HTMLInputElement;
-    expect(pain.value).toBe("");
+    // Nothing selected, which is a different state from "None" — that is an
+    // answer, and an untouched shot has not given one.
+    screen
+      .getAllByRole("radio")
+      .forEach((chip) => expect(chip).not.toBeChecked());
 
     fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
 
     const saved = onAddShot.mock.calls[0][0] as ShotEntry;
-    expect(saved.painScore).toBeUndefined();
+    expect(saved.pain).toBeUndefined();
   });
 
   it("fills the time field with the current time when Now is tapped", () => {
@@ -234,7 +237,7 @@ describe("ShotForm field mapping", () => {
     fireEvent.change(byLabel("Position"), { target: { value: "right" } });
     fireEvent.change(byLabel("Type of T"), { target: { value: "enanthate" } });
     fireEvent.change(byLabel("Carrier oil"), { target: { value: "sesame" } });
-    fireEvent.change(byLabel("Pain (0\u201310)"), { target: { value: "4" } });
+    fireEvent.click(screen.getByRole("radio", { name: "Moderate" }));
     fireEvent.change(byLabel("Mood"), { target: { value: "good" } });
     fireEvent.change(byLabel("Notes"), { target: { value: "smooth one" } });
 
@@ -250,7 +253,7 @@ describe("ShotForm field mapping", () => {
       injectionSitePosition: "right",
       testosteroneEster: "enanthate",
       carrierOil: "sesame",
-      painScore: 4,
+      pain: "moderate",
       mood: "good",
       notes: "smooth one",
     });
@@ -432,59 +435,27 @@ describe("ShotForm field mapping", () => {
     expect(onAddShot.mock.calls[0][0]).toMatchObject({ doseMg: 62.5 });
   });
 
-  it("refuses a decimal pain score with a visible message, not a dead button", () => {
-    // Pain is stored as a whole 0–10 (the schema enforces it, so a decimal would
-    // fail to re-import from its own backup). The native step/max constraints used
-    // to cancel the submit event outright: nothing saved, nothing said.
-    const onAddShot = vi.fn();
-    render(<ShotForm onAddShot={onAddShot} />);
-    fireEvent.change(screen.getByLabelText("Pain (0–10)"), {
-      target: { value: "2.5" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
-
-    expect(onAddShot).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "Pain must be a whole number from 0 to 10.",
-    );
-
-    // Correcting it clears the message and saves.
-    fireEvent.change(screen.getByLabelText("Pain (0–10)"), {
-      target: { value: "3" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
-    expect(onAddShot.mock.calls[0][0]).toMatchObject({ painScore: 3 });
-  });
-
   it("keeps an error message out of the field's accessible name", () => {
     // Text inside a <label> becomes part of the field's accessible name, so an
-    // error rendered there would rename the field to "Pain (0–10)<the error>" —
+    // error rendered there would rename the field to "Dose (mg)<the error>" —
     // breaking both screen-reader announcements and label-based queries. The
     // error is a sibling, reached via aria-describedby.
+    //
+    // This used to be asserted through the pain field, whose 0-10 input had an
+    // inline range error. That input is gone: four chips cannot produce a value
+    // the schema would refuse, so the error went with it. The principle still
+    // holds for every field that DOES have one, so the test moved rather than
+    // being deleted with the input that happened to demonstrate it.
     render(<ShotForm onAddShot={vi.fn()} />);
-    fireEvent.change(screen.getByLabelText("Pain (0–10)"), {
-      target: { value: "2.5" },
+    fireEvent.change(screen.getByLabelText("Dose (mg)"), {
+      target: { value: "-5" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
 
-    const pain = screen.getByLabelText("Pain (0–10)");
-    expect(pain).toHaveAccessibleName("Pain (0–10)");
-    expect(pain).toHaveAttribute("aria-invalid", "true");
-    expect(pain).toHaveAccessibleDescription(
-      "Pain must be a whole number from 0 to 10.",
-    );
-  });
-
-  it("refuses an out-of-range pain score too", () => {
-    const onAddShot = vi.fn();
-    render(<ShotForm onAddShot={onAddShot} />);
-    fireEvent.change(screen.getByLabelText("Pain (0–10)"), {
-      target: { value: "15" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
-
-    expect(onAddShot).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toBeInTheDocument();
+    const dose = screen.getByLabelText("Dose (mg)");
+    expect(dose).toHaveAccessibleName("Dose (mg)");
+    expect(dose).toHaveAttribute("aria-invalid", "true");
+    expect(dose).toHaveAccessibleDescription("Dose must be a positive number.");
   });
 
   it("refuses a negative dose with a message", () => {
@@ -515,7 +486,7 @@ describe("ShotForm field mapping", () => {
       "injectionSitePosition",
       "testosteroneEster",
       "carrierOil",
-      "painScore",
+      "pain",
       "mood",
       "notes",
     ] as const) {
@@ -604,7 +575,7 @@ describe("ShotForm draft publishing", () => {
     injectionSitePosition: "",
     testosteroneEster: "",
     carrierOil: "",
-    painScore: "",
+    pain: "",
     mood: "",
     notes,
   });
@@ -1328,7 +1299,7 @@ describe("ShotForm — the planned date", () => {
       injectionSitePosition: "",
       testosteroneEster: "",
       carrierOil: "",
-      painScore: "",
+      pain: "",
       mood: "",
       notes: "",
     };
@@ -1446,7 +1417,7 @@ describe("ShotForm — the planned date", () => {
           injectionSitePosition: "",
           testosteroneEster: "",
           carrierOil: "",
-          painScore: "",
+          pain: "",
           mood: "",
           notes: "",
         }}
@@ -1524,7 +1495,7 @@ describe("ShotForm — the planned date", () => {
       injectionSitePosition: "",
       testosteroneEster: "",
       carrierOil: "",
-      painScore: "",
+      pain: "",
       mood: "",
       notes: "",
     };
@@ -1623,5 +1594,94 @@ describe("ShotForm required/optional marking", () => {
     expect(screen.getByText(/only the date is needed/i)).toBeInTheDocument();
     // The counterpart of the rule above: no field carries an "(optional)" tag.
     expect(screen.queryByText(/\(optional\)/i)).toBeNull();
+  });
+});
+
+describe("ShotForm — injection pain", () => {
+  const chip = (name: string) => screen.getByRole("radio", { name });
+
+  it("names the field so you can tell what is being asked", () => {
+    // "How the injection felt" was the roadmap's wording and never says pain,
+    // so the chips had to explain the label rather than the other way round.
+    render(<ShotForm onAddShot={vi.fn()} />);
+    expect(
+      screen.getByRole("group", { name: "Injection pain" }),
+    ).toBeInTheDocument();
+  });
+
+  it("stores the level, not a number", () => {
+    const onAddShot = vi.fn((): SaveOutcome => "saved");
+    render(<ShotForm onAddShot={onAddShot} />);
+
+    fireEvent.click(chip("Severe"));
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+
+    expect(onAddShot).toHaveBeenCalledWith(
+      expect.objectContaining({ pain: "severe" }),
+    );
+  });
+
+  it("keeps 'None' and 'not recorded' as different answers", () => {
+    // The distinction the Clear control exists for, and the reason pain is an
+    // optional enum rather than a value with a zero in it: "none" says the
+    // injection did not hurt, undefined says nobody said.
+    const onAddShot = vi.fn((): SaveOutcome => "saved");
+    const first = render(<ShotForm onAddShot={onAddShot} />);
+    fireEvent.click(chip("None"));
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+    expect(onAddShot).toHaveBeenLastCalledWith(
+      expect.objectContaining({ pain: "none" }),
+    );
+    first.unmount();
+
+    const second = vi.fn((): SaveOutcome => "saved");
+    render(<ShotForm onAddShot={second} />);
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+    expect(second.mock.calls[0][0].pain).toBeUndefined();
+  });
+
+  it("offers Clear only once something is set, and it returns to unrecorded", () => {
+    const onAddShot = vi.fn((): SaveOutcome => "saved");
+    render(<ShotForm onAddShot={onAddShot} />);
+
+    // Nothing chosen yet: no way to clear, because there is nothing to clear.
+    expect(screen.queryByRole("button", { name: "Clear" })).toBeNull();
+
+    fireEvent.click(chip("Moderate"));
+    expect(chip("Moderate")).toBeChecked();
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    screen.getAllByRole("radio").forEach((c) => expect(c).not.toBeChecked());
+    expect(screen.queryByRole("button", { name: "Clear" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+    expect(onAddShot.mock.calls[0][0].pain).toBeUndefined();
+  });
+
+  it("restores the stored level when an existing shot is opened", () => {
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        onUpdateShot={vi.fn()}
+        editingShot={{ id: "a", date: "2026-08-05", pain: "mild" }}
+        shots={[]}
+      />,
+    );
+    expect(chip("Mild")).toBeChecked();
+    expect(chip("Severe")).not.toBeChecked();
+  });
+
+  it("has no validation to fail, which is the point", () => {
+    // The 0-10 input carried an inline range error because the native step/max
+    // hints were cancelling the submit silently and leaving a dead button. Four
+    // chips cannot produce a value the schema would refuse, so the whole error
+    // path goes — and a save with pain set must never be blocked.
+    const onAddShot = vi.fn((): SaveOutcome => "saved");
+    render(<ShotForm onAddShot={onAddShot} />);
+    fireEvent.click(chip("Severe"));
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+
+    expect(onAddShot).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/whole number from 0 to 10/i)).toBeNull();
   });
 });

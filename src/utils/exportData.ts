@@ -75,7 +75,7 @@ const CSV_COLUMNS: Array<{
   { header: "injectionSitePosition", key: "injectionSitePosition" },
   { header: "testosteroneEster", key: "testosteroneEster" },
   { header: "carrierOil", key: "carrierOil" },
-  { header: "painScore", key: "painScore" },
+  { header: "pain", key: "pain" },
   { header: "mood", key: "mood" },
   { header: "notes", key: "notes" },
 ];

@@ -92,7 +92,7 @@ const REASON_BY_FIELD: Record<string, string> = {
   date: "its date isn’t one this app can use",
   time: "its time couldn’t be read",
   doseMg: "its dose couldn’t be read",
-  painScore: "its pain score couldn’t be read",
+  pain: "its pain level couldn’t be read",
 };
 
 const FALLBACK_REASON = "some of it couldn’t be read";

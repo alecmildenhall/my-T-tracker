@@ -4,6 +4,7 @@ import type { ShotEntry } from "../types/shot";
 import { WASH_ANIMATION } from "../utils/wash";
 import { formatTimeForDisplay } from "../utils/datetime";
 import { daysFromPlanned } from "../utils/schedule";
+import { painLabel } from "../utils/painLabel";
 
 /** Name of the wash keyframes, shared with styles.css. */
 
@@ -81,8 +82,10 @@ export const ShotListItem: React.FC<ShotListItemProps> = ({
           <div className="shot-list-item__date">{dateLabel}</div>
           <div className="shot-list-item__time">{timeLabel}</div>
         </div>
-        {typeof shot.painScore === "number" && (
-          <div className="shot-list-item__pill">Pain: {shot.painScore}/10</div>
+        {shot.pain !== undefined && (
+          <div className="shot-list-item__pill">
+            Pain: {painLabel(shot.pain)}
+          </div>
         )}
       </header>
 

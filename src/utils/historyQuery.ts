@@ -6,27 +6,24 @@
 // This is the UI-facing companion to shotQuery.ts: that module answers a query,
 // this one describes the one the screen is holding.
 import type { ShotFilter } from "./shotQuery";
+import { PAIN_LEVELS, isPainLevel, type PainLevel } from "../types/shot";
+import { painLabel } from "./painLabel";
 
 /** How many shots each "Load more" press reveals. */
 export const PAGE_SIZE = 20;
 
 /**
- * Pain expressed as bands rather than a 0–10 numeric range. This is how symptom
- * trackers let people filter intensity, and it lines up with the None/Mild/
- * Moderate/Severe chips the log form adopts in the next slice — so the filter
- * vocabulary won't change under users when the input does.
+ * The pain levels offered as filter options.
+ *
+ * This list used to carry `min`/`max` and bucket a 0–10 score, written that way
+ * in anticipation of the chips — which is why the filter vocabulary did not have
+ * to change when the input did. Now that pain IS the ordinal, the numbers are
+ * gone and the parenthesised ranges with them: "Mild (1–3)" describes a scale
+ * nothing stores any more.
  */
-export const PAIN_BANDS: {
-  id: string;
-  label: string;
-  min: number;
-  max: number;
-}[] = [
-  { id: "none", label: "None (0)", min: 0, max: 0 },
-  { id: "mild", label: "Mild (1–3)", min: 1, max: 3 },
-  { id: "moderate", label: "Moderate (4–6)", min: 4, max: 6 },
-  { id: "severe", label: "Severe (7–10)", min: 7, max: 10 },
-];
+export const PAIN_BANDS: { id: PainLevel; label: string }[] = PAIN_LEVELS.map(
+  (id) => ({ id, label: painLabel(id) }),
+);
 
 /**
  * Everything the History screen is currently asking for. Lifted to App so a trip
@@ -62,17 +59,26 @@ export const emptyHistoryQuery: HistoryQuery = {
  */
 export function countActiveFacets(query: HistoryQuery): number {
   const f = query.filter;
-  return [f.dateFrom, f.dateTo, f.site, f.position, f.ester, query.painBand].filter(
-    (v) => v !== undefined && v !== ""
-  ).length;
+  return [
+    f.dateFrom,
+    f.dateTo,
+    f.site,
+    f.position,
+    f.ester,
+    query.painBand,
+  ].filter((v) => v !== undefined && v !== "").length;
 }
 
-/** The query with a pain band applied (or cleared, for the "Any" option). */
+/** The query with a pain level applied (or cleared, for the "Any" option).
+ *
+ *  `id` is whatever the <select> produced, so it is validated rather than cast:
+ *  "Any" is the empty string, and anything unrecognised clears the facet rather
+ *  than filtering on a level that does not exist. */
 export function withPainBand(query: HistoryQuery, id: string): HistoryQuery {
-  const band = PAIN_BANDS.find((b) => b.id === id);
+  const level = isPainLevel(id) ? id : undefined;
   return {
     ...query,
-    painBand: id,
-    filter: { ...query.filter, painMin: band?.min, painMax: band?.max },
+    painBand: level ?? "",
+    filter: { ...query.filter, pain: level },
   };
 }

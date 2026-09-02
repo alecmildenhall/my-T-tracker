@@ -131,7 +131,7 @@ describe('useShots', () => {
         injectionSitePosition: 'left',
         testosteroneEster: 'cypionate',
         carrierOil: 'cottonseed',
-        painScore: 3,
+        pain: "mild",
         mood: 'good',
         notes: 'Felt great after this one'
       }
@@ -210,7 +210,7 @@ describe('useShots', () => {
         date: '2024-01-15',
         doseMg: 75,
         injectionSite: 'glute',
-        painScore: 3
+        pain: "mild"
       }
       
       act(() => {
@@ -356,7 +356,7 @@ describe('useShots', () => {
         injectionSitePosition: 'right',
         testosteroneEster: 'enanthate',
         carrierOil: 'sesame',
-        painScore: 3,
+        pain: "mild",
         mood: 'good',
         notes: 'Updated with full details'
       }
@@ -570,7 +570,7 @@ describe('useShots', () => {
         time: '14:30',
         doseMg: 50,
         injectionSite: 'thigh',
-        painScore: 7,
+        pain: "severe",
         mood: 'nervous but hopeful',
         notes: 'First shot of the year. Felt a bit anxious beforehand but everything went smoothly.'
       }

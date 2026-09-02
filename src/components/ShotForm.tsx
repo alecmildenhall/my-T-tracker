@@ -6,7 +6,8 @@ import React, {
   useRef,
   useCallback,
 } from "react";
-import type { ShotEntry } from "../types/shot";
+import { PAIN_LEVELS, type PainLevel, type ShotEntry } from "../types/shot";
+import { painLabel } from "../utils/painLabel";
 import type { Profile } from "../types/profile";
 import { suggestionsFor } from "../utils/suggestions";
 import { todayLocalISO, nowHHMM } from "../utils/datetime";
@@ -108,7 +109,9 @@ export interface ShotDraft {
   injectionSitePosition: string;
   testosteroneEster: string;
   carrierOil: string;
-  painScore: string;
+  /** The chosen level, or "" for not recorded — the draft mirrors the form,
+   *  and the form's "nothing selected" is distinct from "none". */
+  pain: PainLevel | "";
   mood: string;
   notes: string;
 }
@@ -127,7 +130,7 @@ function freshDraft(): ShotDraft {
     injectionSitePosition: "",
     testosteroneEster: "",
     carrierOil: "",
-    painScore: "",
+    pain: "",
     mood: "",
     notes: "",
   };
@@ -299,7 +302,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             injectionSitePosition: initial.injectionSitePosition ?? "",
             testosteroneEster: initial.testosteroneEster ?? "",
             carrierOil: initial.carrierOil ?? "",
-            painScore: initial.painScore?.toString() ?? "",
+            pain: initial.pain ?? "",
             mood: initial.mood ?? "",
             notes: initial.notes ?? "",
           }
@@ -453,7 +456,6 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   const [saveFailed, setSaveFailed] = useState(false);
   const [exportFailed, setExportFailed] = useState(false);
   const [doseError, setDoseError] = useState<string | null>(null);
-  const [painError, setPainError] = useState<string | null>(null);
   const [time, setTime] = useState<string>(start.time);
   const [doseMg, setDoseMg] = useState<string>(start.doseMg);
   const [injectionSite, setInjectionSite] = useState<string>(
@@ -466,7 +468,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     start.testosteroneEster,
   );
   const [carrierOil, setCarrierOil] = useState<string>(start.carrierOil);
-  const [painScore, setPainScore] = useState<string>(start.painScore);
+  const [pain, setPain] = useState<PainLevel | "">(start.pain);
   const [mood, setMood] = useState<string>(start.mood);
   const [notes, setNotes] = useState<string>(start.notes);
 
@@ -513,7 +515,6 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     setPlannedError(null);
     setDateError(null);
     setDoseError(null);
-    setPainError(null);
     // Clearing is starting over, so the failed-save state goes with the values it
     // referred to — including the button's label.
     setSaveFailed(false);
@@ -521,7 +522,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     setTime("");
     setInjectionSite("");
     setInjectionSitePosition("");
-    setPainScore("");
+    setPain("");
     setMood("");
     setNotes("");
     // Carried-forward fields reset to the last shot's values, not to empty.
@@ -570,7 +571,6 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // now, we say why, next to the field.
     const parsedDate = toShotDate(date);
     const parsedDose = doseMg === "" ? undefined : Number(doseMg);
-    const parsedPain = painScore === "" ? undefined : Number(painScore);
 
     // Blank and malformed are different mistakes and get different words. A
     // blank date is almost always "meant to fill this in and forgot" — telling
@@ -604,19 +604,11 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       (!Number.isFinite(parsedDose) || parsedDose < 0)
         ? "Dose must be a positive number."
         : null;
-    // INTERIM — retires with the numeric pain input in slice B½, which replaces
-    // it with None/Mild/Moderate/Severe chips (see the roadmap). It exists only
-    // because the native step/max constraints were cancelling the submit event
-    // silently, leaving a dead Save button. Don't build on it.
-    //
-    // Mirrors the schema, which stores pain as a whole number 0–10 — so a decimal
-    // must be refused rather than saved, or the entry would fail to re-import
-    // from its own backup.
-    const nextPainError =
-      parsedPain !== undefined &&
-      (!Number.isInteger(parsedPain) || parsedPain < 0 || parsedPain > 10)
-        ? "Pain must be a whole number from 0 to 10."
-        : null;
+    // No pain validation any more, and that is the point rather than an
+    // omission: four chips cannot produce a value the schema would refuse. The
+    // check that lived here existed only because the native step/max hints were
+    // cancelling the submit silently and leaving a dead Save button — a problem
+    // the numeric input created and took with it.
 
     // The planned date takes the SAME rule as the date, and for the same reason:
     // the form is noValidate, so `min`/`max` on the input are hints the browser
@@ -646,16 +638,9 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     setPlannedError(nextPlannedError);
     setDateError(nextDateError);
     setDoseError(nextDoseError);
-    setPainError(nextPainError);
     // `!parsedDate` is implied by nextDateError, but stating it narrows the type
     // so the branded CivilDate below can't be null.
-    if (
-      nextDateError ||
-      nextDoseError ||
-      nextPainError ||
-      nextPlannedError ||
-      !parsedDate
-    )
+    if (nextDateError || nextDoseError || nextPlannedError || !parsedDate)
       return;
 
     const newShot: ShotEntry = {
@@ -670,7 +655,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       injectionSitePosition: injectionSitePosition || undefined,
       testosteroneEster: testosteroneEster || undefined,
       carrierOil: carrierOil || undefined,
-      painScore: parsedPain,
+      pain: pain === "" ? undefined : pain,
       mood: mood || undefined,
       notes: notes || undefined,
       // Frozen here and never recomputed. An emptied field means "no planned
@@ -759,7 +744,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     injectionSitePosition,
     testosteroneEster,
     carrierOil,
-    painScore,
+    pain,
     mood,
     notes,
   };
@@ -1066,29 +1051,50 @@ export const ShotForm: React.FC<ShotFormProps> = ({
         </div>
 
         <div className="form-row">
-          {/* Wrapped like the date and dose fields: .form-row is a flex row, so an
-            unwrapped error span becomes a third flex item and squeezes a text
-            column in between Pain and Mood. */}
           <div className="field-cell">
-            <label>
-              Pain (0–10)
-              <input
-                type="number"
-                min={0}
-                max={10}
-                step={1}
-                inputMode="numeric"
-                value={painScore}
-                onChange={(e) => setPainScore(e.target.value)}
-                placeholder="e.g. 3"
-                aria-invalid={painError ? true : undefined}
-                aria-describedby={painError ? "pain-error" : undefined}
-              />
-            </label>
-            {painError && (
-              <span id="pain-error" className="field-error" role="alert">
-                {painError}
-              </span>
+            {/* A fieldset with a legend, because four mutually exclusive options
+                are a radio group — not the `aria-current` the suggestion chips
+                use ("the current item in a set") and not `aria-pressed` (a
+                toggle). Native radios also bring arrow-key movement, which a
+                hand-rolled chip group would have to reimplement.
+
+                "Injection pain", not "How the injection felt": the label has to
+                say what is being asked without the chips explaining it, and a
+                noun phrase matches every other label on this sheet. It also
+                contrasts with the after-soreness question B½ adds later. */}
+            <fieldset className="pain-field">
+              <legend>Injection pain</legend>
+              <div className="pain-chips">
+                {PAIN_LEVELS.map((level) => (
+                  <label
+                    key={level}
+                    className={`pain-chip pain-chip--${level}${
+                      pain === level ? " pain-chip--on" : ""
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="pain"
+                      value={level}
+                      checked={pain === level}
+                      onChange={() => setPain(level)}
+                    />
+                    {painLabel(level)}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            {/* Only once something is set, and it is the ONLY way back to "not
+                recorded" — which is a different fact from "none". Without it a
+                mis-tap on an optional field would be permanent. */}
+            {pain !== "" && (
+              <button
+                type="button"
+                className="link-button pain-clear"
+                onClick={() => setPain("")}
+              >
+                Clear
+              </button>
             )}
           </div>
 
@@ -1158,7 +1164,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={3}
-            placeholder="Pain, mood, anything you want to remember for later..."
+            placeholder="Anything you want to remember for later..."
           />
         </label>
 

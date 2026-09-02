@@ -11,9 +11,9 @@ import type { ShotEntry } from "../../types/shot";
 beforeEach(() => localStorage.clear());
 
 const shots: ShotEntry[] = [
-  { id: "a", date: "2026-06-01", injectionSite: "thigh", painScore: 2, notes: "felt fine" },
-  { id: "b", date: "2026-06-15", injectionSite: "glute", painScore: 8, notes: "quite sore" },
-  { id: "c", date: "2026-07-01", injectionSite: "thigh", painScore: 5, mood: "anxious" },
+  { id: "a", date: "2026-06-01", injectionSite: "thigh", pain: "mild", notes: "felt fine" },
+  { id: "b", date: "2026-06-15", injectionSite: "glute", pain: "severe", notes: "quite sore" },
+  { id: "c", date: "2026-07-01", injectionSite: "thigh", pain: "moderate", mood: "anxious" },
 ];
 
 /** HistoryView is controlled — the real query state lives in App — so wrap it in

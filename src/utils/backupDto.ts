@@ -37,7 +37,7 @@ export function pickShotFields(s: ShotEntry): ShotEntry {
     shot.testosteroneEster = testosteroneEster;
   const carrierOil = nonBlankString(s.carrierOil);
   if (carrierOil !== undefined) shot.carrierOil = carrierOil;
-  if (s.painScore !== undefined) shot.painScore = s.painScore;
+  if (s.pain !== undefined) shot.pain = s.pain;
   const mood = nonBlankString(s.mood);
   if (mood !== undefined) shot.mood = mood;
   const notes = nonBlankString(s.notes);
