@@ -7,6 +7,7 @@ import type { ShotEntry } from "../../types/shot";
 import type { SaveOutcome } from "../ShotForm";
 import { todayLocalISO } from "../../utils/datetime";
 import { expectFocusSomewhereUseful } from "../../test/focus";
+import { expectVisibleFocusRing } from "../../test/focusRing";
 import { isShotDateInRange, shotDateRange } from "../../utils/civilDate";
 
 beforeEach(() => {
@@ -1717,6 +1718,20 @@ describe("ShotForm — Clear removes itself, so it hands focus on", () => {
 
     expect(document.activeElement).not.toBe(document.body);
     expectFocusSomewhereUseful("clearing injection pain");
+    // And that focus is VISIBLE, which is a different assertion — the one above
+    // only says focus is not nowhere. Without this the test passed with the
+    // chips' only focus rule deleted: focus moving with nothing on screen
+    // changing is half of the defect, not none of it (WCAG 2.4.7).
+    expectVisibleFocusRing("clearing injection pain");
+    // And explicitly, because the guard above cannot bind here: the element
+    // holding focus is the radio, which is `opacity: 0` and stretched over the
+    // pill — and it matches the stylesheet's generic `input:focus` rule, which
+    // paints border-colour and box-shadow on a control that renders nothing.
+    // The ring this control actually has is on the LABEL, via `:focus-within`.
+    // Measured: with that rule deleted, `expectVisibleFocusRing` still passed.
+    // So assert the real relationship, and let focus.test.ts assert the rule
+    // exists — together those two fail if either half goes.
+    expect(document.activeElement?.closest(".pain-chip")).not.toBeNull();
     // Back to the group it belongs to: you are still answering this question.
     expect(document.activeElement).toBe(
       screen.getByRole("radio", { name: "None" }),

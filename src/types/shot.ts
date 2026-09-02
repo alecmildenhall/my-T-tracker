@@ -1,6 +1,10 @@
 // src/types/shot.ts
 
 /**
+ * In order, least to most — the order the chips render and charts should use.
+ * Declared as the tuple first so `z.enum` can take it directly, matching
+ * WEEKDAYS in weekday.ts.
+ *
  * How much the injection itself hurt, as an ordinal rather than a number.
  *
  * A 0–10 score was stored and only ever READ as four bands (`PAIN_BANDS`), so
@@ -14,9 +18,6 @@
  * `undefined` is NOT `"none"`: one says the injection did not hurt, the other
  * says nobody answered. Keeping them apart is why the form has a Clear control.
  */
-/** In order, least to most — the order the chips render and charts should use.
- *  Declared as the tuple first so `z.enum` can take it directly, matching
- *  WEEKDAYS in weekday.ts. */
 export const PAIN_LEVELS = ["none", "mild", "moderate", "severe"] as const;
 
 export type PainLevel = (typeof PAIN_LEVELS)[number];

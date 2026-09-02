@@ -3,7 +3,7 @@ import { handOffFocus } from "../focus";
 
 const mounted = <K extends keyof HTMLElementTagNameMap>(
   tag: K,
-  init?: (el: HTMLElementTagNameMap[K]) => void
+  init?: (el: HTMLElementTagNameMap[K]) => void,
 ): HTMLElementTagNameMap[K] => {
   const el = document.createElement(tag);
   init?.(el);
@@ -132,6 +132,18 @@ describe("the ring guard itself", () => {
     // every list arrives glued to the comment above it and never matches.
     expect(__ringSelectorsForTest.every((s) => !s.includes("/*"))).toBe(true);
     expect(__ringSelectorsForTest.every((s) => !s.includes("*/"))).toBe(true);
+    // Every pseudo is stripped, including `:focus-within`. It was not: the
+    // pattern matched `:focus` inside it and left `-within` behind, turning
+    // `.pain-chip:focus-within` into `.pain-chip-within` — a selector that
+    // matches nothing, so the chips' only focus indicator was invisible to this
+    // guard and the test relying on it passed with the rule deleted.
+    expect(__ringSelectorsForTest.every((s) => !s.includes("focus"))).toBe(
+      true,
+    );
+    expect(__ringSelectorsForTest.every((s) => !s.includes("-within"))).toBe(
+      true,
+    );
+    expect(__ringSelectorsForTest).toContain(".pain-chip");
   });
 
   it("counts a focus rule that reveals a hidden element, not just outlines", async () => {
@@ -143,7 +155,6 @@ describe("the ring guard itself", () => {
     const { __ringSelectorsForTest } = await import("../../test/focusRing");
     expect(__ringSelectorsForTest).toContain(".skip-link");
   });
-
 
   it("does not count a rule that only REMOVES the ring", async () => {
     // Driven by synthetic CSS, not the live stylesheet: nothing in styles.css
@@ -159,23 +170,31 @@ describe("the ring guard itself", () => {
     expect(parseRingSelectors(".a:focus { outline: 0; }")).toEqual([]);
     // The variants a literal two-string check let through as "ringed".
     expect(parseRingSelectors(".a:focus { outline: 0px; }")).toEqual([]);
-    expect(parseRingSelectors(".a:focus { outline: none !important; }")).toEqual([]);
     expect(
-      parseRingSelectors(".a:focus { outline: none; outline-offset: 0; }")
+      parseRingSelectors(".a:focus { outline: none !important; }"),
+    ).toEqual([]);
+    expect(
+      parseRingSelectors(".a:focus { outline: none; outline-offset: 0; }"),
     ).toEqual([]);
     // outline-offset alone paints nothing — it shifts an outline that has to come
     // from elsewhere. `.tabbar:focus-visible { outline-offset: -2px }` is a real
     // rule in this stylesheet, and counting it as a ring put .tabbar in the
     // allowlist twice, so losing the actual rule would have gone unnoticed.
-    expect(parseRingSelectors(".a:focus { outline-offset: -2px; }")).toEqual([]);
+    expect(parseRingSelectors(".a:focus { outline-offset: -2px; }")).toEqual(
+      [],
+    );
     expect(parseRingSelectors(".a:focus { outline-offset: 4px; }")).toEqual([]);
     // ...but removing the outline while painting something else does count.
     // (parseRingSelectors returns selectors with the pseudo still attached; the
     // module strips it afterwards so jsdom's `matches()` can test the element.)
     expect(
-      parseRingSelectors(".a:focus { outline: none; box-shadow: 0 0 0 2px red; }")
+      parseRingSelectors(
+        ".a:focus { outline: none; box-shadow: 0 0 0 2px red; }",
+      ),
     ).toEqual([".a:focus"]);
     // ...and any focus treatment counts, not just an allow-list of properties.
-    expect(parseRingSelectors(".a:focus { left: 0; top: 0; }")).toEqual([".a:focus"]);
+    expect(parseRingSelectors(".a:focus { left: 0; top: 0; }")).toEqual([
+      ".a:focus",
+    ]);
   });
 });

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { profileSchema, shotEntrySchema } from "../shotSchema";
+import { toCsv } from "../exportData";
 import { MAX_INTERVAL_DAYS } from "../../types/profile";
 import {
   pickShotFields,
@@ -252,5 +253,38 @@ describe("pain survives a backup round-trip", () => {
       shotEntrySchema.safeParse({ id: "a", date: "2026-08-05", pain: 7 })
         .success,
     ).toBe(false);
+  });
+});
+
+describe("a stored level the enum does not contain never leaves the app", () => {
+  // The round-trip test above asserts the guarantee only over PAIN_LEVELS, so
+  // it cannot see this: `sanitizeShots` vets a non-blank id and date and nothing
+  // else, and a bare `!== undefined` copied whatever it found into the backup.
+  // Measured before the fix: exporting one such shot and feeding the file
+  // straight back gave "None of the 1 entry in this file could be read, so
+  // nothing was restored." Backup export is the only recovery path in this
+  // product's durability model.
+  const junk = {
+    id: "a",
+    date: "2026-08-05",
+    pain: "agony",
+  } as unknown as ShotEntry;
+
+  it("is dropped from the backup rather than written into it", () => {
+    const exported = pickShotFields(junk);
+    expect("pain" in exported).toBe(false);
+  });
+
+  it("leaves a backup the app's own importer still accepts", () => {
+    // The guarantee that matters, stated as itself rather than per field: the
+    // app must never produce a file it refuses to read.
+    expect(shotEntrySchema.safeParse(pickShotFields(junk)).success).toBe(true);
+  });
+
+  it("is blanked in the CSV rather than shown to a provider", () => {
+    // And the two exports must agree. A value the backup drops must not appear
+    // verbatim in the file someone prints for a clinician.
+    const row = toCsv([junk]).split("\n")[1];
+    expect(row).not.toContain("agony");
   });
 });

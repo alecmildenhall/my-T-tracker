@@ -46,7 +46,7 @@ function readStylesheet(): string {
     throw new Error(
       `focusRing.ts could not read ${path}. Run the suite from the project ` +
         `root (npm test -- --run); it resolves the stylesheet from the working ` +
-        `directory because Vitest stubs CSS imports to an empty string.`
+        `directory because Vitest stubs CSS imports to an empty string.`,
     );
   }
 }
@@ -128,6 +128,16 @@ const ringSelectors: string[] = parseRingSelectors(readStylesheet());
  * Every selector with its `:focus` / `:focus-visible` pseudo stripped, so jsdom's
  * `matches()` can test the element itself — jsdom models neither pseudo.
  *
+ * A second cost, found the hard way: a VISUALLY HIDDEN control satisfies this
+ * guard through a rule that paints nothing on it. The pain chips focus a radio
+ * that is `opacity: 0` and stretched over its label; it matches the stripped
+ * `input` from `input:focus { border-color; box-shadow }`, so the guard reports
+ * a ring while the screen shows none — the real indicator being on the label
+ * via `:focus-within`. Nothing here can see that, because jsdom computes no
+ * styles from this stylesheet. Where a control hides its own focus target,
+ * assert the relationship directly (focus is inside the ringed wrapper) rather
+ * than trusting this.
+ *
  * The cost, stated so it isn't mistaken for coverage: this cannot tell the two
  * apart. A target whose ONLY rule is `:focus-visible`, focused by a mouse-driven
  * action, passes here and paints nothing in Chrome — the split that
@@ -135,9 +145,23 @@ const ringSelectors: string[] = parseRingSelectors(readStylesheet());
  * state, `:focus-visible` for focus following a keyboard action) is invisible
  * from here. That half stays a browser check.
  */
-const structuralSelectors = ringSelectors.map((s) =>
-  s.replace(/:focus-visible|:focus/g, "").trim()
-);
+const structuralSelectors = ringSelectors.map((selector) => ({
+  // `:focus-within` is stripped too, and it was not: the pattern matched
+  // `:focus` inside it and left `-within` behind, so `.pain-chip:focus-within`
+  // became the nonsense selector `.pain-chip-within`, which matches nothing and
+  // therefore rings nothing. The pain chips' only focus indicator was invisible
+  // to this guard, and the test asserting focus landed somewhere useful passed
+  // with the rule deleted — measured. Order matters: the longest alternative
+  // has to come first or `:focus` consumes its prefix.
+  structural: selector
+    .replace(/:focus-within|:focus-visible|:focus/g, "")
+    .trim(),
+  // And `:focus-within` matches an ANCESTOR of the focused element, not the
+  // element itself — which is the whole point of it: the ring goes on a wrapper
+  // while focus sits on a control inside. `matches()` asks the wrong question
+  // for those; `closest()` asks the right one.
+  matchesAncestor: /:focus-within/.test(selector),
+}));
 
 /**
  * Assert the currently focused element is one the stylesheet rings.
@@ -152,9 +176,11 @@ export function expectVisibleFocusRing(context: string): void {
     return;
   }
 
-  const ringed = structuralSelectors.some((selector) => {
+  const ringed = structuralSelectors.some(({ structural, matchesAncestor }) => {
     try {
-      return el.matches(selector);
+      return matchesAncestor
+        ? el.closest(structural) !== null
+        : el.matches(structural);
     } catch {
       return false; // a selector jsdom can't parse is not a match
     }
@@ -168,9 +194,11 @@ export function expectVisibleFocusRing(context: string): void {
       `in styles.css. Note the :focus vs :focus-visible split there is deliberate: ` +
       `dialog-open targets need :focus because Chrome won't mark auto-focus as ` +
       `focus-visible; post-action targets need :focus-visible so a mouse user ` +
-      `isn't left with an outline round a whole panel.`
+      `isn't left with an outline round a whole panel.`,
   ).toBe(true);
 }
 
 /** Exposed for the test that proves this parser found anything at all. */
-export const __ringSelectorsForTest = structuralSelectors;
+export const __ringSelectorsForTest = structuralSelectors.map(
+  (s) => s.structural,
+);

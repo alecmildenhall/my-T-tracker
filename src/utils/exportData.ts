@@ -4,7 +4,7 @@
 //   - CSV:  a flat, spreadsheet-friendly export for clinical conversations
 // CSV is export-only — we never parse it back — so it optimises for safety in
 // spreadsheet apps (formula-injection guard) and correctness (RFC 4180 quoting).
-import type { ShotEntry } from "../types/shot";
+import { isPainLevel, type ShotEntry } from "../types/shot";
 import { isShotDateInRange } from "./civilDate";
 import type { Profile } from "../types/profile";
 import { APP_NAME, APP_VERSION, FORMAT_VERSION } from "../appMeta";
@@ -75,7 +75,10 @@ const CSV_COLUMNS: Array<{
   { header: "injectionSitePosition", key: "injectionSitePosition" },
   { header: "testosteroneEster", key: "testosteroneEster" },
   { header: "carrierOil", key: "carrierOil" },
-  { header: "pain", key: "pain" },
+  // Gated like plannedFor, and it has to move with pickShotFields: a value the
+  // backup drops must not be written verbatim into the file a provider reads,
+  // and the two exports disagreeing either way is the failure.
+  { header: "pain", key: "pain", usable: isPainLevel },
   { header: "mood", key: "mood" },
   { header: "notes", key: "notes" },
 ];

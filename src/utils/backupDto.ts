@@ -8,7 +8,7 @@
 // Keeping one allowlist for each shape means export and the strict import schema
 // can never drift apart (which would let an export produce a file its own
 // importer rejects).
-import type { ShotEntry } from "../types/shot";
+import { isPainLevel, type ShotEntry } from "../types/shot";
 import type { Profile } from "../types/profile";
 import { isValidIntervalDays } from "../types/profile";
 import { isShotDateInRange } from "./civilDate";
@@ -17,8 +17,11 @@ import { isWeekday } from "./weekday";
 
 /** Rebuild a shot from known fields only — fresh object, no spread, no carried
  *  prototype or stray keys, no blank strings. Accepts a domain shot (export) or a
- *  schema-validated shot (import); both share this shape. Numeric fields keep the
- *  `!== undefined` guard so a legitimate 0 (dose/pain) is preserved. The required
+ *  schema-validated shot (import); both share this shape. `doseMg` keeps the
+ *  `!== undefined` guard so a legitimate 0 is preserved — truthiness would drop
+ *  it. `pain` is no longer numeric and takes a real guard instead: that sentence
+ *  used to cover both and, once pain became an enum, became the justification
+ *  for a hole. The required
  *  `id`/`date` are copied as-is: sanitizeShots (the storage read boundary) and the
  *  import schema both guarantee they're present and non-blank, so re-checking here
  *  would be redundant ("parse, don't validate"). */
@@ -37,7 +40,14 @@ export function pickShotFields(s: ShotEntry): ShotEntry {
     shot.testosteroneEster = testosteroneEster;
   const carrierOil = nonBlankString(s.carrierOil);
   if (carrierOil !== undefined) shot.carrierOil = carrierOil;
-  if (s.pain !== undefined) shot.pain = s.pain;
+  // Validated, like `plannedFor` below and for the same reason. `sanitizeShots`
+  // vets only a non-blank id and date, so a stored `pain: "agony"` reaches here
+  // — and a bare presence check wrote it into the backup, which the app's own
+  // importer then refuses. Measured: exporting one such shot and feeding the
+  // file straight back gave "None of the 1 entry in this file could be read".
+  // Backup export is the only recovery path in this product's durability model,
+  // so a file that cannot be restored is the worst thing it can produce.
+  if (isPainLevel(s.pain)) shot.pain = s.pain;
   const mood = nonBlankString(s.mood);
   if (mood !== undefined) shot.mood = mood;
   const notes = nonBlankString(s.notes);
