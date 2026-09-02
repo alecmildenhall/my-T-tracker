@@ -19,6 +19,22 @@ import type { FocusableElement } from "../utils/focus";
 import { tabbablesIn } from "../utils/tabbing";
 
 /** Inputs whose own Tab handling moves between segments inside the control. */
+/**
+ * A radio whose group has no checked member.
+ *
+ * Scoped to the owning form when there is one, because that is how radio groups
+ * are scoped — two forms may legitimately use the same `name` for different
+ * groups, and a document-wide lookup would let one form's answer silence the
+ * other's.
+ */
+function isRadioInUncheckedGroup(el: Element | null): boolean {
+  if (!(el instanceof HTMLInputElement) || el.type !== "radio") return false;
+  const scope: ParentNode = el.form ?? el.ownerDocument;
+  return !scope.querySelector(
+    `input[type="radio"][name="${CSS.escape(el.name)}"]:checked`,
+  );
+}
+
 const SEGMENTED_INPUT =
   'input[type="date"], input[type="time"], input[type="datetime-local"], ' +
   'input[type="month"], input[type="week"]';
@@ -206,6 +222,40 @@ export function useFocusTrap(
       // the DOM says which segment you are on.
       if (at !== -1 && active?.matches(SEGMENTED_INPUT)) {
         const beyond = e.shiftKey ? at > 0 : at < list.length - 1;
+        if (beyond) return;
+      }
+
+      // A radio group with NOTHING checked is the same shape of problem, and
+      // needs the same answer.
+      //
+      // The browser treats such a group as ONE tab stop: Tab enters the first
+      // member and the next Tab leaves the group entirely, because arrow keys —
+      // not Tab — are how you move within it. `tabbable` disagrees: with no
+      // member checked it reports every radio as tabbable, which is right about
+      // focusability and wrong about the tab ORDER. Since this trap owns Tab and
+      // rotates through that list, the library's answer became the behaviour,
+      // and the log sheet's four pain chips were four tab stops instead of one —
+      // in the state every new shot starts in.
+      //
+      // Measured in the running app: with nothing selected, Tab visited none,
+      // mild, moderate, severe; with one selected, just the checked chip. So the
+      // defect only exists in the default state, which is also the state most
+      // shots are logged in.
+      //
+      // Handing Tab back lets the browser do the native thing. `beyond` is
+      // computed past the whole GROUP rather than past this radio: the other
+      // members are in `list`, so measuring from the current index would count
+      // them as somewhere to go and hand the browser a Tab that walks off the
+      // end of an inert page.
+      if (at !== -1 && isRadioInUncheckedGroup(active)) {
+        const sameGroup = (el: FocusableElement) =>
+          el instanceof HTMLInputElement &&
+          el.type === "radio" &&
+          el.name === (active as HTMLInputElement).name;
+        const first = list.findIndex(sameGroup);
+        let last = first;
+        while (last + 1 < list.length && sameGroup(list[last + 1])) last++;
+        const beyond = e.shiftKey ? first > 0 : last < list.length - 1;
         if (beyond) return;
       }
 

@@ -78,6 +78,15 @@ const CSV_COLUMNS: Array<{
   // Gated like plannedFor, and it has to move with pickShotFields: a value the
   // backup drops must not be written verbatim into the file a provider reads,
   // and the two exports disagreeing either way is the failure.
+  //
+  // The RAW level, deliberately, not `painLabel`'s "Moderate". That helper
+  // exists so a level does not read differently across the app's own surfaces,
+  // and this file is not one of them: every header here is a field name
+  // (`injectionSitePosition`, `testosteroneEster`) and every value is as
+  // stored — the row shows `8:45 PM` while this column writes `20:45`.
+  // Capitalising one column against that would make pain the odd one out in a
+  // data file. Recorded because "the CSV is for clinical conversations" makes
+  // the opposite look right until you look at the rest of the file.
   { header: "pain", key: "pain", usable: isPainLevel },
   { header: "mood", key: "mood" },
   { header: "notes", key: "notes" },

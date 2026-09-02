@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, it, expect, afterEach } from "vitest";
 import { handOffFocus } from "../focus";
 
@@ -196,5 +197,22 @@ describe("the ring guard itself", () => {
     expect(parseRingSelectors(".a:focus { left: 0; top: 0; }")).toEqual([
       ".a:focus",
     ]);
+  });
+});
+
+describe("reduced motion covers every control that animates", () => {
+  it("has no transition left running for someone who asked for none", () => {
+    // The pain chips declare their own colour transition and were the only
+    // interactive control still fading under prefers-reduced-motion, whose own
+    // comment promises "make state changes instant (no colour fade) ... on
+    // every button". Parsed from the real stylesheet so it cannot drift.
+    const css = readFileSync(`${process.cwd()}/src/styles.css`, "utf8").replace(
+      /\/\*[\s\S]*?\*\//g,
+      "",
+    );
+    const block =
+      /@media \(prefers-reduced-motion: reduce\) \{([\s\S]*)\}/.exec(css);
+    expect(block).not.toBeNull();
+    expect(block![1]).toContain(".pain-chip");
   });
 });

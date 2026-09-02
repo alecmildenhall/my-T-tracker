@@ -1828,6 +1828,10 @@ select {
   .primary-button,
   .secondary-button,
   .suggestion-chips .chip,
+  /* Added with the pain chips, which declare their own colour transition and
+     were otherwise the only interactive control in the app still fading for
+     someone who asked for no motion. */
+  .pain-chip,
   .manage-row__action,
   .manage-row__remove,
   .dialog-danger,

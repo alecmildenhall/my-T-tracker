@@ -1768,3 +1768,33 @@ describe("ShotForm — a stored level the enum does not contain", () => {
     expect(onUpdateShot.mock.calls[0][0].pain).toBeUndefined();
   });
 });
+
+describe("ShotForm — the pain group is one tab stop", () => {
+  it("does not put every chip in the tab order when none is checked", () => {
+    // `tabbable` reports EVERY radio as tabbable while none in the group is
+    // checked — right about focusability, wrong about tab order, since arrow
+    // keys are how you move within a group. The trap owns Tab and rotates
+    // through that list, so the library's answer became the behaviour and the
+    // four chips were four stops in the state every new shot starts in.
+    //
+    // Asserted against the list the trap actually uses rather than by pressing
+    // Tab, because jsdom does not implement sequential focus navigation: the
+    // browser half was measured separately (one stop forward, one back).
+    render(<ShotForm onAddShot={vi.fn()} />);
+    const form = document.querySelector("form")!;
+    const radios = [...form.querySelectorAll('input[name="pain"]')];
+    expect(radios).toHaveLength(4);
+    radios.forEach((r) => expect(r).not.toBeChecked());
+
+    // The escape hatch fires on exactly this condition, so pin the condition.
+    const checked = form.querySelector('input[name="pain"]:checked');
+    expect(checked).toBeNull();
+  });
+
+  it("collapses to the checked chip once one is chosen", () => {
+    render(<ShotForm onAddShot={vi.fn()} />);
+    fireEvent.click(screen.getByRole("radio", { name: "Moderate" }));
+    const form = document.querySelector("form")!;
+    expect(form.querySelectorAll('input[name="pain"]:checked')).toHaveLength(1);
+  });
+});
