@@ -3022,6 +3022,55 @@ describe("dismissing the first-run card", () => {
     expectVisibleFocusRing("dismissing the first-run card");
   });
 
+  it("leaves focus alone when you tap a tab mid-beat", () => {
+    // The dismissal commits from the card's unmount so a tab tap inside the
+    // 440ms beat cannot lose the press — and that commit runs the SAME callback
+    // as the ordinary beat. Measured before the fix: focus was pulled off the
+    // tab the user had just activated onto the <h1>, which carries a hand-off
+    // ring, so an outline appeared round the page title for no visible reason.
+    //
+    // The card only hands focus on when it was the thing HOLDING it.
+    vi.useFakeTimers();
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    act(() => void vi.advanceTimersByTime(CONFIRM_MS));
+
+    const nav = document.querySelector("#main-nav") as HTMLElement;
+    const history = within(nav).getByRole("button", { name: "History" });
+    history.focus(); // a real tap focuses the control
+    fireEvent.click(history);
+    act(() => void vi.advanceTimersByTime(SHEET_EXIT_MS * 4));
+    vi.useRealTimers();
+
+    expect(document.activeElement).toBe(history);
+    // And the press still counted, which is what the commit-on-unmount is for.
+    expect(
+      JSON.parse(localStorage.getItem(STORAGE_KEYS.profile) ?? "{}").firstRunDone,
+    ).toBe(true);
+  });
+
+  it("leaves focus alone when you open the log sheet mid-beat", () => {
+    // Same callback, the other way out of Home. The sheet moves focus to its
+    // own heading on open; the card must not take it back. In a browser #root
+    // is inert by then so the hand-off would fail safe, but jsdom has no inert
+    // — measured, focus was bounced onto the sheet's ✕ by the trap's net.
+    vi.useFakeTimers();
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    act(() => void vi.advanceTimersByTime(CONFIRM_MS));
+
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    act(() => void vi.advanceTimersByTime(SHEET_EXIT_MS * 4));
+    vi.useRealTimers();
+
+    const active = document.activeElement as HTMLElement;
+    expect(active.closest(".shot-form")).not.toBeNull();
+    expect(active.className).not.toContain("shot-form__close");
+    expect(
+      JSON.parse(localStorage.getItem(STORAGE_KEYS.profile) ?? "{}").firstRunDone,
+    ).toBe(true);
+  });
+
   it("stays dismissed across a reload", () => {
     // The flag is stored, not session state: a card that came back every launch
     // would make Done look broken.

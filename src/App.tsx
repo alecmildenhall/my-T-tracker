@@ -695,12 +695,37 @@ const App: React.FC = () => {
                 }}
                 onDone={() => {
                   updateProfile({ firstRunDone: true });
-                  // Done removes the whole card, including the button that was
-                  // just pressed — the self-removing control this codebase has
-                  // been bitten by repeatedly. "+ Log a shot" is where the card
-                  // was pointing you anyway, so focus lands on the next thing
-                  // rather than on <body>.
-                  handOffFocus(logCtaRef, titleRef);
+                  /*
+                   * Hand focus on ONLY when the card was the thing holding it,
+                   * which is the rule as CLAUDE.md states it: a control that
+                   * removes the element that had focus must hand it on. Not
+                   * "the card went, therefore move focus".
+                   *
+                   * The distinction became reachable when the dismissal started
+                   * committing from the card's unmount, so that a tab tap
+                   * inside the 440ms beat could not lose the press. That commit
+                   * runs this callback too — and measured, pressing Done then
+                   * tapping History pulled focus off the tab the user had just
+                   * activated onto the page title, which carries a hand-off
+                   * ring, so an outline appeared round the <h1> for no reason
+                   * anyone could see. Opening the log sheet mid-beat did the
+                   * same to the sheet's own heading.
+                   *
+                   * One condition covers every path. On the ordinary beat the
+                   * card is still mounted with focus on its Done button; on an
+                   * unmount the card is already detached, so focus that WAS
+                   * inside it now reads as <body> — which still needs handing
+                   * on, and is how the card vanishing under a storage event
+                   * from another tab is covered. Anything else means the user
+                   * moved somewhere deliberately, and that is not ours to
+                   * overrule.
+                   */
+                  const active = document.activeElement;
+                  const cardHeldFocus =
+                    !active ||
+                    active === document.body ||
+                    !!active.closest(".first-shot-card");
+                  if (cardHeldFocus) handOffFocus(logCtaRef, titleRef);
                 }}
               />
             )}

@@ -664,11 +664,23 @@ select {
   padding-inline: 0.85rem;
 }
 
-/* The History pain facet, tinted to match the log sheet's chips so a level
-   reads the same wherever you meet it. Only the SELECT's own colour is
-   dependable — iOS draws the open list as a native picker and ignores author
-   colour on <option> — and the select is what you see when it is closed, which
-   is nearly always. The words carry the meaning either way. */
+/* The History pain facet, tinted to match the log sheet's chips so a level reads
+   the same wherever you meet it. The SELECT only — the <option>s deliberately
+   carry NO colour, and that is a contrast decision rather than the platform
+   one it started as.
+
+   These tokens are built for the app's dark surface, where they run 6.45:1 to
+   12.38:1. We do not control what the open list is painted on: several engines
+   draw it as a native popup on a SYSTEM background. Measured against white,
+   every token fails — Moderate at 2.26:1 and Mild at 1.44:1, which is barely
+   visible — so an engine honouring author `color` there produces unreadable
+   options (WCAG 1.4.3).
+
+   Pairing a `background` does not fix it and adds a worse case: an engine that
+   honours the background but not the colour gives dark-on-dark. There is no
+   colour that clears 4.5:1 on both grounds at this hue, so the option list goes
+   uncoloured. The closed select is what you see nearly always, it keeps its
+   tint, and the words carry the meaning either way (WCAG 1.4.1). */
 .pain-select--none {
   color: var(--pain-none);
 }
@@ -679,19 +691,6 @@ select {
   color: var(--pain-moderate);
 }
 .pain-select--severe {
-  color: var(--pain-severe);
-}
-
-.pain-opt--none {
-  color: var(--pain-none);
-}
-.pain-opt--mild {
-  color: var(--pain-mild);
-}
-.pain-opt--moderate {
-  color: var(--pain-moderate);
-}
-.pain-opt--severe {
   color: var(--pain-severe);
 }
 

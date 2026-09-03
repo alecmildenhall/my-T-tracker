@@ -9,11 +9,18 @@
 // local-only tracker with nothing to convert to. Most people should be able to
 // learn the interface by using it.
 //
-// It has no dismiss control, and that is the point: it is gone the moment there
-// is a shot to show, which is the very thing it is asking you to prepare for.
-// Nothing to dismiss, and no "dismissed" flag to store — the same derive-don't-
-// store reasoning the soreness card uses. It also means an IMPORT clears it for
-// free, since restoring a backup creates shots.
+// It goes on its own the moment there is a shot to show, which is the very thing
+// it is asking you to prepare for — so an IMPORT clears it for free, since
+// restoring a backup creates shots.
+//
+// That used to be the ONLY way out, on derive-don't-store reasoning: nothing to
+// dismiss, no flag to keep. The argument was sound and the situation it
+// described was not. Someone who does not want to set a cadence has no shot to
+// create either, so the card sat on Home indefinitely with no way to say "not
+// for me" — a screen you cannot dismiss is not a skippable pointer. `Done`
+// therefore stores `firstRunDone` (see `types/profile.ts` for why that flag is
+// not derivable from anything else), and the shot-exists rule survives beside
+// it as a second route rather than the only one.
 import React, { useEffect, useRef, useState } from "react";
 import { useProfileContext } from "../context/ProfileContext";
 import { WEEKDAYS, isWeekday, weekdayLabel } from "../utils/weekday";
@@ -216,22 +223,6 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
   const noticeRef = useRef<HTMLParagraphElement>(null);
 
   /**
-   * A whole-week cadence with no shot day tracks NOTHING, silently.
-   *
-   * `scheduleMode` returns "none" for it — a weekly grid has no idea which
-   * week-day its slots fall on — so no shot gets a planned date. The card
-   * invites exactly this: it asks how often under a hint promising you can
-   * "track how on time your shots are", and the day is a separate control that
-   * starts on "No shot day". Tap "1 week", move on, and nothing is measured.
-   *
-   * The asymmetry is what makes it a defect rather than a limitation: the
-   * NON-weekly case says so out loud ("a weekday can't describe every 10 days.
-   * Your gaps are still tracked."), while this one — the commoner of the two —
-   * says nothing at all. And because a planned date is frozen at save time,
-   * every shot logged during the silence stays unmeasurable even after the day
-   * is set later.
-   */
-  /**
    * Done's three beats: idle, the ✓, then the card leaving.
    *
    * The same shape saving a shot uses — confirm in place for CONFIRM_MS, then
@@ -299,6 +290,22 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
     return () => window.clearTimeout(t);
   }, [dismissal]);
 
+  /**
+   * A whole-week cadence with no shot day tracks NOTHING, silently.
+   *
+   * `scheduleMode` returns "none" for it — a weekly grid has no idea which
+   * week-day its slots fall on — so no shot gets a planned date. The card
+   * invites exactly this: it asks how often under a hint promising you can
+   * "track how on time your shots are", and the day is a separate control that
+   * starts on "No shot day". Tap "1 week", move on, and nothing is measured.
+   *
+   * The asymmetry is what makes it a defect rather than a limitation: the
+   * NON-weekly case says so out loud ("a weekday can't describe every 10 days.
+   * Your gaps are still tracked."), while this one — the commoner of the two —
+   * says nothing at all. And because a planned date is frozen at save time,
+   * every shot logged during the silence stays unmeasurable even after the day
+   * is set later.
+   */
   const shotDayNeeded =
     isValidIntervalDays(profile.intervalDays) &&
     isWeeklyMultiple(profile.intervalDays) &&

@@ -372,11 +372,11 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
               >
                 <option value="">Any</option>
                 {PAIN_BANDS.map((b) => (
-                  <option
-                    key={b.id}
-                    value={b.id}
-                    className={`pain-opt--${b.id}`}
-                  >
+                  // No per-level tint here: see the .pain-select-- comment
+                  // in styles.css. The open list may be painted on a system
+                  // background we do not control, where every token fails
+                  // contrast (Mild is 1.44:1 on white).
+                  <option key={b.id} value={b.id}>
                     {b.label}
                   </option>
                 ))}
