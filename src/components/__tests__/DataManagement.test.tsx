@@ -675,6 +675,55 @@ describe("DataManagement", () => {
       );
     });
 
+    it("says nothing about a profile that is only a dismissal", async () => {
+      // The mirror of the test above, and the side that was wrong: the DEVICE
+      // holds only `{firstRunDone: true}` — a fresh install whose sole action
+      // was tapping Done — and the file carries shots and no profile. There is
+      // no profile here to clear, but the change-compare counted the flag while
+      // `hasProfileData` did not, so the report announced "Your saved profile
+      // was cleared." on the recovery path, about a profile that never existed.
+      render(
+        <DataManagement
+          shots={shots}
+          onReplaceAll={vi.fn(() => true)}
+          profile={{ firstRunDone: true }}
+          onReplaceProfile={vi.fn(() => true)}
+        />,
+      );
+
+      uploadText(toJson([{ id: "imp", date: "2026-05-01" }]));
+      const dialog = await screen.findByRole("dialog");
+      fireEvent.click(within(dialog).getByRole("button", { name: "Replace" }));
+
+      const status = screen.getByRole("status");
+      expect(status).toHaveTextContent("Restored 1 entry from backup.");
+      expect(status).not.toHaveTextContent("profile");
+    });
+
+    it("does not call re-importing your own backup a profile change", async () => {
+      // Export, tap Done, re-import the same file. Nothing about the profile
+      // moved — only the flag, which is not the profile — so the "don't claim a
+      // change when the file matches" rule this compare exists for must hold.
+      render(
+        <DataManagement
+          shots={shots}
+          onReplaceAll={vi.fn(() => true)}
+          profile={{ preferredName: "Lou", firstRunDone: true }}
+          onReplaceProfile={vi.fn(() => true)}
+        />,
+      );
+
+      uploadText(
+        toJson([{ id: "imp", date: "2026-05-01" }], { preferredName: "Lou" }),
+      );
+      const dialog = await screen.findByRole("dialog");
+      fireEvent.click(within(dialog).getByRole("button", { name: "Replace" }));
+
+      const status = screen.getByRole("status");
+      expect(status).toHaveTextContent("Restored 1 entry from backup.");
+      expect(status).not.toHaveTextContent("profile");
+    });
+
     it("aborts the replace (no data loss) if the safety backup can't download", async () => {
       const onReplaceAll = vi.fn(() => true);
       render(

@@ -248,6 +248,95 @@ describe("FirstShotCard — Done", () => {
     }
   });
 
+  it("keeps the dismissal when the card unmounts mid-beat", () => {
+    // The beat owns what the card LOOKS like, never whether the press counted.
+    // Home unmounts when you leave it, so a tab tap or a back swipe inside the
+    // 440ms window used to clear the timer and lose the dismissal outright —
+    // after the ✓ had already been shown, which is the app appearing to forget
+    // something you watched it acknowledge.
+    vi.useFakeTimers();
+    try {
+      const onDone = vi.fn();
+      const { unmount } = render(
+        <ProfileProvider>
+          <FirstShotCard onGoToSettings={vi.fn()} onDone={onDone} />
+        </ProfileProvider>,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Done" }));
+      act(() => void vi.advanceTimersByTime(CONFIRM_MS));
+      expect(onDone).not.toHaveBeenCalled();
+
+      unmount();
+      expect(onDone).toHaveBeenCalledTimes(1);
+
+      // And the cleared timer stays cleared — no second call arrives late.
+      act(() => void vi.advanceTimersByTime(SHEET_EXIT_MS * 4));
+      expect(onDone).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not commit a dismissal nobody asked for", () => {
+    // The mirror of the test above: unmounting for any OTHER reason — a shot
+    // logged in another tab, an import arriving — must not dismiss the card.
+    vi.useFakeTimers();
+    try {
+      const onDone = vi.fn();
+      const { unmount } = render(
+        <ProfileProvider>
+          <FirstShotCard onGoToSettings={vi.fn()} onDone={onDone} />
+        </ProfileProvider>,
+      );
+      unmount();
+      expect(onDone).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("completes the beat across a parent re-render", () => {
+    // `onDone` is an inline arrow at App's call site, so holding it as an effect
+    // dependency re-armed the timer at its FULL duration every render — and
+    // this card writes the profile on blur, which App consumes. The ✓ would sit
+    // there indefinitely under a re-rendering parent.
+    vi.useFakeTimers();
+    try {
+      const onDone = vi.fn();
+      const Parent = ({ tick }: { tick: number }) => (
+        <ProfileProvider>
+          <FirstShotCard
+            onGoToSettings={vi.fn()}
+            onDone={() => onDone(tick)}
+          />
+        </ProfileProvider>
+      );
+      const { rerender } = render(<Parent tick={0} />);
+      fireEvent.click(screen.getByRole("button", { name: "Done" }));
+
+      // Each render lands PART-WAY through a beat, which is the only placement
+      // that can see the bug: re-arming a timer at its full duration is still
+      // satisfied by a full-duration advance, so a render before the advance
+      // proves nothing.
+      act(() => void vi.advanceTimersByTime(CONFIRM_MS / 2));
+      rerender(<Parent tick={1} />);
+      act(() => void vi.advanceTimersByTime(CONFIRM_MS / 2));
+      expect(
+        document.querySelector(".first-shot-card--leaving"),
+      ).not.toBeNull();
+
+      act(() => void vi.advanceTimersByTime(SHEET_EXIT_MS / 2));
+      rerender(<Parent tick={2} />);
+      act(() => void vi.advanceTimersByTime(SHEET_EXIT_MS / 2));
+
+      expect(onDone).toHaveBeenCalledTimes(1);
+      // The LATEST callback ran, not the one captured when Done was pressed.
+      expect(onDone).toHaveBeenCalledWith(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("cannot be pressed twice into two dismissals", () => {
     vi.useFakeTimers();
     try {

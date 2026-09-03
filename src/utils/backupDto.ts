@@ -118,7 +118,26 @@ export function hasProfileData(p: Profile): boolean {
   //
   // The flag still travels in the DTO — dropping it there is the allowlist trap
   // — it just does not count as data.
+  return Object.keys(profileDataFields(p)).length > 0;
+}
+
+/**
+ * The allowlisted fields that count as the user's profile — everything
+ * `pickProfileFields` admits, minus `firstRunDone`.
+ *
+ * Extracted so the two questions asked about an imported profile — "is there
+ * anything here?" and "did it change?" — cannot answer from different sets.
+ * They did: `hasProfileData` excluded the flag and the change-compare did not,
+ * so a fresh install whose only action was tapping Done reported "Your saved
+ * profile was cleared." on importing a shots-only backup, and re-importing your
+ * own file after tapping Done reported "Your profile was updated." Both on the
+ * restore path, and the second is the exact false alarm that compare exists to
+ * prevent.
+ *
+ * Key order survives the delete, so a serialized compare stays stable.
+ */
+export function profileDataFields(p: Partial<Profile>): Profile {
   const fields = pickProfileFields(p);
   delete fields.firstRunDone;
-  return Object.keys(fields).length > 0;
+  return fields;
 }

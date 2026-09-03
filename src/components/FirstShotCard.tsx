@@ -250,17 +250,54 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
     "idle",
   );
 
+  /**
+   * Held in a ref so the beat below never restarts. `onDone` is an inline arrow
+   * in App, so a plain dependency re-arms the timer at its FULL duration on any
+   * parent render — and this card writes the profile on blur, which App
+   * consumes. Repeated renders inside the window would leave the ✓ up
+   * indefinitely. Same reason `useFocusTrap` holds `onEscape` this way.
+   */
+  const onDoneRef = useRef(onDone);
+  useEffect(() => {
+    onDoneRef.current = onDone;
+  });
+
+  /**
+   * Pressing Done is the DECISION; the ✓ and the slide are how it is
+   * acknowledged. Those need separate lifetimes, because the decision must not
+   * depend on the acknowledgement being allowed to finish.
+   *
+   * It did. `firstRunDone` was only written when the second timer fired, 440ms
+   * after the press, and Home unmounts when you leave it — so tapping a tab or
+   * swiping back inside that window cleared the timer and the dismissal was
+   * simply lost. Measured: the card was fully back on returning to Home, after
+   * the ✓ had already been shown. 440ms is a long time for a deliberate second
+   * tap, and nothing else was hiding the card, so the app looked like it forgot.
+   *
+   * Committing on the way out is what fixes it: the beat now owns only what the
+   * card LOOKS like, never whether the press counted.
+   */
+  const dismissing = useRef(false);
+  useEffect(
+    () => () => {
+      if (dismissing.current) onDoneRef.current();
+    },
+    [],
+  );
+
   useEffect(() => {
     if (dismissal === "idle") return;
     const wait = dismissal === "confirming" ? CONFIRM_MS : SHEET_EXIT_MS;
     const t = window.setTimeout(() => {
       if (dismissal === "confirming") setDismissal("leaving");
-      else onDone();
+      else {
+        // Disarmed first: the unmount this call triggers must not commit twice.
+        dismissing.current = false;
+        onDoneRef.current();
+      }
     }, wait);
-    // Cleared on unmount, so a card removed mid-beat — logging a shot in
-    // another tab, an import arriving — cannot call onDone afterwards.
     return () => window.clearTimeout(t);
-  }, [dismissal, onDone]);
+  }, [dismissal]);
 
   const shotDayNeeded =
     isValidIntervalDays(profile.intervalDays) &&
@@ -517,6 +554,7 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
           aria-disabled={dismissal !== "idle"}
           onClick={() => {
             if (dismissal !== "idle") return;
+            dismissing.current = true;
             setDismissal("confirming");
           }}
         >

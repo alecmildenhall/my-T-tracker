@@ -275,4 +275,86 @@ describe("a state rule has to come after the rule it overrides", () => {
     expect(confirmed).toBeGreaterThan(-1);
     expect(confirmed).toBeGreaterThan(base);
   });
+
+  it("keeps the Done button green under every pointer state", () => {
+    /*
+     * Source order is only half the rule, and the test above pinned the half
+     * that had already bitten. A pseudo-class ADDS SPECIFICITY, so
+     * `:hover` (0,2,0) outranks the confirmed state's single class (0,1,0)
+     * wherever either one sits — order cannot reach it. The button was
+     * screenshotted mid-beat reading "✓ Done" on hover-blue, and since the
+     * cursor is by definition still on a button you just clicked, the green
+     * confirmation was never visible on desktop at all.
+     *
+     * Two separate rules did it, and fixing only the obvious one left it
+     * broken: the button's own `:hover`, and `.secondary-button:hover/:active`,
+     * which sets a background because this is a secondary button. So this
+     * asserts the OUTCOME — what colour wins — rather than the presence of any
+     * particular override, which is what lets it catch the next rule nobody
+     * thought of.
+     */
+    const css = readFileSync(`${process.cwd()}/src/styles.css`, "utf8");
+
+    // Innermost rules only, so a body containing `{` is not a body — the same
+    // nesting-proof shape the SHEET_EXIT_MS guard uses.
+    // Comments first: they carry prose containing commas and colons, and this
+    // file is heavily commented, so leaving them in feeds sentences to
+    // `matches()` as if they were selectors.
+    const rules = [
+      ...css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^{}]*)\}/g),
+    ].map(([, selectors, body]) => ({ selectors, body }));
+
+    // (ids, classes+attrs+pseudo-classes, elements). `:not(...)` contributes its
+    // argument's specificity, not its own — close enough here, where no ring
+    // selector nests one.
+    const specificity = (sel: string): number => {
+      const bare = sel.replace(/:not\(|\)/g, " ");
+      const ids = (bare.match(/#[\w-]+/g) ?? []).length;
+      const classes = (bare.match(/\.[\w-]+|\[[^\]]*\]|:[\w-]+(?!\()/g) ?? [])
+        .length;
+      return ids * 100 + classes * 10;
+    };
+
+    const button = document.createElement("button");
+    button.className =
+      "secondary-button first-shot-card__done-button " +
+      "first-shot-card__done-button--confirmed";
+    document.body.append(button);
+
+    try {
+      // Hovered AND pressed: the worst case, and the real one — you are
+      // pressing the button when the ✓ appears.
+      const winners: { spec: number; at: number; value: string }[] = [];
+      rules.forEach(({ selectors, body }, at) => {
+        const background = /(?:^|;)\s*background(?:-color)?:\s*([^;]+)/.exec(
+          body,
+        )?.[1].trim();
+        if (!background) return;
+        for (const raw of selectors.split(",")) {
+          const sel = raw.trim();
+          if (!sel.includes("first-shot-card__done-button") && !sel.includes("secondary-button")) {
+            continue;
+          }
+          // Grant the states we are testing; any OTHER state pseudo means the
+          // rule does not apply right now.
+          const grounded = sel.replace(/:hover|:active/g, "");
+          if (/:[\w-]+/.test(grounded.replace(/:not\([^)]*\)/g, ""))) continue;
+          let matches = false;
+          try {
+            matches = button.matches(grounded);
+          } catch {
+            throw new Error(`unparseable selector in styles.css: "${sel}"`);
+          }
+          if (matches) winners.push({ spec: specificity(sel), at, value: background });
+        }
+      });
+
+      expect(winners.length).toBeGreaterThan(0);
+      // Highest specificity wins; ties go to whichever comes last.
+      winners.sort((a, b) => a.spec - b.spec || a.at - b.at);
+      expect(winners[winners.length - 1].value).toBe("var(--success)");
+    } finally {
+      button.remove();
+    }
+  });
 });
