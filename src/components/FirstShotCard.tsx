@@ -284,7 +284,14 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
           underneath four fields arrives after the moment someone decides
           whether they are obliged to answer them. */}
       <p className="first-shot-card__intro">
-        All optional — revisit anytime in Settings.
+        {/* <strong>, not <em>: bold over italics is the accessibility call,
+            since slanted shapes slow word recognition and are worst for the
+            readers most likely to need the reassurance — and <strong> is the
+            element screen readers convey as importance, where <b> is styling
+            only. Emphasis carried by weight AND contrast, the same pair the
+            label hierarchy on this card already uses, because at 0.8rem a
+            weight change alone is easy to miss. */}
+        <strong>All optional</strong> — revisit anytime in Settings.
       </p>
 
       <div className="first-shot-card__field">
@@ -461,14 +468,10 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
         >
           Done
         </button>
-        {/* Says what Done DOES, not what the card does. "This card only shows
-            before your first shot" sat directly under the button that hides it
-            while you still have none — reassuring about persistence at the
-            moment of an irreversible action, since nothing writes the flag back
-            to false and there is no control to restore the card. */}
-        <p className="field-hint">
-          Hides this card for good. Everything on it stays in Settings.
-        </p>
+        {/* No caption under the button. It said the card hides for good and
+            that the fields live in Settings — the second half repeats the line
+            at the top of the card, and the first is what a button labelled Done
+            on a card you just filled in already means. */}
       </div>
 
       {/* A returning user and a new one land on the same empty screen needing

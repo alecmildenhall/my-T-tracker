@@ -222,17 +222,29 @@ describe("FirstShotCard — Done", () => {
     expect(onDone).toHaveBeenCalledTimes(1);
   });
 
-  it("says what Done does, and where the fields go", () => {
-    // The hint describes the BUTTON, not the card. It used to read "This card
-    // only shows before your first shot" while sitting under the control that
-    // hides it while you still have none — reassuring about persistence at the
-    // moment of an irreversible action.
+  it("marks the whole card optional, in the element screen readers convey", () => {
+    // The one word that decides whether someone feels obliged to fill any of
+    // this in. <strong> rather than <em> because bold beats italics for
+    // legibility — slanted shapes slow word recognition, worst for the readers
+    // most likely to need the reassurance — and because <strong> carries
+    // importance to a screen reader where <b> is styling only.
     render(
       <ProfileProvider>
         <FirstShotCard onGoToSettings={vi.fn()} onDone={vi.fn()} />
       </ProfileProvider>,
     );
-    expect(screen.getByText(/hides this card for good/i)).toBeInTheDocument();
-    expect(screen.getByText(/stays in Settings/i)).toBeInTheDocument();
+    const emphasised = screen.getByText("All optional");
+    expect(emphasised.tagName).toBe("STRONG");
+  });
+
+  it("carries no caption under Done", () => {
+    // It repeated the intro's "revisit anytime in Settings" and otherwise said
+    // what a button labelled Done already means.
+    render(
+      <ProfileProvider>
+        <FirstShotCard onGoToSettings={vi.fn()} onDone={vi.fn()} />
+      </ProfileProvider>,
+    );
+    expect(screen.queryByText(/hides this card/i)).toBeNull();
   });
 });

@@ -625,6 +625,16 @@ select {
   margin-bottom: 0;
 }
 
+/* The one word that decides whether someone feels obliged to fill this in, so
+   it gets the same treatment the labels do: full text colour against the
+   intro's muted grey, plus weight. Contrast is what carries it — at 0.8rem a
+   weight change on its own is easy to skim past, which is the finding the
+   label/hint hierarchy on this card was built from. */
+.first-shot-card__intro strong {
+  color: var(--text);
+  font-weight: 700;
+}
+
 .first-shot-card__intro {
   margin: 0;
   font-size: 0.8rem;
