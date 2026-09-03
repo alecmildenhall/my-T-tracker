@@ -21,7 +21,7 @@
 // therefore stores `firstRunDone` (see `types/profile.ts` for why that flag is
 // not derivable from anything else), and the shot-exists rule survives beside
 // it as a second route rather than the only one.
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useProfileContext } from "../context/ProfileContext";
 import { WEEKDAYS, isWeekday, weekdayLabel } from "../utils/weekday";
 import { isWeeklyMultiple } from "../utils/schedule";
@@ -71,7 +71,8 @@ interface FirstShotCardProps {
   onGoToSettings: () => void;
   /** Dismiss the card for good. The parent stores the flag AND hands focus on,
    *  because this removes the section the button lives in — see App. */
-  onDone: () => void;
+  /** @param heldFocus whether the card was holding focus as it went. */
+  onDone: (heldFocus: boolean) => void;
 }
 
 export const FirstShotCard: React.FC<FirstShotCardProps> = ({
@@ -269,9 +270,40 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
    * card LOOKS like, never whether the press counted.
    */
   const dismissing = useRef(false);
+
+  /*
+   * Whether the card was the thing HOLDING focus, captured as a fact rather
+   * than inferred afterwards.
+   *
+   * App needs this to decide whether to hand focus on, and the obvious test —
+   * "is `document.activeElement` the <body>?" — makes one value carry two
+   * meanings, which is the rule this codebase has paid for most. `<body>` means
+   * BOTH "focus was inside the card and the card has been removed" AND "focus
+   * was never anywhere", and the second is not an edge case: Safari does not
+   * focus a <button> on tap (`focus.ts` says so), so on the app's primary
+   * platform every tab tap leaves focus on <body> and the card would take it
+   * back — silently for sighted users, but moving a VoiceOver cursor to the
+   * page title after you tapped a tab.
+   *
+   * A LAYOUT cleanup runs before React detaches the node — measured: it sees
+   * `isConnected` true and still `contains()` the focused element, where the
+   * passive cleanup that commits the dismissal only ever sees <body>. So the
+   * question is asked at the last moment it is still itself, and stored.
+   */
+  const rootRef = useRef<HTMLElement>(null);
+  const heldFocus = () =>
+    !!rootRef.current?.contains(document.activeElement);
+  const heldFocusAtUnmount = useRef(false);
+  useLayoutEffect(
+    () => () => {
+      heldFocusAtUnmount.current = heldFocus();
+    },
+    [],
+  );
+
   useEffect(
     () => () => {
-      if (dismissing.current) onDoneRef.current();
+      if (dismissing.current) onDoneRef.current(heldFocusAtUnmount.current);
     },
     [],
   );
@@ -284,7 +316,7 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
       else {
         // Disarmed first: the unmount this call triggers must not commit twice.
         dismissing.current = false;
-        onDoneRef.current();
+        onDoneRef.current(heldFocus());
       }
     }, wait);
     return () => window.clearTimeout(t);
@@ -352,6 +384,7 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
 
   return (
     <section
+      ref={rootRef}
       className={`first-shot-card${
         dismissal === "leaving" ? " first-shot-card--leaving" : ""
       }`}

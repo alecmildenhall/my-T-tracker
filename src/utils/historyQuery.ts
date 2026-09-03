@@ -31,16 +31,15 @@ export const PAIN_BANDS: { id: PainLevel; label: string }[] = PAIN_LEVELS.map(
  * persisted to storage, so a fresh launch never opens into a stale filtered view
  * (predictable, and it never leaves a revealing filter on screen).
  *
- * `painBand` mirrors `filter.pain` so the <select> has a value to render. That
- * used to earn its keep: pain was a derived `painMin`/`painMax` pair, and the
- * bounds alone could not distinguish "no band" from a band spanning the same
- * range. With an ordinal they carry exactly the same fact, kept in step only by
- * `withPainBand` being the sole writer — two carriers for one meaning, which is
- * the shape this codebase's style guide opens by warning about. Benign while
- * nothing else writes pain into the filter; the select could read
- * `filter.pain ?? ""` directly and retire the field. Left as one change at a
- * time, and written down so the next person does not have to re-derive that it
- * is redundant rather than load-bearing.
+ * There is no `painBand` beside `filter.pain`, and there used to be. It earned
+ * its keep while pain was a derived `painMin`/`painMax` pair, because the bounds
+ * alone could not tell "no band" from a band spanning the same range. An ordinal
+ * carries that fact by itself, so the mirror became two carriers for one
+ * meaning — the shape the style guide opens by warning about — kept in step only
+ * by `withPainBand` happening to be the sole writer. It was left in place for a
+ * while as "benign while nothing else writes pain into the filter", which is a
+ * list of reasons it cannot break, and the guide is explicit that such a list is
+ * never complete. The <select> reads `filter.pain ?? ""`.
  *
  * The page window is deliberately NOT here: it's local to the History screen.
  * Only *what you asked for* is worth carrying across a trip to Home, and keeping
@@ -50,13 +49,11 @@ export const PAIN_BANDS: { id: PainLevel; label: string }[] = PAIN_LEVELS.map(
 export interface HistoryQuery {
   text: string;
   filter: ShotFilter;
-  painBand: string;
 }
 
 export const emptyHistoryQuery: HistoryQuery = {
   text: "",
   filter: {},
-  painBand: "",
 };
 
 /**
@@ -72,7 +69,7 @@ export function countActiveFacets(query: HistoryQuery): number {
     f.site,
     f.position,
     f.ester,
-    query.painBand,
+    f.pain,
   ].filter((v) => v !== undefined && v !== "").length;
 }
 
@@ -83,9 +80,5 @@ export function countActiveFacets(query: HistoryQuery): number {
  *  than filtering on a level that does not exist. */
 export function withPainBand(query: HistoryQuery, id: string): HistoryQuery {
   const level = isPainLevel(id) ? id : undefined;
-  return {
-    ...query,
-    painBand: level ?? "",
-    filter: { ...query.filter, pain: level },
-  };
+  return { ...query, filter: { ...query.filter, pain: level } };
 }

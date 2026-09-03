@@ -365,9 +365,9 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                     The label carries the meaning regardless (WCAG 1.4.1). */}
               <select
                 className={`pain-select${
-                  query.painBand ? ` pain-select--${query.painBand}` : ""
+                  query.filter.pain ? ` pain-select--${query.filter.pain}` : ""
                 }`}
-                value={query.painBand}
+                value={query.filter.pain ?? ""}
                 onChange={(e) => setPainBand(e.target.value)}
               >
                 <option value="">Any</option>

@@ -268,9 +268,23 @@ export function useFocusTrap(
           el.name !== "" &&
           el.name === activeRadio.name &&
           el.form === activeRadio.form;
+        // The group's TRUE span — first and last member anywhere in the list,
+        // not a contiguous run out from the first. Radios are grouped by `name`,
+        // and nothing requires members to be adjacent in the tab order: one
+        // unrelated control between two chips made the old scan stop early, so
+        // `beyond` was computed against a short span and, at an end of the
+        // order, `at` could rotate BACKWARDS on a forward Tab. Unreachable while
+        // the four chips sit together — and "the fields happen to be in this
+        // order" is exactly the assumption the segmented-input hatch above
+        // already records as fragile, in the sheet B½ keeps adding fields to.
         const first = list.findIndex(sameGroup);
         let last = first;
-        while (last + 1 < list.length && sameGroup(list[last + 1])) last++;
+        for (let i = list.length - 1; i > last; i--) {
+          if (sameGroup(list[i])) {
+            last = i;
+            break;
+          }
+        }
         const beyond = e.shiftKey ? first > 0 : last < list.length - 1;
         if (beyond) return;
         // Nowhere safe to stand aside — the group sits at an END of the order,

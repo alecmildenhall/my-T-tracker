@@ -141,6 +141,25 @@ describe("HistoryView", () => {
     expect(screen.getByText("quite sore")).toBeInTheDocument();
   });
 
+  it("keeps the pain select showing what you picked, and tinted", () => {
+    // `filter.pain` is the only carrier now. A `painBand` field used to mirror
+    // it purely so the <select> had something to render — two carriers for one
+    // meaning, kept in step only by one writer, which is the shape the style
+    // guide opens by warning about. This is the job that mirror was doing, so
+    // it is the test that has to hold once it is gone.
+    render(<Harness />);
+    openFilters();
+    const pain = screen.getByLabelText("Pain") as HTMLSelectElement;
+    fireEvent.change(pain, { target: { value: "moderate" } });
+    expect(pain.value).toBe("moderate");
+    expect(pain.className).toContain("pain-select--moderate");
+
+    // And "Any" clears both the value and the tint rather than stranding one.
+    fireEvent.change(pain, { target: { value: "" } });
+    expect(pain.value).toBe("");
+    expect(pain.className).not.toContain("pain-select--");
+  });
+
   it("counts active facets on the toggle so a hidden filter is never silent", () => {
     render(<Harness />);
     openFilters();

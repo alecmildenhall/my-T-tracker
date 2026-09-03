@@ -271,6 +271,39 @@ describe("a radio group with nothing checked", () => {
     );
   });
 
+  it("finds the whole group even with a control sitting inside it", () => {
+    // Radios are grouped by `name`, and nothing requires members to be adjacent
+    // in the tab order. The span used to be found by scanning outward from the
+    // first member until a non-member appeared, so one unrelated control
+    // between two chips ended the span early — and at an end of the order the
+    // rotation is computed FROM that span, so a forward Tab could go backwards.
+    //
+    // Unreachable while the four chips sit together, which is precisely the
+    // "the fields happen to be in this order" assumption the segmented-input
+    // hatch beside it already records as fragile, in the sheet B½ keeps adding
+    // fields to.
+    render(
+      <Trap label="dlg">
+        <button type="button">before</button>
+        <input type="radio" name="pain" value="none" />
+        <input type="radio" name="pain" value="mild" />
+        <button type="button">intruder</button>
+        <input type="radio" name="pain" value="moderate" />
+        <input type="radio" name="pain" value="severe" />
+      </Trap>,
+    );
+    radio("none").focus();
+
+    // Nothing follows "severe", so the trap keeps the move and must rotate past
+    // the group's TRUE last member — never to a radio, and never backwards to
+    // the intruder that merely looked like the end.
+    fireEvent.keyDown(radio("none"), { key: "Tab" });
+
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "before" }),
+    );
+  });
+
   it("goes back to owning Tab once something is checked", () => {
     // With a checked member `tabbable` reports one radio, so the list is
     // already right and the trap needs no help.

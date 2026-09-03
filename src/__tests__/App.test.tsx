@@ -3049,6 +3049,70 @@ describe("dismissing the first-run card", () => {
     ).toBe(true);
   });
 
+  it("leaves focus alone on a tab tap that focused nothing (iOS)", () => {
+    // The test above focuses the tab first, because that is what a desktop
+    // click does. iOS Safari does NOT focus a <button> on tap — `focus.ts` says
+    // so, and calls it the common case — and `navigate()` moves no focus, so on
+    // the app's primary platform this same gesture leaves activeElement on
+    // <body>.
+    //
+    // That is why the card reports whether it held focus instead of App asking
+    // "is focus on <body>?": <body> means BOTH "the card held it and is gone"
+    // and "focus was never anywhere", and answering the second by handing focus
+    // to the page title moves a VoiceOver cursor for no reason.
+    vi.useFakeTimers();
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    act(() => void vi.advanceTimersByTime(CONFIRM_MS));
+
+    const nav = document.querySelector("#main-nav") as HTMLElement;
+    // No .focus() — the tap lands, focus stays nowhere, exactly as on iOS.
+    fireEvent.click(within(nav).getByRole("button", { name: "History" }));
+    expect(document.activeElement).toBe(document.body);
+
+    act(() => void vi.advanceTimersByTime(SHEET_EXIT_MS * 4));
+    vi.useRealTimers();
+
+    // Still nowhere: not yanked onto the <h1>.
+    expect(document.activeElement).toBe(document.body);
+    expect(
+      JSON.parse(localStorage.getItem(STORAGE_KEYS.profile) ?? "{}").firstRunDone,
+    ).toBe(true);
+  });
+
+  it("still rescues focus when the card is removed out from under it", () => {
+    // The other half, and why "never hand off on unmount" is not the fix: a
+    // shot arriving from another tab removes the card while focus really IS on
+    // its Done button, and leaving focus on <body> is the thing CLAUDE.md calls
+    // non-negotiable. Same unmount path, opposite answer, because the card
+    // measured the difference instead of guessing it.
+    vi.useFakeTimers();
+    renderApp();
+    const done = screen.getByRole("button", { name: "Done" });
+    done.focus();
+    fireEvent.click(done);
+    act(() => void vi.advanceTimersByTime(CONFIRM_MS));
+    expect(document.activeElement).toBe(done);
+
+    // A shot appears from elsewhere, so the card goes before its beat ends.
+    act(() => {
+      seedShots([{ id: "elsewhere", date: "2026-08-05" }]);
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: STORAGE_KEYS.shots,
+          newValue: localStorage.getItem(STORAGE_KEYS.shots),
+          storageArea: localStorage,
+        }),
+      );
+    });
+    act(() => void vi.advanceTimersByTime(SHEET_EXIT_MS * 4));
+    vi.useRealTimers();
+
+    expect(card()).toBeNull();
+    expect(document.activeElement).not.toBe(document.body);
+    expectVisibleFocusRing("after the card was removed mid-beat");
+  });
+
   it("leaves focus alone when you open the log sheet mid-beat", () => {
     // Same callback, the other way out of Home. The sheet moves focus to its
     // own heading on open; the card must not take it back. In a browser #root
