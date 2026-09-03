@@ -290,8 +290,13 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
             element screen readers convey as importance, where <b> is styling
             only. Emphasis carried by weight AND contrast, the same pair the
             label hierarchy on this card already uses, because at 0.8rem a
-            weight change alone is easy to miss. */}
-        <strong>All optional</strong> — revisit anytime in Settings.
+            weight change alone is easy to miss.
+
+            One word, not two. Emphasis works by contrast, so bolding a third of
+            a six-word sentence spends it — and "All" still scopes the claim
+            perfectly well unbolded, sitting right beside the word that carries
+            it. */}
+        All <strong>optional</strong> — revisit anytime in Settings.
       </p>
 
       <div className="first-shot-card__field">

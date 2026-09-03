@@ -233,8 +233,11 @@ describe("FirstShotCard — Done", () => {
         <FirstShotCard onGoToSettings={vi.fn()} onDone={vi.fn()} />
       </ProfileProvider>,
     );
-    const emphasised = screen.getByText("All optional");
+    // One word. Emphasis is contrast, so bolding more of the sentence spends
+    // it; "All" scopes the claim perfectly well unbolded beside it.
+    const emphasised = screen.getByText("optional");
     expect(emphasised.tagName).toBe("STRONG");
+    expect(emphasised.textContent).toBe("optional");
   });
 
   it("carries no caption under Done", () => {
