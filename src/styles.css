@@ -179,12 +179,6 @@ body {
   gap: 0.8rem;
 }
 
-.shot-form h2 {
-  margin-top: 0;
-  margin-bottom: 1rem;
-  font-size: 1.1rem;
-}
-
 .shot-form .secondary-button {
   margin-top: 0.5rem;
 }
@@ -1777,6 +1771,16 @@ select {
   padding-bottom: calc(0.7rem + env(safe-area-inset-bottom, 0px));
 }
 
+/* The sheet's title owns its own styling, and nothing element-scoped may sit
+   beside it. `.shot-form h2` (0,1,1) used to, and it outranked this class
+   (0,1,0) — so BOTH declarations here were dead: the title rendered at 1.1rem
+   with a 1rem bottom margin it had explicitly zeroed.
+
+   The margin is what showed. The top bar is `align-items: center`, which
+   centres the MARGIN box, so a 20px title carrying 16px underneath sat 8px
+   above the ✕ it is meant to line up with — measured, and exactly half the
+   margin. That rule dated from when this form was inline and the heading had
+   fields under it; in a flex bar it was only ever wrong. */
 .shot-form__title {
   margin: 0;
   font-size: 1.05rem;

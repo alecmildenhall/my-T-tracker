@@ -257,6 +257,75 @@ describe("the pain chips carry selection in more than hue", () => {
   });
 });
 
+/**
+ * Which declaration of `property` actually WINS for `el`, per the real cascade.
+ *
+ * Source order is only half the cascade, and the half that had already bitten
+ * here — so a guard that checks arrangement passes while the property it
+ * protects is broken. Three defects on this branch came in through the other
+ * half: a pseudo-class or an extra element in the selector ADDS SPECIFICITY,
+ * which no amount of reordering can answer. Ask which value wins instead.
+ *
+ * @param states pseudo-classes to treat as active (e.g. `["hover", "active"]`)
+ */
+function winningValue(
+  el: Element,
+  property: string,
+  states: string[] = [],
+): string | undefined {
+  const css = readFileSync(`${process.cwd()}/src/styles.css`, "utf8");
+  // Comments first — this file is heavily commented and the prose carries
+  // commas and colons, which would otherwise be fed to `matches()` as
+  // selectors. Then innermost rules only, so a body containing `{` is not a
+  // body: the same nesting-proof shape the SHEET_EXIT_MS guard uses.
+  const rules = [
+    ...css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^{}]*)\}/g),
+  ];
+
+  // (ids, classes + attributes + pseudo-classes, elements). `:not(...)`
+  // contributes its argument rather than itself, which is why it is unwrapped.
+  const specificity = (sel: string): number => {
+    const bare = sel.replace(/:not\(|\)/g, " ");
+    const ids = (bare.match(/#[\w-]+/g) ?? []).length;
+    const classes = (bare.match(/\.[\w-]+|\[[^\]]*\]|:[\w-]+(?!\()/g) ?? []).length;
+    const elements = (bare.match(/(?:^|[\s>+~])[a-z][\w-]*/g) ?? []).length;
+    return ids * 10000 + classes * 100 + elements;
+  };
+
+  const granted = new RegExp(`:(?:${["__never__", ...states].join("|")})`, "g");
+  const matched: { spec: number; at: number; value: string }[] = [];
+
+  rules.forEach(([, selectors, body], at) => {
+    // Longhand and shorthand both, last one in the block winning.
+    const decls = [
+      ...body.matchAll(
+        new RegExp(`(?:^|;)\\s*(${property})\\s*:\\s*([^;]+)`, "g"),
+      ),
+    ];
+    if (decls.length === 0) return;
+    const value = decls[decls.length - 1][2].trim();
+
+    for (const raw of selectors.split(",")) {
+      const sel = raw.trim();
+      const grounded = sel.replace(granted, "");
+      // Any pseudo-class we were NOT asked to grant means the rule is inactive.
+      if (/:[\w-]+/.test(grounded.replace(/:not\([^)]*\)/g, ""))) continue;
+      let hit = false;
+      try {
+        hit = el.matches(grounded);
+      } catch {
+        throw new Error(`unparseable selector in styles.css: "${sel}"`);
+      }
+      if (hit) matched.push({ spec: specificity(sel), at, value });
+    }
+  });
+
+  if (matched.length === 0) return undefined;
+  // Highest specificity wins; ties go to whichever comes last.
+  matched.sort((a, b) => a.spec - b.spec || a.at - b.at);
+  return matched[matched.length - 1].value;
+}
+
 describe("a state rule has to come after the rule it overrides", () => {
   it("puts the Done button's confirmed state after its base", () => {
     // Both are a single class, so at equal specificity source order decides.
@@ -278,83 +347,63 @@ describe("a state rule has to come after the rule it overrides", () => {
 
   it("keeps the Done button green under every pointer state", () => {
     /*
-     * Source order is only half the rule, and the test above pinned the half
-     * that had already bitten. A pseudo-class ADDS SPECIFICITY, so
-     * `:hover` (0,2,0) outranks the confirmed state's single class (0,1,0)
-     * wherever either one sits — order cannot reach it. The button was
-     * screenshotted mid-beat reading "✓ Done" on hover-blue, and since the
-     * cursor is by definition still on a button you just clicked, the green
+     * A pseudo-class ADDS SPECIFICITY, so `:hover` outranks the confirmed
+     * state's single class wherever either one sits — order cannot reach it.
+     * Screenshotted mid-beat, the button read "✓ Done" on hover-blue, and since
+     * the cursor is by definition still on a button you just clicked, the green
      * confirmation was never visible on desktop at all.
      *
      * Two separate rules did it, and fixing only the obvious one left it
      * broken: the button's own `:hover`, and `.secondary-button:hover/:active`,
-     * which sets a background because this is a secondary button. So this
-     * asserts the OUTCOME — what colour wins — rather than the presence of any
-     * particular override, which is what lets it catch the next rule nobody
-     * thought of.
+     * which sets a background because this is a secondary button. Asserting the
+     * OUTCOME rather than the presence of any particular override is what
+     * catches the next rule nobody thought of — and it catches that first,
+     * partial fix.
      */
-    const css = readFileSync(`${process.cwd()}/src/styles.css`, "utf8");
-
-    // Innermost rules only, so a body containing `{` is not a body — the same
-    // nesting-proof shape the SHEET_EXIT_MS guard uses.
-    // Comments first: they carry prose containing commas and colons, and this
-    // file is heavily commented, so leaving them in feeds sentences to
-    // `matches()` as if they were selectors.
-    const rules = [
-      ...css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^{}]*)\}/g),
-    ].map(([, selectors, body]) => ({ selectors, body }));
-
-    // (ids, classes+attrs+pseudo-classes, elements). `:not(...)` contributes its
-    // argument's specificity, not its own — close enough here, where no ring
-    // selector nests one.
-    const specificity = (sel: string): number => {
-      const bare = sel.replace(/:not\(|\)/g, " ");
-      const ids = (bare.match(/#[\w-]+/g) ?? []).length;
-      const classes = (bare.match(/\.[\w-]+|\[[^\]]*\]|:[\w-]+(?!\()/g) ?? [])
-        .length;
-      return ids * 100 + classes * 10;
-    };
-
     const button = document.createElement("button");
     button.className =
       "secondary-button first-shot-card__done-button " +
       "first-shot-card__done-button--confirmed";
     document.body.append(button);
-
     try {
       // Hovered AND pressed: the worst case, and the real one — you are
-      // pressing the button when the ✓ appears.
-      const winners: { spec: number; at: number; value: string }[] = [];
-      rules.forEach(({ selectors, body }, at) => {
-        const background = /(?:^|;)\s*background(?:-color)?:\s*([^;]+)/.exec(
-          body,
-        )?.[1].trim();
-        if (!background) return;
-        for (const raw of selectors.split(",")) {
-          const sel = raw.trim();
-          if (!sel.includes("first-shot-card__done-button") && !sel.includes("secondary-button")) {
-            continue;
-          }
-          // Grant the states we are testing; any OTHER state pseudo means the
-          // rule does not apply right now.
-          const grounded = sel.replace(/:hover|:active/g, "");
-          if (/:[\w-]+/.test(grounded.replace(/:not\([^)]*\)/g, ""))) continue;
-          let matches = false;
-          try {
-            matches = button.matches(grounded);
-          } catch {
-            throw new Error(`unparseable selector in styles.css: "${sel}"`);
-          }
-          if (matches) winners.push({ spec: specificity(sel), at, value: background });
-        }
-      });
-
-      expect(winners.length).toBeGreaterThan(0);
-      // Highest specificity wins; ties go to whichever comes last.
-      winners.sort((a, b) => a.spec - b.spec || a.at - b.at);
-      expect(winners[winners.length - 1].value).toBe("var(--success)");
+      // pressing the button at the moment the ✓ appears.
+      expect(winningValue(button, "background(?:-color)?", ["hover", "active"])).toBe(
+        "var(--success)",
+      );
     } finally {
       button.remove();
+    }
+  });
+
+  it("leaves the sheet title no margin to sit above the ✕ on", () => {
+    /*
+     * The bar is `align-items: center`, which centres the MARGIN box — so a
+     * bottom margin lifts the title by half of it. `.shot-form h2` (0,1,1)
+     * outranked `.shot-form__title` (0,1,0) and put 1rem under a heading that
+     * had explicitly zeroed its margin, leaving it 8px above the ✕ it lines up
+     * with. Both of that class rule's declarations were dead, so the font-size
+     * was wrong too and nobody had noticed.
+     *
+     * Third instance of this on the branch, all three the same shape: a rule
+     * that reads like an override and loses on specificity.
+     */
+    const form = document.createElement("form");
+    form.className = "shot-form";
+    const bar = document.createElement("div");
+    bar.className = "shot-form__bar shot-form__bar--top";
+    const title = document.createElement("h2");
+    title.className = "shot-form__title";
+    bar.append(title);
+    form.append(bar);
+    document.body.append(form);
+    try {
+      const margin = winningValue(title, "margin(?:-bottom)?");
+      expect(margin).toBeDefined();
+      // "0", "0px", "0 0 0" — any of them centre; a non-zero one does not.
+      expect(margin!.split(/\s+/).every((v) => parseFloat(v) === 0)).toBe(true);
+    } finally {
+      form.remove();
     }
   });
 });
