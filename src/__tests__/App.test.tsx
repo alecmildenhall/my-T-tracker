@@ -2994,12 +2994,25 @@ describe("dismissing the first-run card", () => {
     // Done removes the whole card including the button that was pressed — the
     // self-removing control this codebase has been bitten by repeatedly. Focus
     // goes to "+ Log a shot", which is where the card was pointing anyway.
+    //
+    // It takes CONFIRM_MS + SHEET_EXIT_MS to get there: the ✓ beat, then the
+    // card leaving, the same pair a saved shot gets. The button keeps focus for
+    // the whole of it, which is why it is aria-disabled rather than disabled.
+    vi.useFakeTimers();
     renderApp();
     expect(card()).not.toBeNull();
 
     const done = screen.getByRole("button", { name: "Done" });
     done.focus();
     fireEvent.click(done);
+
+    // Still there, still holding focus, while the ✓ shows.
+    expect(card()).not.toBeNull();
+    expect(document.activeElement).toBe(done);
+
+    act(() => void vi.advanceTimersByTime(CONFIRM_MS));
+    act(() => void vi.advanceTimersByTime(SHEET_EXIT_MS));
+    vi.useRealTimers();
 
     expect(card()).toBeNull();
     expect(document.activeElement).not.toBe(document.body);
@@ -3012,8 +3025,12 @@ describe("dismissing the first-run card", () => {
   it("stays dismissed across a reload", () => {
     // The flag is stored, not session state: a card that came back every launch
     // would make Done look broken.
+    vi.useFakeTimers();
     renderApp();
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    act(() => void vi.advanceTimersByTime(CONFIRM_MS));
+    act(() => void vi.advanceTimersByTime(SHEET_EXIT_MS));
+    vi.useRealTimers();
     expect(card()).toBeNull();
 
     cleanup();

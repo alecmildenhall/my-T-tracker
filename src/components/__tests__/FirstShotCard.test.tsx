@@ -4,6 +4,8 @@ import { FirstShotCard } from "../FirstShotCard";
 import { ProfileProvider } from "../../context/ProfileContext";
 import { STORAGE_KEYS } from "../../storageKeys";
 import { expectVisibleFocusRing } from "../../test/focusRing";
+import { CONFIRM_MS } from "../../utils/timing";
+import { SHEET_EXIT_MS } from "../Modal";
 
 beforeEach(() => localStorage.clear());
 
@@ -207,19 +209,68 @@ describe("FirstShotCard — drafts follow the profile", () => {
 });
 
 describe("FirstShotCard — Done", () => {
-  it("calls back so the parent can store the dismissal", () => {
+  it("confirms on the button before it calls back", () => {
     // The card originally had no dismiss control: it vanished once a shot
-    // existed, so there was nothing to store. True, and it cost the moment
-    // where setup feels finished — the only way to make it go was to log a
-    // shot, which is not obviously connected to filling it in.
-    const onDone = vi.fn();
-    render(
-      <ProfileProvider>
-        <FirstShotCard onGoToSettings={vi.fn()} onDone={onDone} />
-      </ProfileProvider>,
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Done" }));
-    expect(onDone).toHaveBeenCalledTimes(1);
+    // existed, so there was nothing to store. Then it had one that acted on the
+    // frame it was pressed — which is what the sheet used to do, and what
+    // CONFIRM_MS exists to stop: a surface that goes at its fastest moment
+    // reads as dropped rather than dismissed.
+    vi.useFakeTimers();
+    try {
+      const onDone = vi.fn();
+      render(
+        <ProfileProvider>
+          <FirstShotCard onGoToSettings={vi.fn()} onDone={onDone} />
+        </ProfileProvider>,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Done" }));
+
+      // The ✓ shows and nothing has been dismissed yet.
+      expect(onDone).not.toHaveBeenCalled();
+      const button = screen.getByRole("button", { name: "Done" });
+      expect(button).toHaveAttribute("aria-disabled", "true");
+      // `aria-disabled`, not `disabled` — a disabled focused button blurs to
+      // <body> for the whole beat.
+      expect(button).not.toBeDisabled();
+      // And the glyph stays out of the accessible name.
+      expect(button).toHaveAccessibleName("Done");
+
+      act(() => void vi.advanceTimersByTime(CONFIRM_MS));
+      expect(onDone).not.toHaveBeenCalled();
+      expect(
+        document.querySelector(".first-shot-card--leaving"),
+      ).not.toBeNull();
+
+      act(() => void vi.advanceTimersByTime(SHEET_EXIT_MS));
+      expect(onDone).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("cannot be pressed twice into two dismissals", () => {
+    vi.useFakeTimers();
+    try {
+      const onDone = vi.fn();
+      render(
+        <ProfileProvider>
+          <FirstShotCard onGoToSettings={vi.fn()} onDone={onDone} />
+        </ProfileProvider>,
+      );
+      const button = screen.getByRole("button", { name: "Done" });
+      fireEvent.click(button);
+      fireEvent.click(button);
+      fireEvent.click(button);
+
+      // Two advances, not one: the exit timer is scheduled by the effect that
+      // runs after the confirm timer's state update, so it does not exist yet
+      // while the first is still being flushed.
+      act(() => void vi.advanceTimersByTime(CONFIRM_MS));
+      act(() => void vi.advanceTimersByTime(SHEET_EXIT_MS));
+      expect(onDone).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("marks the whole card optional, in the element screen readers convey", () => {

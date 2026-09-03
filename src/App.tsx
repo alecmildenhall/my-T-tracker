@@ -22,14 +22,11 @@ import type { View } from "./types/view";
 
 const SHEET_HEADING_ID = "shot-sheet-title";
 
-/**
- * How long the ✓ shows before the sheet starts leaving.
- *
- * Inside the 100–300ms band that reads as an answer to what you just did rather
- * than a pause. Save to sheet-gone is therefore CONFIRM_MS + SHEET_EXIT_MS,
- * which is the point: the sheet used to vanish before the press had registered.
- */
-export const CONFIRM_MS = 200;
+/** Re-exported so the many `import App, { CONFIRM_MS }` call sites keep working;
+ *  it moved to utils/timing.ts because the first-run card needs it and App
+ *  imports that card. */
+export { CONFIRM_MS } from "./utils/timing";
+import { CONFIRM_MS } from "./utils/timing";
 
 const VIEW_TITLES: Record<View, string> = {
   home: "T-Shot Tracker",

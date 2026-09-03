@@ -701,6 +701,25 @@ select {
   color: var(--pain-severe);
 }
 
+.first-shot-card--leaving {
+  transition:
+    opacity 240ms cubic-bezier(0.3, 0, 0.8, 0.15),
+    transform 240ms cubic-bezier(0.3, 0, 0.8, 0.15);
+  opacity: 0;
+  transform: translateY(-6px) scale(0.985);
+  /* Nothing in a card that is on its way out should still be tappable. */
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The movement goes and the message stays: the ✓ still shows for its beat and
+     the card still leaves on schedule, it just does not travel. */
+  .first-shot-card--leaving {
+    transition: none;
+    transform: none;
+  }
+}
+
 /* The card's end. Separated from the questions above it by the same rule the
    restore link uses, so "Done" reads as finishing the card rather than as one
    more field. */
@@ -755,6 +774,18 @@ select {
   .first-shot-card__done-button:active {
     transform: none;
   }
+}
+
+/* Done's ✓ beat. AFTER the base rule, not before: both are a single class, so
+   at equal specificity source order decides — and placed first this lost every
+   declaration to `background: var(--accent)` above. Measured: the button showed
+   "✓ Done" and stayed blue. That is the third time on this branch that a rule
+   written before the one it overrides has silently done nothing, so the order
+   is pinned by a test. */
+.first-shot-card__done-button--confirmed {
+  background: var(--success);
+  color: #052e16;
+  cursor: default;
 }
 
 .first-shot-card__restore {

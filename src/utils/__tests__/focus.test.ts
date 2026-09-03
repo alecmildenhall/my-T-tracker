@@ -256,3 +256,23 @@ describe("the pain chips carry selection in more than hue", () => {
     expect(selected).not.toBe(resting);
   });
 });
+
+describe("a state rule has to come after the rule it overrides", () => {
+  it("puts the Done button's confirmed state after its base", () => {
+    // Both are a single class, so at equal specificity source order decides.
+    // Written first, `--confirmed` lost every declaration to the base rule's
+    // `background: var(--accent)` — measured in a browser, the button showed
+    // "✓ Done" and stayed blue.
+    //
+    // This is the third time on this branch that a rule placed before the one
+    // it overrides has silently done nothing (the saved-value wash's radius and
+    // `body`'s base colour were the others), so it is pinned rather than
+    // remembered.
+    const css = readFileSync(`${process.cwd()}/src/styles.css`, "utf8");
+    const base = css.indexOf(".first-shot-card__done-button {");
+    const confirmed = css.indexOf(".first-shot-card__done-button--confirmed {");
+    expect(base).toBeGreaterThan(-1);
+    expect(confirmed).toBeGreaterThan(-1);
+    expect(confirmed).toBeGreaterThan(base);
+  });
+});

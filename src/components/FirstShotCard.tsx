@@ -19,6 +19,8 @@ import { useProfileContext } from "../context/ProfileContext";
 import { WEEKDAYS, isWeekday, weekdayLabel } from "../utils/weekday";
 import { isWeeklyMultiple } from "../utils/schedule";
 import { handOffFocus } from "../utils/focus";
+import { CONFIRM_MS } from "../utils/timing";
+import { SHEET_EXIT_MS } from "./Modal";
 import { isRealDate } from "../utils/civilDate";
 import {
   isValidIntervalDays,
@@ -229,6 +231,37 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
    * every shot logged during the silence stays unmeasurable even after the day
    * is set later.
    */
+  /**
+   * Done's three beats: idle, the ✓, then the card leaving.
+   *
+   * The same shape saving a shot uses — confirm in place for CONFIRM_MS, then
+   * let the surface go over its own exit — and for the same stated reason: a
+   * surface that vanishes on the frame you pressed it "reads as dropped rather
+   * than dismissed". This card had no beat at all, so the one moment where
+   * someone has just typed their name and their start date ended with the card
+   * simply not being there.
+   *
+   * Borrowing the beat and NOT the words is deliberate. "Logged for you." is
+   * reserved for taking a shot, and the roadmap's argument for it is that a
+   * constant phrase is what makes it read as the app's voice rather than
+   * decoration — spending it on a setup card is how it stops meaning anything.
+   */
+  const [dismissal, setDismissal] = useState<"idle" | "confirming" | "leaving">(
+    "idle",
+  );
+
+  useEffect(() => {
+    if (dismissal === "idle") return;
+    const wait = dismissal === "confirming" ? CONFIRM_MS : SHEET_EXIT_MS;
+    const t = window.setTimeout(() => {
+      if (dismissal === "confirming") setDismissal("leaving");
+      else onDone();
+    }, wait);
+    // Cleared on unmount, so a card removed mid-beat — logging a shot in
+    // another tab, an import arriving — cannot call onDone afterwards.
+    return () => window.clearTimeout(t);
+  }, [dismissal, onDone]);
+
   const shotDayNeeded =
     isValidIntervalDays(profile.intervalDays) &&
     isWeeklyMultiple(profile.intervalDays) &&
@@ -274,7 +307,11 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
   }, [shotDayUnavailable]);
 
   return (
-    <section className="first-shot-card">
+    <section
+      className={`first-shot-card${
+        dismissal === "leaving" ? " first-shot-card--leaving" : ""
+      }`}
+    >
       <h2 className="first-shot-card__title">Before your first shot</h2>
       {/* The "it's all optional" line leads, rather than closing the card.
           Marking every field individually is what you do when SOME are
@@ -468,10 +505,31 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
       <div className="first-shot-card__done">
         <button
           type="button"
-          className="secondary-button first-shot-card__done-button"
-          onClick={onDone}
+          className={`secondary-button first-shot-card__done-button${
+            dismissal === "idle"
+              ? ""
+              : " first-shot-card__done-button--confirmed"
+          }`}
+          // `aria-disabled`, never `disabled` — disabling the focused button
+          // blurs it, and the browser drops focus to <body> for the whole beat
+          // with nothing handing it on. The guard in the handler does the
+          // actual blocking. Same rule the sheet's Save button records.
+          aria-disabled={dismissal !== "idle"}
+          onClick={() => {
+            if (dismissal !== "idle") return;
+            setDismissal("confirming");
+          }}
         >
-          Done
+          {dismissal === "idle" ? (
+            "Done"
+          ) : (
+            <>
+              {/* aria-hidden so the glyph stays out of the accessible name —
+                  unwrapped it announces as "check mark Done". The word carries
+                  the meaning; the tick is the beat. */}
+              <span aria-hidden="true">✓</span> Done
+            </>
+          )}
         </button>
         {/* No caption under the button. It said the card hides for good and
             that the fields live in Settings — the second half repeats the line
