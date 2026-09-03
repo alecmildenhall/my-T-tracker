@@ -203,7 +203,9 @@ export function useFocusTrap(
       // the question of WHICH element can take focus: it tries them in order
       // and stops at the first that does.
       const active = document.activeElement as FocusableElement | null;
-      const at = active ? list.indexOf(active) : -1;
+      // `let`, because the unchecked-radio branch below re-points it at the
+      // group's edge when it cannot stand aside — see there.
+      let at = active ? list.indexOf(active) : -1;
 
       // `input[type=date]` and friends are several controls in one: Tab steps
       // between month, day and year BEFORE leaving the field, and that stepping
@@ -257,6 +259,18 @@ export function useFocusTrap(
         while (last + 1 < list.length && sameGroup(list[last + 1])) last++;
         const beyond = e.shiftKey ? first > 0 : last < list.length - 1;
         if (beyond) return;
+        // Nowhere safe to stand aside — the group sits at an END of the order,
+        // so handing Tab over would walk off an inert page. We keep it, and
+        // rotate from the group's EDGE rather than from this radio.
+        //
+        // Without that the fallthrough stepped to `list[at + 1]`, which is the
+        // NEXT RADIO IN THE SAME GROUP — quietly reinstating the multiple tab
+        // stops this branch exists to remove, in exactly the position where
+        // nothing else can help. Not reachable in today's log sheet, where mood,
+        // notes and Save follow the chips; B½ adds fields to this sheet, which
+        // is the same ordering assumption the segmented-input hatch above
+        // already records as fragile.
+        at = e.shiftKey ? first : last;
       }
 
       // The mirror of that, and the half it was missing: stepping BACKWARDS

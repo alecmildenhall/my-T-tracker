@@ -319,3 +319,22 @@ describe("the first-run flag survives a backup", () => {
     expect("firstRunDone" in pickProfileFields({})).toBe(false);
   });
 });
+
+describe("a dismissal alone is not user data", () => {
+  // `hasProfileData` answers "is there anything here worth protecting?" for two
+  // decisions, and the first-run flag is not an answer to it. It still travels
+  // in the DTO — dropping it there is the allowlist trap — it just must not
+  // count.
+  it("does not treat the first-run flag as data", () => {
+    expect(hasProfileData({ firstRunDone: true })).toBe(false);
+  });
+
+  it("still counts real fields, alone or beside the flag", () => {
+    expect(hasProfileData({ preferredName: "Lou" })).toBe(true);
+    expect(hasProfileData({ firstRunDone: true, intervalDays: 7 })).toBe(true);
+  });
+
+  it("is false for an empty profile, as before", () => {
+    expect(hasProfileData({})).toBe(false);
+  });
+});

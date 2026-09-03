@@ -100,5 +100,25 @@ export function pickProfileFields(p: Partial<Profile>): Profile {
 
 /** True when the profile carries at least one known field. */
 export function hasProfileData(p: Profile): boolean {
-  return Object.keys(pickProfileFields(p)).length > 0;
+  // `firstRunDone` is excluded: it records that someone dismissed a card, not
+  // anything about their body or their schedule, and this function answers "is
+  // there user data here?" for two decisions that both get it wrong otherwise.
+  //
+  //  - The pre-import safety copy. On a fresh install whose only action was
+  //    tapping Done, this became true, so a restore first tried to download a
+  //    file containing nothing but {"firstRunDone": true} — and if that
+  //    download failed, the restore ABORTED. That is the "Returning with a
+  //    backup?" path the first-run card advertises two lines below its own Done
+  //    button, on the only recovery route this product has.
+  //  - The import report. A backup carrying only the flag would be described as
+  //    "Your profile was updated" while in fact clearing the destination's name,
+  //    start date, shot day and interval, because replaceProfile is a full swap.
+  //    The destructive outcome is the same either way; the sentence describing
+  //    it was the wrong one.
+  //
+  // The flag still travels in the DTO — dropping it there is the allowlist trap
+  // — it just does not count as data.
+  const fields = pickProfileFields(p);
+  delete fields.firstRunDone;
+  return Object.keys(fields).length > 0;
 }

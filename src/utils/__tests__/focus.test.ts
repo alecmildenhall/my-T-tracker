@@ -210,9 +210,23 @@ describe("reduced motion covers every control that animates", () => {
       /\/\*[\s\S]*?\*\//g,
       "",
     );
-    const block =
-      /@media \(prefers-reduced-motion: reduce\) \{([\s\S]*)\}/.exec(css);
-    expect(block).not.toBeNull();
-    expect(block![1]).toContain(".pain-chip");
+    // EVERY reduced-motion block, each matched with its own braces balanced —
+    // not "the first one to the last closing brace in the file".
+    //
+    // That greedy version passed vacuously, and HOW it broke is the point: it
+    // was correct when written, because the only reduced-motion block sat AFTER
+    // the ordinary `.pain-chip` rules, so the capture held just the allowlist.
+    // A later commit added a second block EARLIER in the file, which moved the
+    // capture's start above those rules and let `.pain-chip` be found in the
+    // wrong place. Nothing touched this test; a change elsewhere in the
+    // stylesheet disarmed it.
+    const blocks = [
+      ...css.matchAll(
+        /@media \(prefers-reduced-motion: reduce\) \{((?:[^{}]|\{[^{}]*\})*)\}/g,
+      ),
+    ].map((m) => m[1]);
+
+    expect(blocks.length).toBeGreaterThan(0);
+    expect(blocks.join("\n")).toContain(".pain-chip");
   });
 });

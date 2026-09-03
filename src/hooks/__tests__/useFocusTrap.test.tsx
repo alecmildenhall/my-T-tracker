@@ -220,3 +220,69 @@ describe("useFocusTrap", () => {
     });
   });
 });
+
+describe("a radio group with nothing checked", () => {
+  const Radios: React.FC<{ trailing?: boolean }> = ({ trailing = true }) => (
+    <Trap label="dlg">
+      <button type="button">before</button>
+      {["none", "mild", "moderate", "severe"].map((v) => (
+        <label key={v}>
+          <input type="radio" name="pain" value={v} />
+          {v}
+        </label>
+      ))}
+      {trailing && <button type="button">after</button>}
+    </Trap>
+  );
+
+  const radio = (v: string) =>
+    document.querySelector(`input[value="${v}"]`) as HTMLInputElement;
+
+  it("stands aside so the browser treats the group as one stop", () => {
+    // `tabbable` reports every radio as tabbable while none is checked — right
+    // about focusability, wrong about tab ORDER, since arrow keys are how you
+    // move within a group. The trap owns Tab, so the library's answer became
+    // the behaviour until this branch existed.
+    //
+    // jsdom has no sequential focus navigation, so what is asserted is the
+    // trap's DECISION: not preventing the default hands the move to the
+    // browser, which is what does the native group-skip.
+    render(<Radios />);
+    radio("none").focus();
+
+    const prevented = !fireEvent.keyDown(radio("none"), { key: "Tab" });
+    expect(prevented).toBe(false);
+  });
+
+  it("keeps Tab when the group has nothing after it, and skips the whole group", () => {
+    // At an END of the order there is nowhere safe to stand aside — handing
+    // over would walk off an inert page — so the trap keeps the move. It must
+    // then rotate from the group's EDGE: the naive fallthrough went to the next
+    // radio in the same group, quietly reinstating the extra stops this branch
+    // removes, in the one position where nothing else can help.
+    render(<Radios trailing={false} />);
+    radio("none").focus();
+
+    fireEvent.keyDown(radio("none"), { key: "Tab" });
+
+    // Wrapped past the whole group to the only other control, never to "mild".
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "before" }),
+    );
+  });
+
+  it("goes back to owning Tab once something is checked", () => {
+    // With a checked member `tabbable` reports one radio, so the list is
+    // already right and the trap needs no help.
+    render(<Radios />);
+    const mild = radio("mild");
+    mild.checked = true;
+    mild.focus();
+
+    const prevented = !fireEvent.keyDown(mild, { key: "Tab" });
+    expect(prevented).toBe(true);
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "after" }),
+    );
+  });
+});
