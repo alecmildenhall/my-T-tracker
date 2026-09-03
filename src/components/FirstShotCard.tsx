@@ -446,10 +446,6 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
         </label>
       </div>
 
-      {/* A returning user and a new one land on the same empty screen needing
-          opposite things, and this one is protective rather than convenient:
-          import REPLACES rather than merges, so logging a shot first and
-          importing afterwards throws that shot away. */}
       {/* An explicit end to the card.
           It had none: the only way to make it go was to log a shot, which is
           not obviously connected to filling this in, so there was no moment
@@ -465,12 +461,23 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
         >
           Done
         </button>
+        {/* Says what Done DOES, not what the card does. "This card only shows
+            before your first shot" sat directly under the button that hides it
+            while you still have none — reassuring about persistence at the
+            moment of an irreversible action, since nothing writes the flag back
+            to false and there is no control to restore the card. */}
         <p className="field-hint">
-          This card only shows before your first shot. Everything on it stays in
-          Settings.
+          Hides this card for good. Everything on it stays in Settings.
         </p>
       </div>
 
+      {/* A returning user and a new one land on the same empty screen needing
+          opposite things, and this one is protective rather than convenient:
+          import REPLACES rather than merges, so logging a shot first and
+          importing afterwards throws that shot away.
+          (Moved back down to the paragraph it describes — the Done block was
+          inserted between the two, leaving it reading as documentation for a
+          button about something else.) */}
       <p className="first-shot-card__restore">
         Returning with a backup?{" "}
         <button type="button" className="link-button" onClick={onGoToSettings}>

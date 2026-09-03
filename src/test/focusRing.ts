@@ -154,13 +154,20 @@ const structuralSelectors = ringSelectors.map((selector) => ({
   // with the rule deleted — measured. Order matters: the longest alternative
   // has to come first or `:focus` consumes its prefix.
   structural: selector
+    // `:has(...)` is dropped whole. Left in place it becomes an unmatchable
+    // selector, the same way `:focus-within` did before it was handled — and it
+    // is how the pain chips ring themselves, so missing it would leave the guard
+    // blind to the only indicator that control has.
+    .replace(/:has\([^)]*\)/g, "")
     .replace(/:focus-within|:focus-visible|:focus/g, "")
     .trim(),
   // And `:focus-within` matches an ANCESTOR of the focused element, not the
   // element itself — which is the whole point of it: the ring goes on a wrapper
   // while focus sits on a control inside. `matches()` asks the wrong question
   // for those; `closest()` asks the right one.
-  matchesAncestor: /:focus-within/.test(selector),
+  // `:has()` matches an ANCESTOR for the same reason `:focus-within` does: the
+  // ring sits on a wrapper while focus is on a control inside it.
+  matchesAncestor: /:focus-within|:has\(/.test(selector),
 }));
 
 /**

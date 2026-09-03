@@ -222,14 +222,17 @@ describe("FirstShotCard — Done", () => {
     expect(onDone).toHaveBeenCalledTimes(1);
   });
 
-  it("says what Done means, and where the fields go", () => {
+  it("says what Done does, and where the fields go", () => {
+    // The hint describes the BUTTON, not the card. It used to read "This card
+    // only shows before your first shot" while sitting under the control that
+    // hides it while you still have none — reassuring about persistence at the
+    // moment of an irreversible action.
     render(
       <ProfileProvider>
         <FirstShotCard onGoToSettings={vi.fn()} onDone={vi.fn()} />
       </ProfileProvider>,
     );
-    expect(
-      screen.getByText(/only shows before your first shot/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/hides this card for good/i)).toBeInTheDocument();
+    expect(screen.getByText(/stays in Settings/i)).toBeInTheDocument();
   });
 });

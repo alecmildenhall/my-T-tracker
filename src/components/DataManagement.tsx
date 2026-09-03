@@ -243,7 +243,12 @@ export const DataManagement: React.FC<DataManagementProps> = ({
     const knownCurrent = pickProfileFields(profile);
     // incomingProfile is already DTO-picked (from parseBackup), so its own keys
     // are exactly the known non-blank fields — no need to re-pick it.
-    const incomingHasData = Object.keys(pending.incomingProfile).length > 0;
+    // `hasProfileData`, not a raw key count: a backup carrying only
+    // `firstRunDone` is a dismissal, not a profile. Counting keys reported
+    // "Your profile was updated" while `replaceProfile` was in fact wiping the
+    // destination's name, start date, shot day and interval — the destructive
+    // outcome unchanged, the sentence describing it the wrong one.
+    const incomingHasData = hasProfileData(pending.incomingProfile);
     // Compare the whole picked profile, not field-by-field: pickProfileFields
     // writes keys in a fixed order, so a serialized compare is stable AND can't
     // silently miss a newly added field (e.g. shotDay) the way an explicit

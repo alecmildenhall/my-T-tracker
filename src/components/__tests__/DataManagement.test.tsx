@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, within, waitFor } from "@testing-library/react";
+import {
+  render,
+  screen,
+  fireEvent,
+  within,
+  waitFor,
+} from "@testing-library/react";
 import { DataManagement } from "../DataManagement";
 import type { ShotEntry } from "../../types/shot";
 import * as downloadModule from "../../utils/download";
@@ -56,10 +62,10 @@ describe("DataManagement", () => {
           onReplaceAll={vi.fn(() => true)}
           profile={{}}
           onReplaceProfile={vi.fn(() => true)}
-        />
+        />,
       );
       fireEvent.click(
-        screen.getByRole("button", { name: "Export backup (JSON)" })
+        screen.getByRole("button", { name: "Export backup (JSON)" }),
       );
 
       expect(downloadMock).toHaveBeenCalledTimes(1);
@@ -68,10 +74,12 @@ describe("DataManagement", () => {
       expect(type).toBe("application/json");
       expect(JSON.parse(text).shots).toHaveLength(2);
 
-      expect(screen.getByRole("status")).toHaveTextContent("Backup downloaded.");
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "Backup downloaded.",
+      );
       // Button reflects the click, mirroring the reuse-chip selected state.
       expect(
-        screen.getByRole("button", { name: "✓ Exported" })
+        screen.getByRole("button", { name: "✓ Exported" }),
       ).toBeInTheDocument();
     });
 
@@ -82,10 +90,10 @@ describe("DataManagement", () => {
           onReplaceAll={vi.fn(() => true)}
           profile={{ startDate: "2025-01-15", preferredName: "Lou" }}
           onReplaceProfile={vi.fn(() => true)}
-        />
+        />,
       );
       fireEvent.click(
-        screen.getByRole("button", { name: "Export backup (JSON)" })
+        screen.getByRole("button", { name: "Export backup (JSON)" }),
       );
 
       const [text] = downloadMock.mock.calls[0];
@@ -102,7 +110,7 @@ describe("DataManagement", () => {
           onReplaceAll={vi.fn(() => true)}
           profile={{}}
           onReplaceProfile={vi.fn(() => true)}
-        />
+        />,
       );
       fireEvent.click(screen.getByRole("button", { name: "Export CSV" }));
 
@@ -121,15 +129,17 @@ describe("DataManagement", () => {
           onReplaceAll={vi.fn(() => true)}
           profile={{}}
           onReplaceProfile={vi.fn(() => true)}
-        />
+        />,
       );
 
       fireEvent.click(screen.getByRole("button", { name: "Export CSV" }));
 
-      expect(screen.getByRole("status")).toHaveTextContent(/couldn.t save the file/i);
+      expect(screen.getByRole("status")).toHaveTextContent(
+        /couldn.t save the file/i,
+      );
       // No false success, and the button doesn't flash "Exported".
       expect(
-        screen.queryByRole("button", { name: "✓ Exported" })
+        screen.queryByRole("button", { name: "✓ Exported" }),
       ).not.toBeInTheDocument();
     });
   });
@@ -148,7 +158,7 @@ describe("DataManagement", () => {
           onReplaceAll={vi.fn(() => true)}
           profile={{}}
           onReplaceProfile={vi.fn(() => true)}
-        />
+        />,
       );
       // Present before anything happens, and empty.
       const region = screen.getByRole("status");
@@ -159,7 +169,7 @@ describe("DataManagement", () => {
       fireEvent.click(
         within(await screen.findByRole("dialog")).getByRole("button", {
           name: "Replace",
-        })
+        }),
       );
       // ...and it is the SAME element, now changed — not a new one.
       expect(screen.getByRole("status")).toBe(region);
@@ -174,13 +184,13 @@ describe("DataManagement", () => {
           onReplaceAll={onReplaceAll}
           profile={{}}
           onReplaceProfile={vi.fn(() => true)}
-        />
+        />,
       );
 
       uploadText("this is not a backup {");
 
       expect(await screen.findByRole("status")).toHaveTextContent(
-        /as a T-Shot Tracker backup/i
+        /as a T-Shot Tracker backup/i,
       );
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
       expect(onReplaceAll).not.toHaveBeenCalled();
@@ -195,10 +205,12 @@ describe("DataManagement", () => {
           onReplaceAll={onReplaceAll}
           profile={{}}
           onReplaceProfile={vi.fn(() => true)}
-        />
+        />,
       );
 
-      const incoming: ShotEntry[] = [{ id: "imp", date: "2026-05-01", doseMg: 40 }];
+      const incoming: ShotEntry[] = [
+        { id: "imp", date: "2026-05-01", doseMg: 40 },
+      ];
       uploadText(toJson(incoming));
 
       const dialog = await screen.findByRole("dialog");
@@ -209,11 +221,11 @@ describe("DataManagement", () => {
       // Safety backup of the CURRENT data is downloaded before overwriting.
       expect(downloadMock).toHaveBeenCalledTimes(1);
       expect(downloadMock.mock.calls[0][1]).toBe(
-        "t-shot-backup-before-import.json"
+        "t-shot-backup-before-import.json",
       );
       expect(onReplaceAll).toHaveBeenCalledWith(incoming);
       expect(screen.getByRole("status")).toHaveTextContent(
-        "Restored 1 entry from backup."
+        "Restored 1 entry from backup.",
       );
     });
 
@@ -230,7 +242,7 @@ describe("DataManagement", () => {
           onReplaceAll={onReplaceAll}
           profile={{}}
           onReplaceProfile={vi.fn(() => true)}
-        />
+        />,
       );
 
       uploadText(
@@ -238,12 +250,14 @@ describe("DataManagement", () => {
           { id: "good-1", date: "2026-05-01" },
           { id: "bad", date: "9999-01-01" },
           { id: "good-2", date: "2026-05-08" },
-        ])
+        ]),
       );
 
       // Said BEFORE the destructive step, not only in the report after it.
       const dialog = await screen.findByRole("dialog");
-      expect(dialog).toHaveTextContent(/1 entry in the backup can.t be restored/i);
+      expect(dialog).toHaveTextContent(
+        /1 entry in the backup can.t be restored/i,
+      );
 
       fireEvent.click(within(dialog).getByRole("button", { name: "Replace" }));
 
@@ -280,19 +294,19 @@ describe("DataManagement", () => {
           onReplaceAll={vi.fn(() => true)}
           profile={{}}
           onReplaceProfile={vi.fn(() => true)}
-        />
+        />,
       );
       uploadText(
         withShots([
           { id: "good", date: "2026-05-01" },
           { id: "b1", date: "9999-01-01" },
           { id: "b2", date: "9999-01-01" },
-        ])
+        ]),
       );
       fireEvent.click(
         within(await screen.findByRole("dialog")).getByRole("button", {
           name: "Replace",
-        })
+        }),
       );
       const status = screen.getByRole("status");
       expect(status).toHaveTextContent("Restored 1 of 3 entries from backup.");
@@ -310,18 +324,18 @@ describe("DataManagement", () => {
           onReplaceAll={vi.fn(() => true)}
           profile={{}}
           onReplaceProfile={vi.fn(() => true)}
-        />
+        />,
       );
       uploadText(
         withShots([
           { id: "good", date: "2026-05-01" },
           ...[...Array(8)].map((_, i) => ({ id: `b${i}`, date: "9999-01-01" })),
-        ])
+        ]),
       );
       fireEvent.click(
         within(await screen.findByRole("dialog")).getByRole("button", {
           name: "Replace",
-        })
+        }),
       );
       const status = screen.getByRole("status");
       expect(status).toHaveTextContent("Restored 1 of 9 entries from backup.");
@@ -338,20 +352,22 @@ describe("DataManagement", () => {
           onReplaceAll={vi.fn(() => true)}
           profile={{}}
           onReplaceProfile={vi.fn(() => true)}
-        />
+        />,
       );
       uploadText(
         withShots([
           { id: "good", date: "2026-05-01" },
           { id: "huge", date: "9".repeat(5000) },
-        ])
+        ]),
       );
       fireEvent.click(
         within(await screen.findByRole("dialog")).getByRole("button", {
           name: "Replace",
-        })
+        }),
       );
-      const line = within(screen.getByRole("status")).getAllByRole("listitem")[0];
+      const line = within(screen.getByRole("status")).getAllByRole(
+        "listitem",
+      )[0];
       expect(line.textContent!.length).toBeLessThan(120);
       expect(line).toHaveTextContent(/…/);
     });
@@ -363,17 +379,19 @@ describe("DataManagement", () => {
           onReplaceAll={vi.fn(() => true)}
           profile={{}}
           onReplaceProfile={vi.fn(() => true)}
-        />
+        />,
       );
       uploadText(
-        withShots([{ id: "good", date: "2026-05-01" }, { id: "no-date" }])
+        withShots([{ id: "good", date: "2026-05-01" }, { id: "no-date" }]),
       );
       fireEvent.click(
         within(await screen.findByRole("dialog")).getByRole("button", {
           name: "Replace",
-        })
+        }),
       );
-      expect(screen.getByRole("status")).toHaveTextContent(/The 2nd entry in the file/);
+      expect(screen.getByRole("status")).toHaveTextContent(
+        /The 2nd entry in the file/,
+      );
     });
 
     it("says nothing about skipping when every entry restored", async () => {
@@ -385,7 +403,7 @@ describe("DataManagement", () => {
           onReplaceAll={vi.fn(() => true)}
           profile={{}}
           onReplaceProfile={vi.fn(() => true)}
-        />
+        />,
       );
       uploadText(toJson([{ id: "a", date: "2026-05-01" }]));
       const dialog = await screen.findByRole("dialog");
@@ -405,7 +423,7 @@ describe("DataManagement", () => {
           onReplaceAll={onReplaceAll}
           profile={{}}
           onReplaceProfile={vi.fn(() => true)}
-        />
+        />,
       );
       uploadText(withShots([{ id: "a", date: "9999-01-01" }]));
 
@@ -429,19 +447,21 @@ describe("DataManagement", () => {
           onReplaceAll={vi.fn(() => true)}
           profile={{ preferredName: "Lou" }}
           onReplaceProfile={onReplaceProfile}
-        />
+        />,
       );
       uploadText(
-        withShots([{ id: "a", date: "2026-05-01" }], { startDate: "not-a-date" })
+        withShots([{ id: "a", date: "2026-05-01" }], {
+          startDate: "not-a-date",
+        }),
       );
       fireEvent.click(
         within(await screen.findByRole("dialog")).getByRole("button", {
           name: "Replace",
-        })
+        }),
       );
       expect(onReplaceProfile).not.toHaveBeenCalled();
       expect(screen.getByRole("status")).toHaveTextContent(
-        /saved profile in the file couldn.t be read/i
+        /saved profile in the file couldn.t be read/i,
       );
     });
 
@@ -458,7 +478,7 @@ describe("DataManagement", () => {
           onReplaceAll={onReplaceAll}
           profile={{}}
           onReplaceProfile={onReplaceProfile}
-        />
+        />,
       );
 
       uploadText(toJson([{ id: "imp", date: "2026-05-01", doseMg: 40 }]));
@@ -466,9 +486,11 @@ describe("DataManagement", () => {
       fireEvent.click(within(dialog).getByRole("button", { name: "Replace" }));
 
       expect(screen.getByRole("status")).toHaveTextContent(
-        /Couldn.t restore the backup/
+        /Couldn.t restore the backup/,
       );
-      expect(screen.getByRole("status")).toHaveTextContent(/Nothing has been changed/);
+      expect(screen.getByRole("status")).toHaveTextContent(
+        /Nothing has been changed/,
+      );
       expect(screen.queryByText(/Restored/)).not.toBeInTheDocument();
       // Nothing half-applied: the profile is never touched once shots refuse.
       expect(onReplaceProfile).not.toHaveBeenCalled();
@@ -487,10 +509,12 @@ describe("DataManagement", () => {
           onReplaceAll={onReplaceAll}
           profile={{}}
           onReplaceProfile={onReplaceProfile}
-        />
+        />,
       );
 
-      uploadText(toJson([{ id: "imp", date: "2026-05-01" }], { preferredName: "Lou" }));
+      uploadText(
+        toJson([{ id: "imp", date: "2026-05-01" }], { preferredName: "Lou" }),
+      );
       const dialog = await screen.findByRole("dialog");
       fireEvent.click(within(dialog).getByRole("button", { name: "Replace" }));
 
@@ -509,11 +533,13 @@ describe("DataManagement", () => {
           onReplaceAll={onReplaceAll}
           profile={{ preferredName: "Old" }}
           onReplaceProfile={onReplaceProfile}
-        />
+        />,
       );
 
       const incoming: ShotEntry[] = [{ id: "imp", date: "2026-05-01" }];
-      uploadText(toJson(incoming, { preferredName: "New", startDate: "2024-02-02" }));
+      uploadText(
+        toJson(incoming, { preferredName: "New", startDate: "2024-02-02" }),
+      );
 
       const dialog = await screen.findByRole("dialog");
       fireEvent.click(within(dialog).getByRole("button", { name: "Replace" }));
@@ -525,7 +551,7 @@ describe("DataManagement", () => {
       });
       // The user is told the profile changed, not just the shot count.
       expect(screen.getByRole("status")).toHaveTextContent(
-        "Your profile was updated."
+        "Your profile was updated.",
       );
     });
 
@@ -537,7 +563,7 @@ describe("DataManagement", () => {
           onReplaceAll={vi.fn(() => true)}
           profile={sameProfile}
           onReplaceProfile={vi.fn(() => true)}
-        />
+        />,
       );
 
       // Re-import a backup whose profile equals what's already set.
@@ -558,18 +584,20 @@ describe("DataManagement", () => {
           onReplaceAll={vi.fn(() => true)}
           profile={{ shotDay: "monday" }}
           onReplaceProfile={onReplaceProfile}
-        />
+        />,
       );
 
       // Only the shot day differs — name and start date are both absent on each
       // side. The change must still surface (not silently overwrite the shot day).
-      uploadText(toJson([{ id: "imp", date: "2026-05-01" }], { shotDay: "friday" }));
+      uploadText(
+        toJson([{ id: "imp", date: "2026-05-01" }], { shotDay: "friday" }),
+      );
       const dialog = await screen.findByRole("dialog");
       fireEvent.click(within(dialog).getByRole("button", { name: "Replace" }));
 
       expect(onReplaceProfile).toHaveBeenCalledWith({ shotDay: "friday" });
       expect(screen.getByRole("status")).toHaveTextContent(
-        "Your profile was updated."
+        "Your profile was updated.",
       );
     });
 
@@ -580,7 +608,7 @@ describe("DataManagement", () => {
           onReplaceAll={vi.fn(() => true)}
           profile={{ preferredName: "Lou", startDate: "2025-01-15" }}
           onReplaceProfile={vi.fn(() => true)}
-        />
+        />,
       );
 
       uploadText(toJson([{ id: "imp", date: "2026-05-01" }]));
@@ -605,7 +633,7 @@ describe("DataManagement", () => {
           onReplaceAll={vi.fn(() => true)}
           profile={{ preferredName: "Old" }}
           onReplaceProfile={onReplaceProfile}
-        />
+        />,
       );
 
       uploadText(toJson([{ id: "imp", date: "2026-05-01" }]));
@@ -615,7 +643,35 @@ describe("DataManagement", () => {
       expect(onReplaceProfile).toHaveBeenCalledWith({});
       // A cleared name shouldn't happen silently.
       expect(screen.getByRole("status")).toHaveTextContent(
-        "Your saved profile was cleared."
+        "Your saved profile was cleared.",
+      );
+    });
+
+    it("calls a dismissal-only profile cleared, because that is what it does", async () => {
+      // A backup from someone who tapped Done and set nothing else carries
+      // `{firstRunDone: true}` and nothing more. `replaceProfile` is a full
+      // swap, so importing it onto a device WITH a name wipes that name — and
+      // counting raw keys reported "Your profile was updated", which describes
+      // the opposite of what happened. The destructive outcome is the same
+      // either way; only the sentence was wrong.
+      const onReplaceProfile = vi.fn(() => true);
+      render(
+        <DataManagement
+          shots={shots}
+          onReplaceAll={vi.fn(() => true)}
+          profile={{ preferredName: "Old" }}
+          onReplaceProfile={onReplaceProfile}
+        />,
+      );
+
+      uploadText(
+        toJson([{ id: "imp", date: "2026-05-01" }], { firstRunDone: true }),
+      );
+      const dialog = await screen.findByRole("dialog");
+      fireEvent.click(within(dialog).getByRole("button", { name: "Replace" }));
+
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "Your saved profile was cleared.",
       );
     });
 
@@ -627,7 +683,7 @@ describe("DataManagement", () => {
           onReplaceAll={onReplaceAll}
           profile={{}}
           onReplaceProfile={vi.fn(() => true)}
-        />
+        />,
       );
 
       uploadText(toJson([{ id: "imp", date: "2026-05-01" }]));
@@ -641,7 +697,7 @@ describe("DataManagement", () => {
       expect(onReplaceAll).not.toHaveBeenCalled();
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
       expect(screen.getByRole("status")).toHaveTextContent(
-        /couldn.t back up your current data/i
+        /couldn.t back up your current data/i,
       );
     });
 
@@ -652,7 +708,7 @@ describe("DataManagement", () => {
           onReplaceAll={vi.fn(() => true)}
           profile={{}}
           onReplaceProfile={vi.fn(() => true)}
-        />
+        />,
       );
 
       uploadText(toJson([{ id: "imp", date: "2026-05-01" }]));
@@ -681,7 +737,7 @@ describe("DataManagement", () => {
       // Closing returns focus to the button that opened the dialog.
       fireEvent.click(cancel);
       expect(
-        screen.getByRole("button", { name: "Import backup (JSON)" })
+        screen.getByRole("button", { name: "Import backup (JSON)" }),
       ).toHaveFocus();
     });
 
@@ -693,7 +749,7 @@ describe("DataManagement", () => {
           onReplaceAll={onReplaceAll}
           profile={{}}
           onReplaceProfile={vi.fn(() => true)}
-        />
+        />,
       );
 
       uploadText(toJson([{ id: "imp", date: "2026-05-01" }]));

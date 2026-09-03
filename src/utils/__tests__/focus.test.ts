@@ -230,3 +230,29 @@ describe("reduced motion covers every control that animates", () => {
     expect(blocks.join("\n")).toContain(".pain-chip");
   });
 });
+
+describe("the pain chips carry selection in more than hue", () => {
+  it("declares a different font-weight for the selected chip", () => {
+    // The comment on the selected rule promises fill, border AND weight — and
+    // the weight was a no-op, because the global `label` rule already sets 600
+    // and the selected state asked for 600 too. Measured in Chrome: all four
+    // chips computed 600 either way, so one of the three stated signals did not
+    // exist. Read from the stylesheet because jsdom computes nothing from it.
+    const css = readFileSync(`${process.cwd()}/src/styles.css`, "utf8").replace(
+      /\/\*[\s\S]*?\*\//g,
+      "",
+    );
+    const body = (selector: string) =>
+      new RegExp(`(?:^|\\})\\s*${selector}\\s*\\{([^}]*)\\}`, "m").exec(
+        css,
+      )?.[1] ?? "";
+    const weight = (selector: string) =>
+      /font-weight:\s*([^;]+)/.exec(body(selector))?.[1].trim();
+
+    const resting = weight("\\.pain-chip");
+    const selected = weight("\\.pain-chip--on");
+    expect(resting).toBeDefined();
+    expect(selected).toBeDefined();
+    expect(selected).not.toBe(resting);
+  });
+});

@@ -18,7 +18,6 @@ import { handOffFocus } from "../utils/focus";
 import type { FocusableElement } from "../utils/focus";
 import { tabbablesIn } from "../utils/tabbing";
 
-/** Inputs whose own Tab handling moves between segments inside the control. */
 /**
  * A radio whose group has no checked member.
  *
@@ -29,12 +28,17 @@ import { tabbablesIn } from "../utils/tabbing";
  */
 function isRadioInUncheckedGroup(el: Element | null): boolean {
   if (!(el instanceof HTMLInputElement) || el.type !== "radio") return false;
+  // An unnamed radio is not in a group at all — and `[name=""]` matches nothing,
+  // so without this it would look unchecked forever and be handed to the browser
+  // on every Tab.
+  if (el.name === "") return false;
   const scope: ParentNode = el.form ?? el.ownerDocument;
   return !scope.querySelector(
     `input[type="radio"][name="${CSS.escape(el.name)}"]:checked`,
   );
 }
 
+/** Inputs whose own Tab handling moves between segments inside the control. */
 const SEGMENTED_INPUT =
   'input[type="date"], input[type="time"], input[type="datetime-local"], ' +
   'input[type="month"], input[type="week"]';
@@ -250,10 +254,20 @@ export function useFocusTrap(
       // them as somewhere to go and hand the browser a Tab that walks off the
       // end of an inert page.
       if (at !== -1 && isRadioInUncheckedGroup(active)) {
+        // Scoped to the same form AND the same non-empty name, matching
+        // `isRadioInUncheckedGroup` above. Matching on name alone was a
+        // narrower claim than that function makes: two forms in one dialog
+        // sharing a name would have had the span cross between them, and a
+        // radio with NO name would lump every unnamed radio in the dialog into
+        // one "group". Neither is reachable through today's single-form sheet;
+        // both are the kind of thing B½ adds fields to this sheet to find.
+        const activeRadio = active as HTMLInputElement;
         const sameGroup = (el: FocusableElement) =>
           el instanceof HTMLInputElement &&
           el.type === "radio" &&
-          el.name === (active as HTMLInputElement).name;
+          el.name !== "" &&
+          el.name === activeRadio.name &&
+          el.form === activeRadio.form;
         const first = list.findIndex(sameGroup);
         let last = first;
         while (last + 1 < list.length && sameGroup(list[last + 1])) last++;
