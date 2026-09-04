@@ -11,7 +11,7 @@ import { parseBackup } from "../utils/importData";
 import { backupFilename, tryDownloadTextFile } from "../utils/download";
 import { pluralizeEntries } from "../utils/format";
 import type { SkippedEntry } from "../utils/importData";
-import { hasProfileData, pickProfileFields } from "../utils/backupDto";
+import { hasProfileData, profileDataFields } from "../utils/backupDto";
 import { Modal } from "./Modal";
 
 interface DataManagementProps {
@@ -240,11 +240,20 @@ export const DataManagement: React.FC<DataManagementProps> = ({
     // so a name that was overwritten or cleared shouldn't happen silently — but
     // don't claim a change when the imported profile matches the current one
     // (e.g. re-importing your own backup). Compare on known fields only.
-    const knownCurrent = pickProfileFields(profile);
+    // `profileDataFields`, not `pickProfileFields`: `firstRunDone` is not the
+    // user's profile, and it must leave BOTH sides of this compare or the
+    // sentence disagrees with `incomingHasData` below, which already excludes
+    // it.
+    const knownCurrent = profileDataFields(profile);
     // incomingProfile is already DTO-picked (from parseBackup), so its own keys
     // are exactly the known non-blank fields — no need to re-pick it.
-    const incomingHasData = Object.keys(pending.incomingProfile).length > 0;
-    // Compare the whole picked profile, not field-by-field: pickProfileFields
+    // `hasProfileData`, not a raw key count: a backup carrying only
+    // `firstRunDone` is a dismissal, not a profile. Counting keys reported
+    // "Your profile was updated" while `replaceProfile` was in fact wiping the
+    // destination's name, start date, shot day and interval — the destructive
+    // outcome unchanged, the sentence describing it the wrong one.
+    const incomingHasData = hasProfileData(pending.incomingProfile);
+    // Compare the whole picked profile, not field-by-field: the picker
     // writes keys in a fixed order, so a serialized compare is stable AND can't
     // silently miss a newly added field (e.g. shotDay) the way an explicit
     // per-field check does. Any change — including a shot-day-only one — surfaces
@@ -252,7 +261,8 @@ export const DataManagement: React.FC<DataManagementProps> = ({
     // per-field messaging.
     const profileChanged =
       !pending.profileUnreadable &&
-      JSON.stringify(knownCurrent) !== JSON.stringify(pending.incomingProfile);
+      JSON.stringify(knownCurrent) !==
+        JSON.stringify(profileDataFields(pending.incomingProfile));
 
     const restored = pending.incoming.length;
     // "43 of 44" only when the two differ. Saying "restored 44 of 44" on every

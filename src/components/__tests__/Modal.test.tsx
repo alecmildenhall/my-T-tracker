@@ -980,7 +980,11 @@ describe("the sheet exit duration is one value in three places", () => {
       .filter(([, selectors]) =>
         selectors
           .split(",")
-          .some((s) => /\.dialog(-overlay)?--sheet\.is-closing\b/.test(s))
+          .some((s) =>
+            /\.dialog(-overlay)?--sheet\.is-closing\b|\.first-shot-card--leaving\b/.test(
+              s,
+            ),
+          )
       )
       .map(([, , body]) => /transition-duration:\s*(\d+)ms/.exec(body)?.[1])
       .filter((d): d is string => d !== undefined)
@@ -989,7 +993,13 @@ describe("the sheet exit duration is one value in three places", () => {
     // Both top-level exits AND the media-scoped one. A bare "> 0" is what let the
     // nesting blindness above pass unnoticed: it kept finding the two top-level
     // rules and reported a healthy maximum while the `@media` rule was invisible.
-    expect(durations).toHaveLength(3);
+    // Three sheet rules plus the first-run card's exit, which borrows this same
+    // constant. The card is in scope here rather than in its own file because
+    // what is being pinned is SHEET_EXIT_MS, not the Modal: any surface that
+    // waits on it and outlasts it in CSS unmounts mid-motion. Its
+    // reduced-motion rule is `transition: none` and carries no duration, so it
+    // contributes nothing to count.
+    expect(durations).toHaveLength(4);
 
     // Equal to the longest, not to every one: the reduced-motion block shortens
     // the exit deliberately, and a CSS exit *shorter* than the JS wait is

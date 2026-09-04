@@ -1,9 +1,10 @@
+import { readFileSync } from "node:fs";
 import { describe, it, expect, afterEach } from "vitest";
 import { handOffFocus } from "../focus";
 
 const mounted = <K extends keyof HTMLElementTagNameMap>(
   tag: K,
-  init?: (el: HTMLElementTagNameMap[K]) => void
+  init?: (el: HTMLElementTagNameMap[K]) => void,
 ): HTMLElementTagNameMap[K] => {
   const el = document.createElement(tag);
   init?.(el);
@@ -132,6 +133,18 @@ describe("the ring guard itself", () => {
     // every list arrives glued to the comment above it and never matches.
     expect(__ringSelectorsForTest.every((s) => !s.includes("/*"))).toBe(true);
     expect(__ringSelectorsForTest.every((s) => !s.includes("*/"))).toBe(true);
+    // Every pseudo is stripped, including `:focus-within`. It was not: the
+    // pattern matched `:focus` inside it and left `-within` behind, turning
+    // `.pain-chip:focus-within` into `.pain-chip-within` — a selector that
+    // matches nothing, so the chips' only focus indicator was invisible to this
+    // guard and the test relying on it passed with the rule deleted.
+    expect(__ringSelectorsForTest.every((s) => !s.includes("focus"))).toBe(
+      true,
+    );
+    expect(__ringSelectorsForTest.every((s) => !s.includes("-within"))).toBe(
+      true,
+    );
+    expect(__ringSelectorsForTest).toContain(".pain-chip");
   });
 
   it("counts a focus rule that reveals a hidden element, not just outlines", async () => {
@@ -143,7 +156,6 @@ describe("the ring guard itself", () => {
     const { __ringSelectorsForTest } = await import("../../test/focusRing");
     expect(__ringSelectorsForTest).toContain(".skip-link");
   });
-
 
   it("does not count a rule that only REMOVES the ring", async () => {
     // Driven by synthetic CSS, not the live stylesheet: nothing in styles.css
@@ -159,23 +171,239 @@ describe("the ring guard itself", () => {
     expect(parseRingSelectors(".a:focus { outline: 0; }")).toEqual([]);
     // The variants a literal two-string check let through as "ringed".
     expect(parseRingSelectors(".a:focus { outline: 0px; }")).toEqual([]);
-    expect(parseRingSelectors(".a:focus { outline: none !important; }")).toEqual([]);
     expect(
-      parseRingSelectors(".a:focus { outline: none; outline-offset: 0; }")
+      parseRingSelectors(".a:focus { outline: none !important; }"),
+    ).toEqual([]);
+    expect(
+      parseRingSelectors(".a:focus { outline: none; outline-offset: 0; }"),
     ).toEqual([]);
     // outline-offset alone paints nothing — it shifts an outline that has to come
     // from elsewhere. `.tabbar:focus-visible { outline-offset: -2px }` is a real
     // rule in this stylesheet, and counting it as a ring put .tabbar in the
     // allowlist twice, so losing the actual rule would have gone unnoticed.
-    expect(parseRingSelectors(".a:focus { outline-offset: -2px; }")).toEqual([]);
+    expect(parseRingSelectors(".a:focus { outline-offset: -2px; }")).toEqual(
+      [],
+    );
     expect(parseRingSelectors(".a:focus { outline-offset: 4px; }")).toEqual([]);
     // ...but removing the outline while painting something else does count.
     // (parseRingSelectors returns selectors with the pseudo still attached; the
     // module strips it afterwards so jsdom's `matches()` can test the element.)
     expect(
-      parseRingSelectors(".a:focus { outline: none; box-shadow: 0 0 0 2px red; }")
+      parseRingSelectors(
+        ".a:focus { outline: none; box-shadow: 0 0 0 2px red; }",
+      ),
     ).toEqual([".a:focus"]);
     // ...and any focus treatment counts, not just an allow-list of properties.
-    expect(parseRingSelectors(".a:focus { left: 0; top: 0; }")).toEqual([".a:focus"]);
+    expect(parseRingSelectors(".a:focus { left: 0; top: 0; }")).toEqual([
+      ".a:focus",
+    ]);
+  });
+});
+
+describe("reduced motion covers every control that animates", () => {
+  it("has no transition left running for someone who asked for none", () => {
+    // The pain chips declare their own colour transition and were the only
+    // interactive control still fading under prefers-reduced-motion, whose own
+    // comment promises "make state changes instant (no colour fade) ... on
+    // every button". Parsed from the real stylesheet so it cannot drift.
+    const css = readFileSync(`${process.cwd()}/src/styles.css`, "utf8").replace(
+      /\/\*[\s\S]*?\*\//g,
+      "",
+    );
+    // EVERY reduced-motion block, each matched with its own braces balanced —
+    // not "the first one to the last closing brace in the file".
+    //
+    // That greedy version passed vacuously, and HOW it broke is the point: it
+    // was correct when written, because the only reduced-motion block sat AFTER
+    // the ordinary `.pain-chip` rules, so the capture held just the allowlist.
+    // A later commit added a second block EARLIER in the file, which moved the
+    // capture's start above those rules and let `.pain-chip` be found in the
+    // wrong place. Nothing touched this test; a change elsewhere in the
+    // stylesheet disarmed it.
+    const blocks = [
+      ...css.matchAll(
+        /@media \(prefers-reduced-motion: reduce\) \{((?:[^{}]|\{[^{}]*\})*)\}/g,
+      ),
+    ].map((m) => m[1]);
+
+    expect(blocks.length).toBeGreaterThan(0);
+    expect(blocks.join("\n")).toContain(".pain-chip");
+  });
+});
+
+describe("the pain chips carry selection in more than hue", () => {
+  it("declares a different font-weight for the selected chip", () => {
+    // The comment on the selected rule promises fill, border AND weight — and
+    // the weight was a no-op, because the global `label` rule already sets 600
+    // and the selected state asked for 600 too. Measured in Chrome: all four
+    // chips computed 600 either way, so one of the three stated signals did not
+    // exist. Read from the stylesheet because jsdom computes nothing from it.
+    const css = readFileSync(`${process.cwd()}/src/styles.css`, "utf8").replace(
+      /\/\*[\s\S]*?\*\//g,
+      "",
+    );
+    const body = (selector: string) =>
+      new RegExp(`(?:^|\\})\\s*${selector}\\s*\\{([^}]*)\\}`, "m").exec(
+        css,
+      )?.[1] ?? "";
+    const weight = (selector: string) =>
+      /font-weight:\s*([^;]+)/.exec(body(selector))?.[1].trim();
+
+    const resting = weight("\\.pain-chip");
+    const selected = weight("\\.pain-chip--on");
+    expect(resting).toBeDefined();
+    expect(selected).toBeDefined();
+    expect(selected).not.toBe(resting);
+  });
+});
+
+/**
+ * Which declaration of `property` actually WINS for `el`, per the real cascade.
+ *
+ * Source order is only half the cascade, and the half that had already bitten
+ * here — so a guard that checks arrangement passes while the property it
+ * protects is broken. Three defects on this branch came in through the other
+ * half: a pseudo-class or an extra element in the selector ADDS SPECIFICITY,
+ * which no amount of reordering can answer. Ask which value wins instead.
+ *
+ * @param states pseudo-classes to treat as active (e.g. `["hover", "active"]`)
+ */
+function winningValue(
+  el: Element,
+  property: string,
+  states: string[] = [],
+): string | undefined {
+  const css = readFileSync(`${process.cwd()}/src/styles.css`, "utf8");
+  // Comments first — this file is heavily commented and the prose carries
+  // commas and colons, which would otherwise be fed to `matches()` as
+  // selectors. Then innermost rules only, so a body containing `{` is not a
+  // body: the same nesting-proof shape the SHEET_EXIT_MS guard uses.
+  const rules = [
+    ...css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^{}]*)\}/g),
+  ];
+
+  // (ids, classes + attributes + pseudo-classes, elements). `:not(...)`
+  // contributes its argument rather than itself, which is why it is unwrapped.
+  const specificity = (sel: string): number => {
+    const bare = sel.replace(/:not\(|\)/g, " ");
+    const ids = (bare.match(/#[\w-]+/g) ?? []).length;
+    const classes = (bare.match(/\.[\w-]+|\[[^\]]*\]|:[\w-]+(?!\()/g) ?? []).length;
+    const elements = (bare.match(/(?:^|[\s>+~])[a-z][\w-]*/g) ?? []).length;
+    return ids * 10000 + classes * 100 + elements;
+  };
+
+  const granted = new RegExp(`:(?:${["__never__", ...states].join("|")})`, "g");
+  const matched: { spec: number; at: number; value: string }[] = [];
+
+  rules.forEach(([, selectors, body], at) => {
+    // Longhand and shorthand both, last one in the block winning.
+    const decls = [
+      ...body.matchAll(
+        new RegExp(`(?:^|;)\\s*(${property})\\s*:\\s*([^;]+)`, "g"),
+      ),
+    ];
+    if (decls.length === 0) return;
+    const value = decls[decls.length - 1][2].trim();
+
+    for (const raw of selectors.split(",")) {
+      const sel = raw.trim();
+      const grounded = sel.replace(granted, "");
+      // Any pseudo-class we were NOT asked to grant means the rule is inactive.
+      if (/:[\w-]+/.test(grounded.replace(/:not\([^)]*\)/g, ""))) continue;
+      let hit = false;
+      try {
+        hit = el.matches(grounded);
+      } catch {
+        throw new Error(`unparseable selector in styles.css: "${sel}"`);
+      }
+      if (hit) matched.push({ spec: specificity(sel), at, value });
+    }
+  });
+
+  if (matched.length === 0) return undefined;
+  // Highest specificity wins; ties go to whichever comes last.
+  matched.sort((a, b) => a.spec - b.spec || a.at - b.at);
+  return matched[matched.length - 1].value;
+}
+
+describe("a state rule has to come after the rule it overrides", () => {
+  it("puts the Done button's confirmed state after its base", () => {
+    // Both are a single class, so at equal specificity source order decides.
+    // Written first, `--confirmed` lost every declaration to the base rule's
+    // `background: var(--accent)` — measured in a browser, the button showed
+    // "✓ Done" and stayed blue.
+    //
+    // This is the third time on this branch that a rule placed before the one
+    // it overrides has silently done nothing (the saved-value wash's radius and
+    // `body`'s base colour were the others), so it is pinned rather than
+    // remembered.
+    const css = readFileSync(`${process.cwd()}/src/styles.css`, "utf8");
+    const base = css.indexOf(".first-shot-card__done-button {");
+    const confirmed = css.indexOf(".first-shot-card__done-button--confirmed {");
+    expect(base).toBeGreaterThan(-1);
+    expect(confirmed).toBeGreaterThan(-1);
+    expect(confirmed).toBeGreaterThan(base);
+  });
+
+  it("keeps the Done button green under every pointer state", () => {
+    /*
+     * A pseudo-class ADDS SPECIFICITY, so `:hover` outranks the confirmed
+     * state's single class wherever either one sits — order cannot reach it.
+     * Screenshotted mid-beat, the button read "✓ Done" on hover-blue, and since
+     * the cursor is by definition still on a button you just clicked, the green
+     * confirmation was never visible on desktop at all.
+     *
+     * Two separate rules did it, and fixing only the obvious one left it
+     * broken: the button's own `:hover`, and `.secondary-button:hover/:active`,
+     * which sets a background because this is a secondary button. Asserting the
+     * OUTCOME rather than the presence of any particular override is what
+     * catches the next rule nobody thought of — and it catches that first,
+     * partial fix.
+     */
+    const button = document.createElement("button");
+    button.className =
+      "secondary-button first-shot-card__done-button " +
+      "first-shot-card__done-button--confirmed";
+    document.body.append(button);
+    try {
+      // Hovered AND pressed: the worst case, and the real one — you are
+      // pressing the button at the moment the ✓ appears.
+      expect(winningValue(button, "background(?:-color)?", ["hover", "active"])).toBe(
+        "var(--success)",
+      );
+    } finally {
+      button.remove();
+    }
+  });
+
+  it("leaves the sheet title no margin to sit above the ✕ on", () => {
+    /*
+     * The bar is `align-items: center`, which centres the MARGIN box — so a
+     * bottom margin lifts the title by half of it. `.shot-form h2` (0,1,1)
+     * outranked `.shot-form__title` (0,1,0) and put 1rem under a heading that
+     * had explicitly zeroed its margin, leaving it 8px above the ✕ it lines up
+     * with. Both of that class rule's declarations were dead, so the font-size
+     * was wrong too and nobody had noticed.
+     *
+     * Third instance of this on the branch, all three the same shape: a rule
+     * that reads like an override and loses on specificity.
+     */
+    const form = document.createElement("form");
+    form.className = "shot-form";
+    const bar = document.createElement("div");
+    bar.className = "shot-form__bar shot-form__bar--top";
+    const title = document.createElement("h2");
+    title.className = "shot-form__title";
+    bar.append(title);
+    form.append(bar);
+    document.body.append(form);
+    try {
+      const margin = winningValue(title, "margin(?:-bottom)?");
+      expect(margin).toBeDefined();
+      // "0", "0px", "0 0 0" — any of them centre; a non-zero one does not.
+      expect(margin!.split(/\s+/).every((v) => parseFloat(v) === 0)).toBe(true);
+    } finally {
+      form.remove();
+    }
   });
 });

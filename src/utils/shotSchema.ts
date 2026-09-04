@@ -7,6 +7,7 @@ import { APP_NAME, FORMAT_VERSION } from "../appMeta";
 import { isRealDate, isShotDateInRange } from "./civilDate";
 import { WEEKDAYS } from "./weekday";
 import { MIN_INTERVAL_DAYS, MAX_INTERVAL_DAYS } from "../types/profile";
+import { PAIN_LEVELS } from "../types/shot";
 
 const TIME_RE = /^\d{2}:\d{2}$/; // HH:MM
 
@@ -44,7 +45,7 @@ export const shotEntrySchema = z.strictObject({
   injectionSitePosition: z.string().min(1).optional(),
   testosteroneEster: z.string().min(1).optional(),
   carrierOil: z.string().min(1).optional(),
-  painScore: z.number().int().min(0).max(10).optional(),
+  pain: z.enum(PAIN_LEVELS).optional(),
   mood: z.string().min(1).optional(),
   notes: z.string().min(1).optional(),
   // Same range rule as `date`: a planned date is a date the app could have
@@ -79,6 +80,7 @@ export const profileSchema = z.strictObject({
   // Shot day is an enum: only the seven weekday keys are accepted, so a hand-edit
   // or hostile file can't smuggle an arbitrary string past the boundary.
   shotDay: z.enum(WEEKDAYS).optional(),
+  firstRunDone: z.boolean().optional(),
   // Bounds imported rather than restated, so this and the DTO allowlist cannot
   // drift into the app exporting a file its own importer refuses.
   intervalDays: z

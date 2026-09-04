@@ -14,6 +14,15 @@
      acknowledgement reads as the app's own voice rather than a new signal. */
   --success: #4ade80;
   --success-wash: rgba(74, 222, 128, 0.16);
+  /* Injection-pain intensity. "None" is deliberately NEUTRAL rather than green:
+     no pain is an absence, not a success, and green already means "that worked"
+     here (the save wash). Colour rises only as pain does. All four clear 4.5:1
+     on the sheet, and the label always carries the meaning — colour is never
+     the only signal (WCAG 1.4.1). */
+  --pain-none: #94a3b8;
+  --pain-mild: #fcd34d;
+  --pain-moderate: #fb923c;
+  --pain-severe: #f87171;
   /* Subtle neutral surface, defined once. Used for the resting suggestion chip
      and for the hover/press ("engaged") fill of neutral buttons, so those
      surfaces stay in sync and can never drift apart. */
@@ -168,12 +177,6 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.8rem;
-}
-
-.shot-form h2 {
-  margin-top: 0;
-  margin-bottom: 1rem;
-  font-size: 1.1rem;
 }
 
 .shot-form .secondary-button {
@@ -616,6 +619,16 @@ select {
   margin-bottom: 0;
 }
 
+/* The one word that decides whether someone feels obliged to fill this in, so
+   it gets the same treatment the labels do: full text colour against the
+   intro's muted grey, plus weight. Contrast is what carries it — at 0.8rem a
+   weight change on its own is easy to skim past, which is the finding the
+   label/hint hierarchy on this card was built from. */
+.first-shot-card__intro strong {
+  color: var(--text);
+  font-weight: 700;
+}
+
 .first-shot-card__intro {
   margin: 0;
   font-size: 0.8rem;
@@ -649,6 +662,154 @@ select {
   width: 100%;
   border-radius: 999px;
   padding-inline: 0.85rem;
+}
+
+/* The History pain facet, tinted to match the log sheet's chips so a level reads
+   the same wherever you meet it. The SELECT only — the <option>s deliberately
+   carry NO colour, and that is a contrast decision rather than the platform
+   one it started as.
+
+   These tokens are built for the app's dark surface, where they run 6.45:1 to
+   12.38:1. We do not control what the open list is painted on: several engines
+   draw it as a native popup on a SYSTEM background. Measured against white,
+   every token fails — Moderate at 2.26:1 and Mild at 1.44:1, which is barely
+   visible — so an engine honouring author `color` there produces unreadable
+   options (WCAG 1.4.3).
+
+   Pairing a `background` does not fix it and adds a worse case: an engine that
+   honours the background but not the colour gives dark-on-dark. There is no
+   colour that clears 4.5:1 on both grounds at this hue, so the option list goes
+   uncoloured. The closed select is what you see nearly always, it keeps its
+   tint, and the words carry the meaning either way (WCAG 1.4.1). */
+.pain-select--none {
+  color: var(--pain-none);
+}
+.pain-select--mild {
+  color: var(--pain-mild);
+}
+.pain-select--moderate {
+  color: var(--pain-moderate);
+}
+.pain-select--severe {
+  color: var(--pain-severe);
+}
+
+/* Longhand `transition-duration`, deliberately, not the shorthand: it is the
+   shape the SHEET_EXIT_MS guard in Modal.test.tsx extracts, and this card
+   borrows that constant. Written as a shorthand it was a fourth copy of the
+   number sitting outside the test that pins the other three. */
+.first-shot-card--leaving {
+  transition-property: opacity, transform;
+  transition-duration: 240ms;
+  transition-timing-function: cubic-bezier(0.3, 0, 0.8, 0.15);
+  opacity: 0;
+  transform: translateY(-6px) scale(0.985);
+  /* Nothing in a card that is on its way out should still be tappable. */
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The movement goes and the message stays: the ✓ still shows for its beat and
+     the card still leaves on schedule, it just does not travel. */
+  .first-shot-card--leaving {
+    transition: none;
+    transform: none;
+  }
+}
+
+/* The card's end. Separated from the questions above it by the same rule the
+   restore link uses, so "Done" reads as finishing the card rather than as one
+   more field. */
+.first-shot-card__done {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.first-shot-card__done .field-hint {
+  margin-bottom: 0;
+  text-align: center;
+}
+
+/* Full width, filled, label centred. A left-aligned outline button read as one
+   more link in a card full of them rather than as the thing that finishes it.
+   Full width is also the one-handed choice: the bottom corners are the hardest
+   part of a phone to reach, and a full-width target has no corner.
+   Actions belong at the bottom of a card, which is where this already sat —
+   what was missing was weight, not position.
+
+   ACCENT, deliberately not the primary button's cyan-to-green. That gradient
+   belongs to "+ Log a shot", which sits directly beneath this one: two
+   identical full-width gradient buttons a thumb apart would make the less
+   important of the two look like the page's main action, and finishing setup is
+   not more important than logging a shot. Filled-accent reads as unmistakably a
+   button while staying visibly a different one. */
+.first-shot-card__done-button {
+  width: 100%;
+  justify-content: center;
+  background: var(--accent);
+  border: none;
+  color: #04121c;
+  font-weight: 700;
+  font-size: 0.95rem;
+  min-height: 48px;
+}
+
+@media (hover: hover) {
+  .first-shot-card__done-button:hover {
+    background: #38bdf8;
+  }
+}
+
+.first-shot-card__done-button:active {
+  transform: scale(0.99);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .first-shot-card__done-button:active {
+    transform: none;
+  }
+}
+
+/* Done's ✓ beat. AFTER the base rule, not before: both are a single class, so
+   at equal specificity source order decides — and placed first this lost every
+   declaration to `background: var(--accent)` above. Measured: the button showed
+   "✓ Done" and stayed blue. That is the third time on this branch that a rule
+   written before the one it overrides has silently done nothing, so the order
+   is pinned by a test. */
+.first-shot-card__done-button--confirmed {
+  background: var(--success);
+  color: #052e16;
+  /* The confirmation SNAPS. Buttons share a 0.15s background-color transition,
+     which spends most of CONFIRM_MS fading in — screenshotted at 40 / 90 / 150 /
+     195ms, the green was only fully there on the last frame before the card
+     starts leaving. `.shot-form__save--confirmed` already does this; the ✓ beat
+     is an answer, not a mood. */
+  transition: none;
+  cursor: default;
+}
+
+/* Beats the interaction rules, which sit at (0,2,0) and therefore outrank the
+   confirmed state's single class WHEREVER it appears in the file — source order
+   cannot reach a specificity difference. Two rules hit this button, and fixing
+   only the obvious one left it broken: its own `:hover` (#38bdf8), and
+   `.secondary-button:hover/:active`, which sets `background: var(--surface-subtle)`
+   because this is a secondary button.
+
+   Screenshotted: on desktop the button read "✓ Done" on hover-blue for the whole
+   beat, and since the cursor is by definition still on a button you just
+   clicked, the green was never visible on desktop AT ALL. `.shot-form__save`
+   escapes this only by being a PRIMARY button, whose hover changes `filter`
+   rather than `background` — so it needed the `:active` half of this and not
+   the colour half. Same shape as `.shot-form__save--confirmed:active`. */
+.first-shot-card__done-button--confirmed:hover,
+.first-shot-card__done-button--confirmed:active {
+  background: var(--success);
+  color: #052e16;
+  transform: none;
+  filter: none;
 }
 
 .first-shot-card__restore {
@@ -797,6 +958,157 @@ select {
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: #94a3b8;
+}
+
+/* ---- Injection pain chips ------------------------------------------------ */
+
+.pain-field {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0; /* a fieldset defaults to min-content, which breaks flex rows */
+}
+
+/* The legend takes the label styling by hand: it is not a flex item — the
+   browser lifts it into the fieldset's own legend box — so neither the parent's
+   `gap` nor the `label` rule reaches it. */
+.pain-field legend {
+  padding: 0;
+  font-size: 0.8rem;
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* A MARGIN, not the container's gap, for the same reason — and deliberately
+   larger than an ordinary field's 0.3rem label gap. Measured: without it the
+   group ran on 4px where every other field gets 4.8px, so it was genuinely
+   tighter rather than only looking it. A chip row is lighter than a bordered
+   input and sits closer in visual weight to its label, so it needs more air to
+   read as separate at all. */
+.pain-chips {
+  display: flex;
+  /* `wrap`, not `nowrap`. All four fit one row from 375px up with room to
+     spare, so this never fires today — but `.field-cell` is `flex: 1 1 0` with
+     `min-width: 0`, so the row CAN be squeezed below its min-content: text-only
+     zoom, a longer label, or a third field added to the row. `nowrap` would
+     turn that into a horizontal scroll inside the sheet — two-dimensional
+     scrolling in the primary logging flow (WCAG 1.4.10) — where wrapping costs
+     nothing while there is room. */
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.55rem;
+}
+
+.pain-chip {
+  --pain: var(--pain-none);
+  position: relative;
+  flex: 0 0 auto;
+  min-height: 44px;
+  /* And 44 WIDE. "Mild" measured 42.7px once the padding was trimmed to fit all
+     four on one row — a hair under the target the chip rule cites Apple HIG
+     for. */
+  min-width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-subtle);
+  color: var(--pain);
+  font-size: 0.8rem;
+  /* Stated, because the global `label` rule sets 600 and the selected state
+     below also asked for 600 — so the weight signal the comment there claims
+     did not exist. Measured: all four chips computed 600 either way. */
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+/* The radio covers the chip so the whole pill is the target, and is invisible
+   rather than `display: none` — a hidden input is not focusable, which would
+   take the keyboard and arrow-key behaviour the native control is here for. */
+.pain-chip input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.pain-chip--none {
+  --pain: var(--pain-none);
+}
+.pain-chip--mild {
+  --pain: var(--pain-mild);
+}
+.pain-chip--moderate {
+  --pain: var(--pain-moderate);
+}
+.pain-chip--severe {
+  --pain: var(--pain-severe);
+}
+
+/* Selection is carried by fill, border AND weight — never hue alone, so it
+   still reads for someone who cannot separate amber from orange. A class from
+   React rather than `:has(input:checked)`: it works, and it is free to avoid. */
+.pain-chip--on {
+  border-color: var(--pain);
+  font-weight: 600;
+}
+.pain-chip--none.pain-chip--on {
+  background: rgba(148, 163, 184, 0.16);
+}
+.pain-chip--mild.pain-chip--on {
+  background: rgba(252, 211, 77, 0.16);
+}
+.pain-chip--moderate.pain-chip--on {
+  background: rgba(251, 146, 60, 0.16);
+}
+.pain-chip--severe.pain-chip--on {
+  background: rgba(248, 113, 113, 0.16);
+}
+
+/* The ring goes on the LABEL, because the input it belongs to is transparent
+   and stretched over the pill — an outline on that would trace the same box
+   invisibly.
+   `:has(input:focus-visible)` rather than `:focus-within`, which has no
+   modality-aware form: measured, a tapped chip kept a 2px outline while
+   `:focus-visible` was false, so it wore the selection styling AND a focus ring
+   at once — the "outline round a whole panel for a mouse user" this
+   stylesheet's hand-off rule already says `:focus-visible` exists to avoid. */
+.pain-chip:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The chip's real radio is `opacity: 0` and covers the whole label, so the
+   generic `input:focus` ring paints nothing you can see — the rule above is the
+   ONLY visible focus indicator these chips have. Without `:has()` (Firefox
+   before 121) that leaves keyboard focus completely invisible, which is a
+   WCAG 2.4.7 failure on the log sheet's one non-text control.
+
+   `:focus-within` is the fallback because it is the only selector that reaches
+   a parent without `:has()`. It is the less precise one — no modality-aware
+   form exists, so it also fires on tap — which is exactly why it is fenced
+   behind `@supports`: a browser that has `:has()` never sees it, and the
+   ring-on-tap this stylesheet took care to avoid does not come back. A ring
+   that is occasionally too eager beats no ring at all. */
+@supports not selector(:has(*)) {
+  .pain-chip:focus-within {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+
+.pain-clear {
+  align-self: flex-start;
+  margin-top: 0.4rem;
+  font-size: 0.78rem;
 }
 
 .field-error {
@@ -1458,6 +1770,16 @@ select {
   padding-bottom: calc(0.7rem + env(safe-area-inset-bottom, 0px));
 }
 
+/* The sheet's title owns its own styling, and nothing element-scoped may sit
+   beside it. `.shot-form h2` (0,1,1) used to, and it outranked this class
+   (0,1,0) — so BOTH declarations here were dead: the title rendered at 1.1rem
+   with a 1rem bottom margin it had explicitly zeroed.
+
+   The margin is what showed. The top bar is `align-items: center`, which
+   centres the MARGIN box, so a 20px title carrying 16px underneath sat 8px
+   above the ✕ it is meant to line up with — measured, and exactly half the
+   margin. That rule dated from when this form was inline and the heading had
+   fields under it; in a flex bar it was only ever wrong. */
 .shot-form__title {
   margin: 0;
   font-size: 1.05rem;
@@ -1696,6 +2018,10 @@ select {
   .primary-button,
   .secondary-button,
   .suggestion-chips .chip,
+  /* Added with the pain chips, which declare their own colour transition and
+     were otherwise the only interactive control in the app still fading for
+     someone who asked for no motion. */
+  .pain-chip,
   .manage-row__action,
   .manage-row__remove,
   .dialog-danger,

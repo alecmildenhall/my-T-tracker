@@ -9,16 +9,25 @@
 // local-only tracker with nothing to convert to. Most people should be able to
 // learn the interface by using it.
 //
-// It has no dismiss control, and that is the point: it is gone the moment there
-// is a shot to show, which is the very thing it is asking you to prepare for.
-// Nothing to dismiss, and no "dismissed" flag to store — the same derive-don't-
-// store reasoning the soreness card uses. It also means an IMPORT clears it for
-// free, since restoring a backup creates shots.
-import React, { useEffect, useRef, useState } from "react";
+// It goes on its own the moment there is a shot to show, which is the very thing
+// it is asking you to prepare for — so an IMPORT clears it for free, since
+// restoring a backup creates shots.
+//
+// That used to be the ONLY way out, on derive-don't-store reasoning: nothing to
+// dismiss, no flag to keep. The argument was sound and the situation it
+// described was not. Someone who does not want to set a cadence has no shot to
+// create either, so the card sat on Home indefinitely with no way to say "not
+// for me" — a screen you cannot dismiss is not a skippable pointer. `Done`
+// therefore stores `firstRunDone` (see `types/profile.ts` for why that flag is
+// not derivable from anything else), and the shot-exists rule survives beside
+// it as a second route rather than the only one.
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useProfileContext } from "../context/ProfileContext";
 import { WEEKDAYS, isWeekday, weekdayLabel } from "../utils/weekday";
 import { isWeeklyMultiple } from "../utils/schedule";
 import { handOffFocus } from "../utils/focus";
+import { CONFIRM_MS } from "../utils/timing";
+import { SHEET_EXIT_MS } from "./Modal";
 import { isRealDate } from "../utils/civilDate";
 import {
   isValidIntervalDays,
@@ -60,10 +69,15 @@ const QUICK_PICKS = [
 interface FirstShotCardProps {
   /** Takes them to Settings, where all of this lives permanently. */
   onGoToSettings: () => void;
+  /** Dismiss the card for good. The parent stores the flag AND hands focus on,
+   *  because this removes the section the button lives in — see App. */
+  /** @param heldFocus whether the card was holding focus as it went. */
+  onDone: (heldFocus: boolean) => void;
 }
 
 export const FirstShotCard: React.FC<FirstShotCardProps> = ({
   onGoToSettings,
+  onDone,
 }) => {
   const {
     profile,
@@ -210,6 +224,105 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
   const noticeRef = useRef<HTMLParagraphElement>(null);
 
   /**
+   * Done's three beats: idle, the ✓, then the card leaving.
+   *
+   * The same shape saving a shot uses — confirm in place for CONFIRM_MS, then
+   * let the surface go over its own exit — and for the same stated reason: a
+   * surface that vanishes on the frame you pressed it "reads as dropped rather
+   * than dismissed". This card had no beat at all, so the one moment where
+   * someone has just typed their name and their start date ended with the card
+   * simply not being there.
+   *
+   * Borrowing the beat and NOT the words is deliberate. "Logged for you." is
+   * reserved for taking a shot, and the roadmap's argument for it is that a
+   * constant phrase is what makes it read as the app's voice rather than
+   * decoration — spending it on a setup card is how it stops meaning anything.
+   */
+  const [dismissal, setDismissal] = useState<"idle" | "confirming" | "leaving">(
+    "idle",
+  );
+
+  /**
+   * Held in a ref so the beat below never restarts. `onDone` is an inline arrow
+   * in App, so a plain dependency re-arms the timer at its FULL duration on any
+   * parent render — and this card writes the profile on blur, which App
+   * consumes. Repeated renders inside the window would leave the ✓ up
+   * indefinitely. Same reason `useFocusTrap` holds `onEscape` this way.
+   */
+  const onDoneRef = useRef(onDone);
+  useEffect(() => {
+    onDoneRef.current = onDone;
+  });
+
+  /**
+   * Pressing Done is the DECISION; the ✓ and the slide are how it is
+   * acknowledged. Those need separate lifetimes, because the decision must not
+   * depend on the acknowledgement being allowed to finish.
+   *
+   * It did. `firstRunDone` was only written when the second timer fired, 440ms
+   * after the press, and Home unmounts when you leave it — so tapping a tab or
+   * swiping back inside that window cleared the timer and the dismissal was
+   * simply lost. Measured: the card was fully back on returning to Home, after
+   * the ✓ had already been shown. 440ms is a long time for a deliberate second
+   * tap, and nothing else was hiding the card, so the app looked like it forgot.
+   *
+   * Committing on the way out is what fixes it: the beat now owns only what the
+   * card LOOKS like, never whether the press counted.
+   */
+  const dismissing = useRef(false);
+
+  /*
+   * Whether the card was the thing HOLDING focus, captured as a fact rather
+   * than inferred afterwards.
+   *
+   * App needs this to decide whether to hand focus on, and the obvious test —
+   * "is `document.activeElement` the <body>?" — makes one value carry two
+   * meanings, which is the rule this codebase has paid for most. `<body>` means
+   * BOTH "focus was inside the card and the card has been removed" AND "focus
+   * was never anywhere", and the second is not an edge case: Safari does not
+   * focus a <button> on tap (`focus.ts` says so), so on the app's primary
+   * platform every tab tap leaves focus on <body> and the card would take it
+   * back — silently for sighted users, but moving a VoiceOver cursor to the
+   * page title after you tapped a tab.
+   *
+   * A LAYOUT cleanup runs before React detaches the node — measured: it sees
+   * `isConnected` true and still `contains()` the focused element, where the
+   * passive cleanup that commits the dismissal only ever sees <body>. So the
+   * question is asked at the last moment it is still itself, and stored.
+   */
+  const rootRef = useRef<HTMLElement>(null);
+  const heldFocus = () =>
+    !!rootRef.current?.contains(document.activeElement);
+  const heldFocusAtUnmount = useRef(false);
+  useLayoutEffect(
+    () => () => {
+      heldFocusAtUnmount.current = heldFocus();
+    },
+    [],
+  );
+
+  useEffect(
+    () => () => {
+      if (dismissing.current) onDoneRef.current(heldFocusAtUnmount.current);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (dismissal === "idle") return;
+    const wait = dismissal === "confirming" ? CONFIRM_MS : SHEET_EXIT_MS;
+    const t = window.setTimeout(() => {
+      if (dismissal === "confirming") setDismissal("leaving");
+      else {
+        // Disarmed first: the unmount this call triggers must not commit twice.
+        dismissing.current = false;
+        onDoneRef.current(heldFocus());
+      }
+    }, wait);
+    return () => window.clearTimeout(t);
+  }, [dismissal]);
+
+  /**
    * A whole-week cadence with no shot day tracks NOTHING, silently.
    *
    * `scheduleMode` returns "none" for it — a weekly grid has no idea which
@@ -270,7 +383,12 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
   }, [shotDayUnavailable]);
 
   return (
-    <section className="first-shot-card">
+    <section
+      ref={rootRef}
+      className={`first-shot-card${
+        dismissal === "leaving" ? " first-shot-card--leaving" : ""
+      }`}
+    >
       <h2 className="first-shot-card__title">Before your first shot</h2>
       {/* The "it's all optional" line leads, rather than closing the card.
           Marking every field individually is what you do when SOME are
@@ -280,7 +398,19 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
           underneath four fields arrives after the moment someone decides
           whether they are obliged to answer them. */}
       <p className="first-shot-card__intro">
-        All optional — revisit anytime in Settings.
+        {/* <strong>, not <em>: bold over italics is the accessibility call,
+            since slanted shapes slow word recognition and are worst for the
+            readers most likely to need the reassurance — and <strong> is the
+            element screen readers convey as importance, where <b> is styling
+            only. Emphasis carried by weight AND contrast, the same pair the
+            label hierarchy on this card already uses, because at 0.8rem a
+            weight change alone is easy to miss.
+
+            One word, not two. Emphasis works by contrast, so bolding a third of
+            a six-word sentence spends it — and "All" still scopes the claim
+            perfectly well unbolded, sitting right beside the word that carries
+            it. */}
+        All <strong>optional</strong> — revisit anytime in Settings.
       </p>
 
       <div className="first-shot-card__field">
@@ -442,10 +572,56 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
         </label>
       </div>
 
+      {/* An explicit end to the card.
+          It had none: the only way to make it go was to log a shot, which is
+          not obviously connected to filling this in, so there was no moment
+          where the setup felt finished. Everything here already saves as you
+          type, so the button says Done rather than Save — it dismisses, it does
+          not commit, and calling it Save would promise work that already
+          happened. */}
+      <div className="first-shot-card__done">
+        <button
+          type="button"
+          className={`secondary-button first-shot-card__done-button${
+            dismissal === "idle"
+              ? ""
+              : " first-shot-card__done-button--confirmed"
+          }`}
+          // `aria-disabled`, never `disabled` — disabling the focused button
+          // blurs it, and the browser drops focus to <body> for the whole beat
+          // with nothing handing it on. The guard in the handler does the
+          // actual blocking. Same rule the sheet's Save button records.
+          aria-disabled={dismissal !== "idle"}
+          onClick={() => {
+            if (dismissal !== "idle") return;
+            dismissing.current = true;
+            setDismissal("confirming");
+          }}
+        >
+          {dismissal === "idle" ? (
+            "Done"
+          ) : (
+            <>
+              {/* aria-hidden so the glyph stays out of the accessible name —
+                  unwrapped it announces as "check mark Done". The word carries
+                  the meaning; the tick is the beat. */}
+              <span aria-hidden="true">✓</span> Done
+            </>
+          )}
+        </button>
+        {/* No caption under the button. It said the card hides for good and
+            that the fields live in Settings — the second half repeats the line
+            at the top of the card, and the first is what a button labelled Done
+            on a card you just filled in already means. */}
+      </div>
+
       {/* A returning user and a new one land on the same empty screen needing
           opposite things, and this one is protective rather than convenient:
           import REPLACES rather than merges, so logging a shot first and
-          importing afterwards throws that shot away. */}
+          importing afterwards throws that shot away.
+          (Moved back down to the paragraph it describes — the Done block was
+          inserted between the two, leaving it reading as documentation for a
+          button about something else.) */}
       <p className="first-shot-card__restore">
         Returning with a backup?{" "}
         <button type="button" className="link-button" onClick={onGoToSettings}>

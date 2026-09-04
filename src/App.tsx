@@ -22,14 +22,11 @@ import type { View } from "./types/view";
 
 const SHEET_HEADING_ID = "shot-sheet-title";
 
-/**
- * How long the ✓ shows before the sheet starts leaving.
- *
- * Inside the 100–300ms band that reads as an answer to what you just did rather
- * than a pause. Save to sheet-gone is therefore CONFIRM_MS + SHEET_EXIT_MS,
- * which is the point: the sheet used to vanish before the press had registered.
- */
-export const CONFIRM_MS = 200;
+/** Re-exported so the many `import App, { CONFIRM_MS }` call sites keep working;
+ *  it moved to utils/timing.ts because the first-run card needs it and App
+ *  imports that card. */
+export { CONFIRM_MS } from "./utils/timing";
+import { CONFIRM_MS } from "./utils/timing";
 
 const VIEW_TITLES: Record<View, string> = {
   home: "T-Shot Tracker",
@@ -39,7 +36,7 @@ const VIEW_TITLES: Record<View, string> = {
 
 const App: React.FC = () => {
   const { shots, addShot, updateShot, deleteShot } = useShotsContext();
-  const { profile, setScheduleAnchor } = useProfileContext();
+  const { profile, setScheduleAnchor, updateProfile } = useProfileContext();
   const exportBackup = useBackupExport();
   const [editingShot, setEditingShot] = useState<ShotEntry | null>(null);
   // The log form is a sheet rather than an always-open panel on Home, so the
@@ -446,6 +443,9 @@ const App: React.FC = () => {
    */
   const [settingsLanding, setSettingsLanding] =
     useState<SettingsLanding | null>(null);
+
+  /** Where the first-run card hands focus when Done removes it. */
+  const logCtaRef = useRef<HTMLButtonElement>(null);
   useSwipeBack(view !== "home", () => {
     // The gesture unmounts the entire outgoing view, including whatever held
     // focus — a search field, a filter, a row. A tab TAP is safe because focus
@@ -687,15 +687,40 @@ const App: React.FC = () => {
             {/* Gated on there being no shots, which IS the dismissal logic:
               logging one clears it, and so does importing a backup, with no
               flag to store and no special case. */}
-            {shots.length === 0 && (
+            {shots.length === 0 && !profile.firstRunDone && (
               <FirstShotCard
                 onGoToSettings={() => {
                   navigate("settings");
                   setSettingsLanding("data");
                 }}
+                onDone={(heldFocus) => {
+                  updateProfile({ firstRunDone: true });
+                  /*
+                   * Hand focus on only when the card was the thing holding it,
+                   * which is the rule as CLAUDE.md states it: a control that
+                   * removes the element that had focus must hand it on. Not
+                   * "the card went, therefore move focus".
+                   *
+                   * That became reachable when the dismissal started committing
+                   * from the card's unmount, so a tab tap inside the 440ms beat
+                   * could not lose the press — the same callback now runs on a
+                   * path where the user has already gone somewhere else.
+                   * Measured before the fix: press Done, tap History, and focus
+                   * was pulled off the tab just activated onto the <h1>, which
+                   * carries a hand-off ring, so an outline appeared round the
+                   * page title for no visible reason.
+                   *
+                   * The card answers this from a layout cleanup while its DOM
+                   * still exists, rather than App inferring it from <body> —
+                   * see FirstShotCard, where <body> turned out to mean two
+                   * different things on iOS.
+                   */
+                  if (heldFocus) handOffFocus(logCtaRef, titleRef);
+                }}
               />
             )}
             <button
+              ref={logCtaRef}
               type="button"
               className="primary-button log-cta"
               onClick={() => openSheet()}

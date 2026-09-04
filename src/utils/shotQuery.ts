@@ -18,7 +18,7 @@
 // You *filter* by fields, *search* by text, and a *query* wraps both. Each
 // function is pure (no storage, no dates-from-now) so the whole layer is unit-
 // testable; `today`-style ambient state never leaks in here.
-import type { ShotEntry } from "../types/shot";
+import type { PainLevel, ShotEntry } from "../types/shot";
 import type { CivilDate } from "./civilDate";
 import { normalizeValue } from "./suggestions";
 import { isBlank } from "./strings";
@@ -46,10 +46,9 @@ export interface ShotFilter {
   position?: string;
   /** Testosterone ester, matched case-insensitively (exact, trimmed). */
   ester?: string;
-  /** Inclusive minimum pain score. A shot with no painScore never matches a pain bound. */
-  painMin?: number;
-  /** Inclusive maximum pain score. */
-  painMax?: number;
+  /** Pain level, matched exactly. A shot with no pain recorded never matches —
+   *  "not recorded" is not the same answer as "none". */
+  pain?: PainLevel;
 }
 
 /**
@@ -98,12 +97,15 @@ function fieldMatches(field: string | undefined, value: string): boolean {
  */
 export function filterShots(
   shots: ShotEntry[],
-  filter: ShotFilter = {}
+  filter: ShotFilter = {},
 ): ShotEntry[] {
   return shots.filter((shot) => {
     if (!isBlank(filter.dateFrom) && shot.date < filter.dateFrom!) return false;
     if (!isBlank(filter.dateTo) && shot.date > filter.dateTo!) return false;
-    if (!isBlank(filter.site) && !fieldMatches(shot.injectionSite, filter.site!))
+    if (
+      !isBlank(filter.site) &&
+      !fieldMatches(shot.injectionSite, filter.site!)
+    )
       return false;
     if (
       !isBlank(filter.position) &&
@@ -115,19 +117,12 @@ export function filterShots(
       !fieldMatches(shot.testosteroneEster, filter.ester!)
     )
       return false;
-    // Number.isFinite, not `!== undefined`: a filter UI binding painMin to
-    // Number(input) yields NaN on a blank/unparsable field, and `painScore < NaN`
-    // is always false — so a NaN bound would silently pass every shot rather than
-    // disable the facet. Treat a non-finite bound as "no constraint", same as a
-    // blank string facet above.
-    if (Number.isFinite(filter.painMin)) {
-      if (shot.painScore === undefined || shot.painScore < filter.painMin!)
-        return false;
-    }
-    if (Number.isFinite(filter.painMax)) {
-      if (shot.painScore === undefined || shot.painScore > filter.painMax!)
-        return false;
-    }
+    // One exact match now that pain is an ordinal, where it used to be a
+    // min/max pair with a `Number.isFinite` guard on each — a bound bound to
+    // Number(input) went NaN on a blank field, and every comparison against NaN
+    // is false, so the facet silently passed every shot instead of switching
+    // off. An enum cannot go NaN, so the whole hazard goes with the numbers.
+    if (filter.pain !== undefined && shot.pain !== filter.pain) return false;
     return true;
   });
 }
@@ -144,7 +139,7 @@ export function searchShotText(shots: ShotEntry[], text: string): ShotEntry[] {
   return shots.filter(
     (shot) =>
       normalizeValue(shot.notes ?? "").includes(needle) ||
-      normalizeValue(shot.mood ?? "").includes(needle)
+      normalizeValue(shot.mood ?? "").includes(needle),
   );
 }
 
@@ -163,14 +158,14 @@ export function searchShotText(shots: ShotEntry[], text: string): ShotEntry[] {
  */
 export function sortShots(
   shots: ShotEntry[],
-  order: SortOrder = "newest"
+  order: SortOrder = "newest",
 ): ShotEntry[] {
   const sign = order === "newest" ? -1 : 1;
   return shots
     .map((shot, index) => ({ shot, index }))
     .sort(
       (a, b) =>
-        sign * (compareShotsChrono(a.shot, b.shot) || a.index - b.index)
+        sign * (compareShotsChrono(a.shot, b.shot) || a.index - b.index),
     )
     .map(({ shot }) => shot);
 }
@@ -194,7 +189,7 @@ export function takeRecent(shots: ShotEntry[], n: number): ShotEntry[] {
  */
 export function paginate(
   shots: ShotEntry[],
-  page?: { offset: number; limit: number }
+  page?: { offset: number; limit: number },
 ): ShotPage {
   const total = shots.length;
   // Copy on the no-page path too, so every selector uniformly returns a fresh
@@ -213,7 +208,10 @@ export function paginate(
  * single entry point that guarantees the pipeline order (a filter narrows before
  * search, `total` counts the full match set, pagination comes last).
  */
-export function queryShots(shots: ShotEntry[], query: ShotQuery = {}): ShotPage {
+export function queryShots(
+  shots: ShotEntry[],
+  query: ShotQuery = {},
+): ShotPage {
   const filtered = filterShots(shots, query.filter);
   const searched =
     query.text !== undefined ? searchShotText(filtered, query.text) : filtered;

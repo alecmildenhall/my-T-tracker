@@ -109,16 +109,16 @@ describe('ShotEntry type', () => {
       expect(typeof shot.carrierOil).toBe('string')
     })
 
-    // Tests that optional painScore field accepts numeric values
-    it('should accept ShotEntry with painScore field', () => {
+    // Tests that the optional pain field accepts a level
+    it('should accept ShotEntry with pain field', () => {
       const shot: ShotEntry = {
         id: 'abc123',
         date: '2025-12-11',
-        painScore: 3,
+        pain: "mild",
       }
       
-      expect(shot.painScore).toBe(3)
-      expect(typeof shot.painScore).toBe('number')
+      expect(shot.pain).toBe('mild')
+      expect(typeof shot.pain).toBe('string')
     })
 
     // Tests that optional mood field accepts string values
@@ -156,7 +156,7 @@ describe('ShotEntry type', () => {
         injectionSitePosition: 'left',
         testosteroneEster: 'cypionate',
         carrierOil: 'cottonseed',
-        painScore: 2,
+        pain: "mild",
         mood: 'energetic',
         notes: 'Everything went smoothly',
       }
@@ -170,7 +170,7 @@ describe('ShotEntry type', () => {
         injectionSitePosition: 'left',
         testosteroneEster: 'cypionate',
         carrierOil: 'cottonseed',
-        painScore: 2,
+        pain: "mild",
         mood: 'energetic',
         notes: 'Everything went smoothly',
       })
@@ -187,7 +187,7 @@ describe('ShotEntry type', () => {
         injectionSitePosition: undefined,
         testosteroneEster: undefined,
         carrierOil: undefined,
-        painScore: undefined,
+        pain: undefined,
         mood: undefined,
         notes: undefined,
       }
@@ -200,7 +200,7 @@ describe('ShotEntry type', () => {
       expect(shot.injectionSitePosition).toBeUndefined()
       expect(shot.testosteroneEster).toBeUndefined()
       expect(shot.carrierOil).toBeUndefined()
-      expect(shot.painScore).toBeUndefined()
+      expect(shot.pain).toBeUndefined()
       expect(shot.mood).toBeUndefined()
       expect(shot.notes).toBeUndefined()
     })
@@ -221,7 +221,7 @@ describe('ShotEntry type', () => {
           date: '2025-12-08',
           doseMg: 75,
           injectionSite: 'glute',
-          painScore: 1,
+          pain: "mild",
         },
         {
           id: '3',
@@ -232,7 +232,7 @@ describe('ShotEntry type', () => {
           injectionSitePosition: 'upper right',
           testosteroneEster: 'cypionate',
           carrierOil: 'sesame',
-          painScore: 0,
+          pain: "none",
           mood: 'great',
           notes: 'Best injection yet!',
         },
@@ -240,7 +240,7 @@ describe('ShotEntry type', () => {
       
       expect(shots).toHaveLength(3)
       expect(shots[0].id).toBe('1')
-      expect(shots[1].painScore).toBe(1)
+      expect(shots[1].pain).toBe('mild')
       expect(shots[2].notes).toBe('Best injection yet!')
     })
 
@@ -255,22 +255,25 @@ describe('ShotEntry type', () => {
       expect(shot.date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
     })
 
-    // Tests that painScore field accepts values in the 0-10 range
-    it('should handle numeric ranges for painScore', () => {
+    // Tests that pain accepts the lowest and highest levels
+    it('should handle the ends of the pain scale', () => {
       const minPainShot: ShotEntry = {
         id: 'min',
         date: '2025-12-11',
-        painScore: 0,
+        pain: "none",
       }
       
       const maxPainShot: ShotEntry = {
         id: 'max',
         date: '2025-12-11',
-        painScore: 10,
+        pain: "severe",
       }
       
-      expect(minPainShot.painScore).toBe(0)
-      expect(maxPainShot.painScore).toBe(10)
+      expect(minPainShot.pain).toBe('none')
+      expect(maxPainShot.pain).toBe('severe')
+      // "none" is an answer, and distinct from not answering at all.
+      const unanswered: ShotEntry = { id: 'u', date: '2025-12-11' }
+      expect(unanswered.pain).toBeUndefined()
     })
   })
 })

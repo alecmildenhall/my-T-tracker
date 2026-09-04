@@ -1,12 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { profileSchema, shotEntrySchema } from "../shotSchema";
+import { toCsv } from "../exportData";
 import { MAX_INTERVAL_DAYS } from "../../types/profile";
 import {
   pickShotFields,
   pickProfileFields,
   hasProfileData,
 } from "../backupDto";
-import type { ShotEntry } from "../../types/shot";
+import { PAIN_LEVELS, type ShotEntry } from "../../types/shot";
 import type { Profile } from "../../types/profile";
 
 describe("pickShotFields", () => {
@@ -20,7 +21,7 @@ describe("pickShotFields", () => {
       injectionSitePosition: "left",
       testosteroneEster: "cypionate",
       carrierOil: "sesame",
-      painScore: 4,
+      pain: "moderate",
       mood: "okay",
       notes: "n",
     };
@@ -52,13 +53,13 @@ describe("pickShotFields", () => {
       id: "s1",
       date: "2026-07-12",
       doseMg: 0,
-      painScore: 0,
+      pain: "none",
     };
     expect(pickShotFields(shot)).toEqual({
       id: "s1",
       date: "2026-07-12",
       doseMg: 0,
-      painScore: 0,
+      pain: "none",
     });
   });
 
@@ -209,5 +210,131 @@ describe("hasProfileData", () => {
 
   it("is false when the only field is blank", () => {
     expect(hasProfileData({ preferredName: "  " } as Profile)).toBe(false);
+  });
+});
+
+describe("pain survives a backup round-trip", () => {
+  // The check that catches a missed allowlist, which is the trap CLAUDE.md
+  // names and which this codebase has fallen into before: the DTO is an
+  // allowlist, and `replaceProfile`/`replaceAll` swap wholesale on import, so a
+  // field the picker forgets is silently absent from the user's own backup and
+  // reverts on restore. Every level, because a picker can be written to carry
+  // some values and drop others (an `if (pain)` would lose nothing here, but
+  // the same shape has lost a legitimate 0 elsewhere).
+  it("carries every level out and back, unchanged", () => {
+    for (const level of PAIN_LEVELS) {
+      const shot: ShotEntry = { id: "a", date: "2026-08-05", pain: level };
+      const exported = pickShotFields(shot);
+      expect(exported.pain).toBe(level);
+
+      // And the app's own importer accepts what its exporter produced — the
+      // guarantee, rather than a per-field assertion that can drift from it.
+      const reimported = shotEntrySchema.safeParse(exported);
+      expect(reimported.success).toBe(true);
+      expect(reimported.success && reimported.data.pain).toBe(level);
+    }
+  });
+
+  it("carries 'no pain recorded' as absence, not as a level", () => {
+    const exported = pickShotFields({ id: "a", date: "2026-08-05" });
+    expect("pain" in exported).toBe(false);
+    expect(shotEntrySchema.safeParse(exported).success).toBe(true);
+  });
+
+  it("refuses a level the app could never have produced", () => {
+    // Import is the other way into storage, so the enum has to be enforced
+    // there too — a bound at the form alone is a bound with a door beside it.
+    expect(
+      shotEntrySchema.safeParse({ id: "a", date: "2026-08-05", pain: "agony" })
+        .success,
+    ).toBe(false);
+    // Including the old numeric shape, which is the accepted pre-GA cost.
+    expect(
+      shotEntrySchema.safeParse({ id: "a", date: "2026-08-05", pain: 7 })
+        .success,
+    ).toBe(false);
+  });
+});
+
+describe("a stored level the enum does not contain never leaves the app", () => {
+  // The round-trip test above asserts the guarantee only over PAIN_LEVELS, so
+  // it cannot see this: `sanitizeShots` vets a non-blank id and date and nothing
+  // else, and a bare `!== undefined` copied whatever it found into the backup.
+  // Measured before the fix: exporting one such shot and feeding the file
+  // straight back gave "None of the 1 entry in this file could be read, so
+  // nothing was restored." Backup export is the only recovery path in this
+  // product's durability model.
+  const junk = {
+    id: "a",
+    date: "2026-08-05",
+    pain: "agony",
+  } as unknown as ShotEntry;
+
+  it("is dropped from the backup rather than written into it", () => {
+    const exported = pickShotFields(junk);
+    expect("pain" in exported).toBe(false);
+  });
+
+  it("leaves a backup the app's own importer still accepts", () => {
+    // The guarantee that matters, stated as itself rather than per field: the
+    // app must never produce a file it refuses to read.
+    expect(shotEntrySchema.safeParse(pickShotFields(junk)).success).toBe(true);
+  });
+
+  it("is blanked in the CSV rather than shown to a provider", () => {
+    // And the two exports must agree. A value the backup drops must not appear
+    // verbatim in the file someone prints for a clinician.
+    const row = toCsv([junk]).split("\n")[1];
+    expect(row).not.toContain("agony");
+  });
+});
+
+describe("the first-run flag survives a backup", () => {
+  // The allowlist trap CLAUDE.md names by name: `pickProfileFields` is an
+  // allowlist and `replaceProfile` swaps the whole profile on import, so a
+  // field the picker forgets is silently missing from the user's own backup and
+  // reverts to its default on restore. Caught by mutation — removing the line
+  // from the picker broke no test until this one existed, which is exactly how
+  // the trap works.
+  it("is carried out and back", () => {
+    expect(pickProfileFields({ firstRunDone: true }).firstRunDone).toBe(true);
+    const parsed = profileSchema.safeParse(
+      pickProfileFields({ firstRunDone: true }),
+    );
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data.firstRunDone).toBe(true);
+  });
+
+  it("is dropped when it is not a boolean", () => {
+    // localStorage is hand-editable and import is untrusted; a truthy "yes"
+    // would hide the first-run card for good with no way back short of editing
+    // storage again.
+    expect(
+      "firstRunDone" in
+        pickProfileFields({ firstRunDone: "yes" } as unknown as Profile),
+    ).toBe(false);
+  });
+
+  it("does not invent a dismissal for a profile that has none", () => {
+    expect("firstRunDone" in pickProfileFields({})).toBe(false);
+  });
+});
+
+describe("a dismissal alone is not user data", () => {
+  // `hasProfileData` answers "is there anything here worth protecting?" for two
+  // decisions, and the first-run flag is not an answer to it. It still travels
+  // in the DTO — dropping it there is the allowlist trap — it just must not
+  // count.
+  it("does not treat the first-run flag as data", () => {
+    expect(hasProfileData({ firstRunDone: true })).toBe(false);
+  });
+
+  it("still counts real fields, alone or beside the flag", () => {
+    expect(hasProfileData({ preferredName: "Lou" })).toBe(true);
+    expect(hasProfileData({ firstRunDone: true, intervalDays: 7 })).toBe(true);
+  });
+
+  it("is false for an empty profile, as before", () => {
+    expect(hasProfileData({})).toBe(false);
   });
 });

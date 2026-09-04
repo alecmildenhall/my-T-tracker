@@ -7,6 +7,7 @@ import {
   within,
   act,
   waitFor,
+  cleanup,
 } from "@testing-library/react";
 import App, { CONFIRM_MS } from "../App";
 import { ShotsProvider } from "../context/ShotsContext";
@@ -2983,5 +2984,178 @@ describe("landing on a Settings section", () => {
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
 
     expect(document.activeElement).not.toBe(dataHeading());
+  });
+});
+
+describe("dismissing the first-run card", () => {
+  const card = () => document.querySelector(".first-shot-card");
+
+  it("hides it, remembers, and does not strand focus", () => {
+    // Done removes the whole card including the button that was pressed — the
+    // self-removing control this codebase has been bitten by repeatedly. Focus
+    // goes to "+ Log a shot", which is where the card was pointing anyway.
+    //
+    // It takes CONFIRM_MS + SHEET_EXIT_MS to get there: the ✓ beat, then the
+    // card leaving, the same pair a saved shot gets. The button keeps focus for
+    // the whole of it, which is why it is aria-disabled rather than disabled.
+    vi.useFakeTimers();
+    renderApp();
+    expect(card()).not.toBeNull();
+
+    const done = screen.getByRole("button", { name: "Done" });
+    done.focus();
+    fireEvent.click(done);
+
+    // Still there, still holding focus, while the ✓ shows.
+    expect(card()).not.toBeNull();
+    expect(document.activeElement).toBe(done);
+
+    act(() => void vi.advanceTimersByTime(CONFIRM_MS));
+    act(() => void vi.advanceTimersByTime(SHEET_EXIT_MS));
+    vi.useRealTimers();
+
+    expect(card()).toBeNull();
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: /Log a shot/ }),
+    );
+    expectVisibleFocusRing("dismissing the first-run card");
+  });
+
+  it("leaves focus alone when you tap a tab mid-beat", () => {
+    // The dismissal commits from the card's unmount so a tab tap inside the
+    // 440ms beat cannot lose the press — and that commit runs the SAME callback
+    // as the ordinary beat. Measured before the fix: focus was pulled off the
+    // tab the user had just activated onto the <h1>, which carries a hand-off
+    // ring, so an outline appeared round the page title for no visible reason.
+    //
+    // The card only hands focus on when it was the thing HOLDING it.
+    vi.useFakeTimers();
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    act(() => void vi.advanceTimersByTime(CONFIRM_MS));
+
+    const nav = document.querySelector("#main-nav") as HTMLElement;
+    const history = within(nav).getByRole("button", { name: "History" });
+    history.focus(); // a real tap focuses the control
+    fireEvent.click(history);
+    act(() => void vi.advanceTimersByTime(SHEET_EXIT_MS * 4));
+    vi.useRealTimers();
+
+    expect(document.activeElement).toBe(history);
+    // And the press still counted, which is what the commit-on-unmount is for.
+    expect(
+      JSON.parse(localStorage.getItem(STORAGE_KEYS.profile) ?? "{}").firstRunDone,
+    ).toBe(true);
+  });
+
+  it("leaves focus alone on a tab tap that focused nothing (iOS)", () => {
+    // The test above focuses the tab first, because that is what a desktop
+    // click does. iOS Safari does NOT focus a <button> on tap — `focus.ts` says
+    // so, and calls it the common case — and `navigate()` moves no focus, so on
+    // the app's primary platform this same gesture leaves activeElement on
+    // <body>.
+    //
+    // That is why the card reports whether it held focus instead of App asking
+    // "is focus on <body>?": <body> means BOTH "the card held it and is gone"
+    // and "focus was never anywhere", and answering the second by handing focus
+    // to the page title moves a VoiceOver cursor for no reason.
+    vi.useFakeTimers();
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    act(() => void vi.advanceTimersByTime(CONFIRM_MS));
+
+    const nav = document.querySelector("#main-nav") as HTMLElement;
+    // No .focus() — the tap lands, focus stays nowhere, exactly as on iOS.
+    fireEvent.click(within(nav).getByRole("button", { name: "History" }));
+    expect(document.activeElement).toBe(document.body);
+
+    act(() => void vi.advanceTimersByTime(SHEET_EXIT_MS * 4));
+    vi.useRealTimers();
+
+    // Still nowhere: not yanked onto the <h1>.
+    expect(document.activeElement).toBe(document.body);
+    expect(
+      JSON.parse(localStorage.getItem(STORAGE_KEYS.profile) ?? "{}").firstRunDone,
+    ).toBe(true);
+  });
+
+  it("still rescues focus when the card is removed out from under it", () => {
+    // The other half, and why "never hand off on unmount" is not the fix: a
+    // shot arriving from another tab removes the card while focus really IS on
+    // its Done button, and leaving focus on <body> is the thing CLAUDE.md calls
+    // non-negotiable. Same unmount path, opposite answer, because the card
+    // measured the difference instead of guessing it.
+    vi.useFakeTimers();
+    renderApp();
+    const done = screen.getByRole("button", { name: "Done" });
+    done.focus();
+    fireEvent.click(done);
+    act(() => void vi.advanceTimersByTime(CONFIRM_MS));
+    expect(document.activeElement).toBe(done);
+
+    // A shot appears from elsewhere, so the card goes before its beat ends.
+    act(() => {
+      seedShots([{ id: "elsewhere", date: "2026-08-05" }]);
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: STORAGE_KEYS.shots,
+          newValue: localStorage.getItem(STORAGE_KEYS.shots),
+          storageArea: localStorage,
+        }),
+      );
+    });
+    act(() => void vi.advanceTimersByTime(SHEET_EXIT_MS * 4));
+    vi.useRealTimers();
+
+    expect(card()).toBeNull();
+    expect(document.activeElement).not.toBe(document.body);
+    expectVisibleFocusRing("after the card was removed mid-beat");
+  });
+
+  it("leaves focus alone when you open the log sheet mid-beat", () => {
+    // Same callback, the other way out of Home. The sheet moves focus to its
+    // own heading on open; the card must not take it back. In a browser #root
+    // is inert by then so the hand-off would fail safe, but jsdom has no inert
+    // — measured, focus was bounced onto the sheet's ✕ by the trap's net.
+    vi.useFakeTimers();
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    act(() => void vi.advanceTimersByTime(CONFIRM_MS));
+
+    fireEvent.click(screen.getByRole("button", { name: /Log a shot/ }));
+    act(() => void vi.advanceTimersByTime(SHEET_EXIT_MS * 4));
+    vi.useRealTimers();
+
+    const active = document.activeElement as HTMLElement;
+    expect(active.closest(".shot-form")).not.toBeNull();
+    expect(active.className).not.toContain("shot-form__close");
+    expect(
+      JSON.parse(localStorage.getItem(STORAGE_KEYS.profile) ?? "{}").firstRunDone,
+    ).toBe(true);
+  });
+
+  it("stays dismissed across a reload", () => {
+    // The flag is stored, not session state: a card that came back every launch
+    // would make Done look broken.
+    vi.useFakeTimers();
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    act(() => void vi.advanceTimersByTime(CONFIRM_MS));
+    act(() => void vi.advanceTimersByTime(SHEET_EXIT_MS));
+    vi.useRealTimers();
+    expect(card()).toBeNull();
+
+    cleanup();
+    renderApp();
+    expect(card()).toBeNull();
+  });
+
+  it("still disappears on its own once a shot exists", () => {
+    // The original rule survives, so an import clears the card for free and the
+    // flag is a second route rather than the only one.
+    seedShots([{ id: "a", date: "2026-08-05" }]);
+    renderApp();
+    expect(card()).toBeNull();
   });
 });

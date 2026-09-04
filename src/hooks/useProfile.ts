@@ -62,6 +62,10 @@ function normalizeKnownFields(o: Record<string, unknown>): void {
   ) {
     delete o.scheduleAnchor;
   }
+  // The storage read boundary, like every field above. A hand-edited
+  // `"firstRunDone": "yes"` is truthy and would hide the first-run card for
+  // good with no way back short of editing storage again.
+  if (typeof o.firstRunDone !== "boolean") delete o.firstRunDone;
 }
 
 /**

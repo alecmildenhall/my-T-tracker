@@ -4,6 +4,8 @@ import { FirstShotCard } from "../FirstShotCard";
 import { ProfileProvider } from "../../context/ProfileContext";
 import { STORAGE_KEYS } from "../../storageKeys";
 import { expectVisibleFocusRing } from "../../test/focusRing";
+import { CONFIRM_MS } from "../../utils/timing";
+import { SHEET_EXIT_MS } from "../Modal";
 
 beforeEach(() => localStorage.clear());
 
@@ -16,7 +18,7 @@ const storedProfile = () =>
 const renderCard = () =>
   render(
     <ProfileProvider>
-      <FirstShotCard onGoToSettings={vi.fn()} />
+      <FirstShotCard onGoToSettings={vi.fn()} onDone={vi.fn()} />
     </ProfileProvider>,
   );
 
@@ -203,5 +205,189 @@ describe("FirstShotCard — drafts follow the profile", () => {
 
     expect(storedProfile().intervalDays).toBe(14);
     expect(box.value).toBe("14");
+  });
+});
+
+describe("FirstShotCard — Done", () => {
+  it("confirms on the button before it calls back", () => {
+    // The card originally had no dismiss control: it vanished once a shot
+    // existed, so there was nothing to store. Then it had one that acted on the
+    // frame it was pressed — which is what the sheet used to do, and what
+    // CONFIRM_MS exists to stop: a surface that goes at its fastest moment
+    // reads as dropped rather than dismissed.
+    vi.useFakeTimers();
+    try {
+      const onDone = vi.fn();
+      render(
+        <ProfileProvider>
+          <FirstShotCard onGoToSettings={vi.fn()} onDone={onDone} />
+        </ProfileProvider>,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Done" }));
+
+      // The ✓ shows and nothing has been dismissed yet.
+      expect(onDone).not.toHaveBeenCalled();
+      const button = screen.getByRole("button", { name: "Done" });
+      expect(button).toHaveAttribute("aria-disabled", "true");
+      // `aria-disabled`, not `disabled` — a disabled focused button blurs to
+      // <body> for the whole beat.
+      expect(button).not.toBeDisabled();
+      // And the glyph stays out of the accessible name.
+      expect(button).toHaveAccessibleName("Done");
+
+      act(() => void vi.advanceTimersByTime(CONFIRM_MS));
+      expect(onDone).not.toHaveBeenCalled();
+      expect(
+        document.querySelector(".first-shot-card--leaving"),
+      ).not.toBeNull();
+
+      act(() => void vi.advanceTimersByTime(SHEET_EXIT_MS));
+      expect(onDone).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the dismissal when the card unmounts mid-beat", () => {
+    // The beat owns what the card LOOKS like, never whether the press counted.
+    // Home unmounts when you leave it, so a tab tap or a back swipe inside the
+    // 440ms window used to clear the timer and lose the dismissal outright —
+    // after the ✓ had already been shown, which is the app appearing to forget
+    // something you watched it acknowledge.
+    vi.useFakeTimers();
+    try {
+      const onDone = vi.fn();
+      const { unmount } = render(
+        <ProfileProvider>
+          <FirstShotCard onGoToSettings={vi.fn()} onDone={onDone} />
+        </ProfileProvider>,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Done" }));
+      act(() => void vi.advanceTimersByTime(CONFIRM_MS));
+      expect(onDone).not.toHaveBeenCalled();
+
+      unmount();
+      expect(onDone).toHaveBeenCalledTimes(1);
+
+      // And the cleared timer stays cleared — no second call arrives late.
+      act(() => void vi.advanceTimersByTime(SHEET_EXIT_MS * 4));
+      expect(onDone).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not commit a dismissal nobody asked for", () => {
+    // The mirror of the test above: unmounting for any OTHER reason — a shot
+    // logged in another tab, an import arriving — must not dismiss the card.
+    vi.useFakeTimers();
+    try {
+      const onDone = vi.fn();
+      const { unmount } = render(
+        <ProfileProvider>
+          <FirstShotCard onGoToSettings={vi.fn()} onDone={onDone} />
+        </ProfileProvider>,
+      );
+      unmount();
+      expect(onDone).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("completes the beat across a parent re-render", () => {
+    // `onDone` is an inline arrow at App's call site, so holding it as an effect
+    // dependency re-armed the timer at its FULL duration every render — and
+    // this card writes the profile on blur, which App consumes. The ✓ would sit
+    // there indefinitely under a re-rendering parent.
+    vi.useFakeTimers();
+    try {
+      const onDone = vi.fn();
+      const Parent = ({ tick }: { tick: number }) => (
+        <ProfileProvider>
+          <FirstShotCard
+            onGoToSettings={vi.fn()}
+            onDone={() => onDone(tick)}
+          />
+        </ProfileProvider>
+      );
+      const { rerender } = render(<Parent tick={0} />);
+      fireEvent.click(screen.getByRole("button", { name: "Done" }));
+
+      // Each render lands PART-WAY through a beat, which is the only placement
+      // that can see the bug: re-arming a timer at its full duration is still
+      // satisfied by a full-duration advance, so a render before the advance
+      // proves nothing.
+      act(() => void vi.advanceTimersByTime(CONFIRM_MS / 2));
+      rerender(<Parent tick={1} />);
+      act(() => void vi.advanceTimersByTime(CONFIRM_MS / 2));
+      expect(
+        document.querySelector(".first-shot-card--leaving"),
+      ).not.toBeNull();
+
+      act(() => void vi.advanceTimersByTime(SHEET_EXIT_MS / 2));
+      rerender(<Parent tick={2} />);
+      act(() => void vi.advanceTimersByTime(SHEET_EXIT_MS / 2));
+
+      expect(onDone).toHaveBeenCalledTimes(1);
+      // The LATEST callback ran, not the one captured when Done was pressed.
+      expect(onDone).toHaveBeenCalledWith(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("cannot be pressed twice into two dismissals", () => {
+    vi.useFakeTimers();
+    try {
+      const onDone = vi.fn();
+      render(
+        <ProfileProvider>
+          <FirstShotCard onGoToSettings={vi.fn()} onDone={onDone} />
+        </ProfileProvider>,
+      );
+      const button = screen.getByRole("button", { name: "Done" });
+      fireEvent.click(button);
+      fireEvent.click(button);
+      fireEvent.click(button);
+
+      // Two advances, not one: the exit timer is scheduled by the effect that
+      // runs after the confirm timer's state update, so it does not exist yet
+      // while the first is still being flushed.
+      act(() => void vi.advanceTimersByTime(CONFIRM_MS));
+      act(() => void vi.advanceTimersByTime(SHEET_EXIT_MS));
+      expect(onDone).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("marks the whole card optional, in the element screen readers convey", () => {
+    // The one word that decides whether someone feels obliged to fill any of
+    // this in. <strong> rather than <em> because bold beats italics for
+    // legibility — slanted shapes slow word recognition, worst for the readers
+    // most likely to need the reassurance — and because <strong> carries
+    // importance to a screen reader where <b> is styling only.
+    render(
+      <ProfileProvider>
+        <FirstShotCard onGoToSettings={vi.fn()} onDone={vi.fn()} />
+      </ProfileProvider>,
+    );
+    // One word. Emphasis is contrast, so bolding more of the sentence spends
+    // it; "All" scopes the claim perfectly well unbolded beside it.
+    const emphasised = screen.getByText("optional");
+    expect(emphasised.tagName).toBe("STRONG");
+    expect(emphasised.textContent).toBe("optional");
+  });
+
+  it("carries no caption under Done", () => {
+    // It repeated the intro's "revisit anytime in Settings" and otherwise said
+    // what a button labelled Done already means.
+    render(
+      <ProfileProvider>
+        <FirstShotCard onGoToSettings={vi.fn()} onDone={vi.fn()} />
+      </ProfileProvider>,
+    );
+    expect(screen.queryByText(/hides this card/i)).toBeNull();
   });
 });

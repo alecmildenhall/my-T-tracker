@@ -18,6 +18,26 @@ import { handOffFocus } from "../utils/focus";
 import type { FocusableElement } from "../utils/focus";
 import { tabbablesIn } from "../utils/tabbing";
 
+/**
+ * A radio whose group has no checked member.
+ *
+ * Scoped to the owning form when there is one, because that is how radio groups
+ * are scoped — two forms may legitimately use the same `name` for different
+ * groups, and a document-wide lookup would let one form's answer silence the
+ * other's.
+ */
+function isRadioInUncheckedGroup(el: Element | null): boolean {
+  if (!(el instanceof HTMLInputElement) || el.type !== "radio") return false;
+  // An unnamed radio is not in a group at all — and `[name=""]` matches nothing,
+  // so without this it would look unchecked forever and be handed to the browser
+  // on every Tab.
+  if (el.name === "") return false;
+  const scope: ParentNode = el.form ?? el.ownerDocument;
+  return !scope.querySelector(
+    `input[type="radio"][name="${CSS.escape(el.name)}"]:checked`,
+  );
+}
+
 /** Inputs whose own Tab handling moves between segments inside the control. */
 const SEGMENTED_INPUT =
   'input[type="date"], input[type="time"], input[type="datetime-local"], ' +
@@ -187,7 +207,9 @@ export function useFocusTrap(
       // the question of WHICH element can take focus: it tries them in order
       // and stops at the first that does.
       const active = document.activeElement as FocusableElement | null;
-      const at = active ? list.indexOf(active) : -1;
+      // `let`, because the unchecked-radio branch below re-points it at the
+      // group's edge when it cannot stand aside — see there.
+      let at = active ? list.indexOf(active) : -1;
 
       // `input[type=date]` and friends are several controls in one: Tab steps
       // between month, day and year BEFORE leaving the field, and that stepping
@@ -207,6 +229,76 @@ export function useFocusTrap(
       if (at !== -1 && active?.matches(SEGMENTED_INPUT)) {
         const beyond = e.shiftKey ? at > 0 : at < list.length - 1;
         if (beyond) return;
+      }
+
+      // A radio group with NOTHING checked is the same shape of problem, and
+      // needs the same answer.
+      //
+      // The browser treats such a group as ONE tab stop: Tab enters the first
+      // member and the next Tab leaves the group entirely, because arrow keys —
+      // not Tab — are how you move within it. `tabbable` disagrees: with no
+      // member checked it reports every radio as tabbable, which is right about
+      // focusability and wrong about the tab ORDER. Since this trap owns Tab and
+      // rotates through that list, the library's answer became the behaviour,
+      // and the log sheet's four pain chips were four tab stops instead of one —
+      // in the state every new shot starts in.
+      //
+      // Measured in the running app: with nothing selected, Tab visited none,
+      // mild, moderate, severe; with one selected, just the checked chip. So the
+      // defect only exists in the default state, which is also the state most
+      // shots are logged in.
+      //
+      // Handing Tab back lets the browser do the native thing. `beyond` is
+      // computed past the whole GROUP rather than past this radio: the other
+      // members are in `list`, so measuring from the current index would count
+      // them as somewhere to go and hand the browser a Tab that walks off the
+      // end of an inert page.
+      if (at !== -1 && isRadioInUncheckedGroup(active)) {
+        // Scoped to the same form AND the same non-empty name, matching
+        // `isRadioInUncheckedGroup` above. Matching on name alone was a
+        // narrower claim than that function makes: two forms in one dialog
+        // sharing a name would have had the span cross between them, and a
+        // radio with NO name would lump every unnamed radio in the dialog into
+        // one "group". Neither is reachable through today's single-form sheet;
+        // both are the kind of thing B½ adds fields to this sheet to find.
+        const activeRadio = active as HTMLInputElement;
+        const sameGroup = (el: FocusableElement) =>
+          el instanceof HTMLInputElement &&
+          el.type === "radio" &&
+          el.name !== "" &&
+          el.name === activeRadio.name &&
+          el.form === activeRadio.form;
+        // The group's TRUE span — first and last member anywhere in the list,
+        // not a contiguous run out from the first. Radios are grouped by `name`,
+        // and nothing requires members to be adjacent in the tab order: one
+        // unrelated control between two chips made the old scan stop early, so
+        // `beyond` was computed against a short span and, at an end of the
+        // order, `at` could rotate BACKWARDS on a forward Tab. Unreachable while
+        // the four chips sit together — and "the fields happen to be in this
+        // order" is exactly the assumption the segmented-input hatch above
+        // already records as fragile, in the sheet B½ keeps adding fields to.
+        const first = list.findIndex(sameGroup);
+        let last = first;
+        for (let i = list.length - 1; i > last; i--) {
+          if (sameGroup(list[i])) {
+            last = i;
+            break;
+          }
+        }
+        const beyond = e.shiftKey ? first > 0 : last < list.length - 1;
+        if (beyond) return;
+        // Nowhere safe to stand aside — the group sits at an END of the order,
+        // so handing Tab over would walk off an inert page. We keep it, and
+        // rotate from the group's EDGE rather than from this radio.
+        //
+        // Without that the fallthrough stepped to `list[at + 1]`, which is the
+        // NEXT RADIO IN THE SAME GROUP — quietly reinstating the multiple tab
+        // stops this branch exists to remove, in exactly the position where
+        // nothing else can help. Not reachable in today's log sheet, where mood,
+        // notes and Save follow the chips; B½ adds fields to this sheet, which
+        // is the same ordering assumption the segmented-input hatch above
+        // already records as fragile.
+        at = e.shiftKey ? first : last;
       }
 
       // The mirror of that, and the half it was missing: stepping BACKWARDS

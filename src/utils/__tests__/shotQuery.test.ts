@@ -82,35 +82,53 @@ describe("filterShots", () => {
     expect(filterShots([withSite, noSite], { site: "thigh" })).toEqual([withSite]);
   });
 
-  it("filters an inclusive pain band and excludes shots with no pain score", () => {
+  it("matches one pain level exactly", () => {
     const shots = [
-      shot({ painScore: 0 }),
-      shot({ painScore: 3 }),
-      shot({ painScore: 7 }),
-      shot({ painScore: undefined }),
+      shot({ pain: "none" }),
+      shot({ pain: "mild" }),
+      shot({ pain: "severe" }),
+      shot({ pain: undefined }),
     ];
-    const out = filterShots(shots, { painMin: 3, painMax: 7 });
-    expect(out.map((s) => s.painScore)).toEqual([3, 7]);
-    // A legitimate 0 is included when the band allows it.
-    expect(filterShots(shots, { painMax: 0 }).map((s) => s.painScore)).toEqual([0]);
+    expect(filterShots(shots, { pain: "mild" }).map((s) => s.pain)).toEqual([
+      "mild",
+    ]);
+    // "None" is a real answer and filters like any other — it is not a synonym
+    // for "no pain recorded".
+    expect(filterShots(shots, { pain: "none" }).map((s) => s.pain)).toEqual([
+      "none",
+    ]);
   });
 
-  it("treats a NaN pain bound as no constraint (empty number input's valueAsNumber)", () => {
-    const shots = [shot({ painScore: 2 }), shot({ painScore: 8 }), shot({ painScore: undefined })];
-    // An empty <input type="number">.valueAsNumber is NaN. A NaN bound must not
-    // silently pass everything via `x < NaN` — it's "no constraint", so all shots
-    // (including the pain-less one) come through.
-    expect(filterShots(shots, { painMin: NaN })).toHaveLength(3);
-    expect(filterShots(shots, { painMax: Number("x") })).toHaveLength(3);
+  it("never matches a shot with no pain recorded", () => {
+    // The distinction the form's Clear control exists to preserve: undefined
+    // means nobody answered, which is not an answer of "none".
+    const shots = [shot({ pain: "none" }), shot({ pain: undefined })];
+    expect(filterShots(shots, { pain: "none" })).toHaveLength(1);
+    expect(filterShots(shots, { pain: "severe" })).toHaveLength(0);
+  });
+
+  it("treats an absent pain facet as no constraint", () => {
+    // This replaces a pair of tests about NaN bounds. The old facet was a
+    // min/max pair bound to Number(input), which went NaN on a blank field —
+    // and every comparison against NaN is false, so the facet silently passed
+    // every shot instead of switching off. An enum cannot go NaN, so the hazard
+    // left with the numbers; what still has to hold is that "unset" means "all".
+    const shots = [
+      shot({ pain: "mild" }),
+      shot({ pain: "severe" }),
+      shot({ pain: undefined }),
+    ];
+    expect(filterShots(shots, {})).toHaveLength(3);
+    expect(filterShots(shots, { pain: undefined })).toHaveLength(3);
   });
 
   it("ANDs across facets", () => {
-    const match = shot({ date: "2026-07-10", injectionSite: "thigh", painScore: 2 });
-    const wrongSite = shot({ date: "2026-07-10", injectionSite: "glute", painScore: 2 });
+    const match = shot({ date: "2026-07-10", injectionSite: "thigh", pain: "mild" });
+    const wrongSite = shot({ date: "2026-07-10", injectionSite: "glute", pain: "mild" });
     const out = filterShots([match, wrongSite], {
       dateFrom: cd("2026-07-01"),
       site: "thigh",
-      painMax: 5,
+      pain: "mild",
     });
     expect(out).toEqual([match]);
   });

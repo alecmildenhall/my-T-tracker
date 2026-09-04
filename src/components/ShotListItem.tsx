@@ -4,6 +4,8 @@ import type { ShotEntry } from "../types/shot";
 import { WASH_ANIMATION } from "../utils/wash";
 import { formatTimeForDisplay } from "../utils/datetime";
 import { daysFromPlanned } from "../utils/schedule";
+import { painLabel } from "../utils/painLabel";
+import { isPainLevel } from "../types/shot";
 
 /** Name of the wash keyframes, shared with styles.css. */
 
@@ -81,8 +83,16 @@ export const ShotListItem: React.FC<ShotListItemProps> = ({
           <div className="shot-list-item__date">{dateLabel}</div>
           <div className="shot-list-item__time">{timeLabel}</div>
         </div>
-        {typeof shot.painScore === "number" && (
-          <div className="shot-list-item__pill">Pain: {shot.painScore}/10</div>
+        {/* A GUARD, not a presence check — which is what the `typeof
+            shot.painScore === "number"` this replaced actually was. Storage is
+            deliberately lenient (`sanitizeShots` vets only id and date), so an
+            unrecognised level reaches here and `painLabel` looked it up
+            unchecked: the row rendered a pill reading "Pain: " with nothing
+            after it. Measured before this. */}
+        {isPainLevel(shot.pain) && (
+          <div className="shot-list-item__pill">
+            Pain: {painLabel(shot.pain)}
+          </div>
         )}
       </header>
 
