@@ -651,7 +651,46 @@ Worth knowing what this rule is suspending, since it stops being free the day so
     4. **The cadence UI: weekday sets, asked rhythm-first** — `shotDay` becomes `shotDays`, and the two fields become the three named choices settled above. Its own PR, deliberately, and the reasoning generalises: it rewrites `plannedDateFor` from one slot per cycle to several, which means the adherence sweep is under construction at the same time as the thing it guards. Doing that on top of a branch whose last three reviews each found a HIGH *in that same seam* is how slice B happened. Nothing waits on it either — charts are slice D — and pre-GA means there is no migration cost to doing it later. That standing rule removes the urgency rather than creating it.
 
        It also deletes an open question rather than answering it: **do not write an error message for a `3.5` interval in the meantime.** Today an invalid interval is silently discarded, which is the failure class this codebase treats as severe — but the twice-weekly user stops needing a number the model cannot hold the moment this lands, so any copy written now is copy written to be deleted. Accept one PR of silence.
-    5. **"Any days you felt off?"** — deferred out of the spine on purpose. Every open question about it was a guess at vocabulary for an interval whose length the app does not yet track, and step 2 is what makes that length real. The same reasoning the soreness card already uses for its buckets ("settle it when cadence lands rather than guessing now"). The four options are settled; what is not settled is whether they read right against a 3-day interval, and only shipping cadence answers that.
+    5. ~~**"Any days you felt off?"**~~ — **done.** `mood?: string` became
+       `offDays?: OffDaysPattern`, renamed rather than retyped for the reason
+       `painScore` became `pain`: the stored value is a distribution across an
+       interval, not a mood rating. Search narrowed to notes and the field
+       joined pain as a facet, `mood` left `TextField` (where ManageValues had
+       never surfaced it), and the chips get no colour ramp — pain rises
+       none → severe so colour rising with it says something true, while these
+       four are a pattern and a ramp would assert an order they do not have.
+
+       **The deferral paid off, which is worth recording because deferring
+       looked like drift at the time.** This was pulled out of the spine because
+       every open question about it was a guess at vocabulary for an interval
+       whose length the app did not yet track — the same reasoning the soreness
+       card uses for its own buckets. Cadence made that length real, and the
+       question it was waiting on had a real answer: the options blur at short
+       intervals. Over three days "Most of the time" and "Right before this one"
+       converge.
+       The fix is NOT to vary the chips by interval, which would make one stored
+       value mean different things for different users — the overloaded-value
+       bug spread across a population instead of a field. One vocabulary, and
+       the span line carries the length: "Since your last shot · 13 days",
+       named rather than assumed because cadence runs 3–14 days and "this week"
+       would be wrong for most people. The dates are deliberately not spelled
+       out; every date this app shows is the stored ISO string.
+
+       **Two limits accepted, both real and both found by checking the research
+       rather than by reasoning.** The four answers are neither mutually
+       exclusive (off days both scattered *and* clustered fit two chips) nor
+       collectively exhaustive (off days landing *after* a shot have no home —
+       and a post-injection crash 3–4 days in is a reported pattern, so that
+       population exists). A fifth value is additive and free while pre-GA.
+       Multi-select is **not** the fix: two chips lit is a tally again, and the
+       tally is what this design exists to beat.
+
+       Retrospective recall is the standing trade, taken knowingly: the
+       literature says people overestimate symptom **intensity and duration**,
+       and this question asks for neither — only where the bad days sat. EMA
+       would fix the bias and is rejected by design, since nothing here may
+       create a pull toward daily logging.
+
     6. **Soreness and bleeding** — the two remaining product surfaces, each with its own safety model, each large enough to deserve its own review.
 
     Decided before implementation:

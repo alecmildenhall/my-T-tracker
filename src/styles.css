@@ -1146,9 +1146,13 @@ select {
 .off-days-chips {
   display: flex;
   /* These WILL wrap, unlike the pain row, and that is expected rather than a
-     fallback: "Right before this one" is three times the width of "Moderate",
-     and four of them cannot share a phone row at a legible size. Measured
-     rather than assumed — see the browser pass. */
+     fallback: "Right before this one" measures 158.6px against "Moderate"'s
+     ~77, so four cannot share a phone row at a legible size. Measured in the
+     real sheet: TWO rows from 375px through 430px, three at 320px, every chip
+     still at least 44x44, and the sheet never scrolls sideways. Shortening the
+     labels to force one row would cost the wording the question depends on —
+     "right before" is the only phrasing that says NEAR the shot, since the
+     whole interval is before it. */
   flex-wrap: wrap;
   gap: 0.3rem;
   margin-top: 0.45rem;
