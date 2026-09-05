@@ -108,9 +108,9 @@ describe("buildBackup — profile", () => {
 
 describe("toJson", () => {
   it("produces parseable JSON of the envelope", () => {
-    const parsed = JSON.parse(toJson([shot({ mood: "good" })]));
+    const parsed = JSON.parse(toJson([shot({ offDays: "right-before" })]));
     expect(parsed.app).toBe(APP_NAME);
-    expect(parsed.shots[0].mood).toBe("good");
+    expect(parsed.shots[0].offDays).toBe("right-before");
   });
 
   it("serializes the profile when present", () => {
@@ -170,7 +170,7 @@ describe("toCsv", () => {
     // through. `plannedFor` sits beside the date it belongs to.
     expect(csv.slice(1).split("\r\n")[0]).toBe(
       "date,plannedFor,time,doseMg,injectionSite,injectionSitePosition," +
-        "testosteroneEster,carrierOil,pain,mood,notes",
+        "testosteroneEster,carrierOil,pain,offDays,notes",
     );
   });
 

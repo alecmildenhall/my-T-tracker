@@ -6,8 +6,16 @@
 // This is the UI-facing companion to shotQuery.ts: that module answers a query,
 // this one describes the one the screen is holding.
 import type { ShotFilter } from "./shotQuery";
-import { PAIN_LEVELS, isPainLevel, type PainLevel } from "../types/shot";
+import {
+  OFF_DAYS_PATTERNS,
+  PAIN_LEVELS,
+  isOffDaysPattern,
+  isPainLevel,
+  type OffDaysPattern,
+  type PainLevel,
+} from "../types/shot";
 import { painLabel } from "./painLabel";
+import { offDaysLabel } from "./offDaysLabel";
 
 /** How many shots each "Load more" press reveals. */
 export const PAGE_SIZE = 20;
@@ -24,6 +32,12 @@ export const PAGE_SIZE = 20;
 export const PAIN_BANDS: { id: PainLevel; label: string }[] = PAIN_LEVELS.map(
   (id) => ({ id, label: painLabel(id) }),
 );
+
+/** The off-days facet's options, derived the same way and for the same reason:
+ *  one source for the vocabulary, so the filter can never drift from the chips
+ *  in the log sheet. */
+export const OFF_DAYS_BANDS: { id: OffDaysPattern; label: string }[] =
+  OFF_DAYS_PATTERNS.map((id) => ({ id, label: offDaysLabel(id) }));
 
 /**
  * Everything the History screen is currently asking for. Lifted to App so a trip
@@ -70,6 +84,7 @@ export function countActiveFacets(query: HistoryQuery): number {
     f.position,
     f.ester,
     f.pain,
+    f.offDays,
   ].filter((v) => v !== undefined && v !== "").length;
 }
 
@@ -81,4 +96,17 @@ export function countActiveFacets(query: HistoryQuery): number {
 export function withPainBand(query: HistoryQuery, id: string): HistoryQuery {
   const level = isPainLevel(id) ? id : undefined;
   return { ...query, filter: { ...query.filter, pain: level } };
+}
+
+/** The query with an off-days pattern applied (or cleared, for "Any").
+ *
+ *  Validated rather than cast, exactly as `withPainBand` is: `id` is whatever
+ *  the <select> produced, so anything unrecognised clears the facet instead of
+ *  filtering on a value that does not exist. */
+export function withOffDaysBand(
+  query: HistoryQuery,
+  id: string,
+): HistoryQuery {
+  const pattern = isOffDaysPattern(id) ? id : undefined;
+  return { ...query, filter: { ...query.filter, offDays: pattern } };
 }

@@ -4,7 +4,7 @@
 //   - CSV:  a flat, spreadsheet-friendly export for clinical conversations
 // CSV is export-only — we never parse it back — so it optimises for safety in
 // spreadsheet apps (formula-injection guard) and correctness (RFC 4180 quoting).
-import { isPainLevel, type ShotEntry } from "../types/shot";
+import { isOffDaysPattern, isPainLevel, type ShotEntry } from "../types/shot";
 import { isShotDateInRange } from "./civilDate";
 import type { Profile } from "../types/profile";
 import { APP_NAME, APP_VERSION, FORMAT_VERSION } from "../appMeta";
@@ -88,7 +88,12 @@ const CSV_COLUMNS: Array<{
   // data file. Recorded because "the CSV is for clinical conversations" makes
   // the opposite look right until you look at the rest of the file.
   { header: "pain", key: "pain", usable: isPainLevel },
-  { header: "mood", key: "mood" },
+  // `offDays`, not `off_days`: the comment above is explicit that every header
+  // here is a FIELD NAME, and the file is full of camelCase ones. Guarded like
+  // pain, for the same reason — a value that predates the enum, or a
+  // hand-edited backup, must not be written verbatim into a file a provider
+  // reads.
+  { header: "offDays", key: "offDays", usable: isOffDaysPattern },
   { header: "notes", key: "notes" },
 ];
 

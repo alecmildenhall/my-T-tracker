@@ -7,12 +7,20 @@ import React, {
   useCallback,
 } from "react";
 import {
+  OFF_DAYS_PATTERNS,
   PAIN_LEVELS,
+  isOffDaysPattern,
   isPainLevel,
+  type OffDaysPattern,
   type PainLevel,
   type ShotEntry,
 } from "../types/shot";
 import { painLabel } from "../utils/painLabel";
+import { offDaysLabel } from "../utils/offDaysLabel";
+import {
+  offDaysWindowDays,
+  offDaysWindowLabel,
+} from "../utils/offDaysWindow";
 import type { Profile } from "../types/profile";
 import { suggestionsFor } from "../utils/suggestions";
 import { todayLocalISO, nowHHMM } from "../utils/datetime";
@@ -117,7 +125,7 @@ export interface ShotDraft {
   /** The chosen level, or "" for not recorded — the draft mirrors the form,
    *  and the form's "nothing selected" is distinct from "none". */
   pain: PainLevel | "";
-  mood: string;
+  offDays: OffDaysPattern | "";
   notes: string;
 }
 
@@ -136,7 +144,7 @@ function freshDraft(): ShotDraft {
     testosteroneEster: "",
     carrierOil: "",
     pain: "",
-    mood: "",
+    offDays: "",
     notes: "",
   };
 }
@@ -317,7 +325,11 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             // produce. "Four chips cannot produce an invalid value" is true of
             // the chips and was never true of the seed.
             pain: isPainLevel(initial.pain) ? initial.pain : "",
-            mood: initial.mood ?? "",
+            // Validated, not cast: storage is lenient, so a value predating
+            // the enum (or a hand-edited backup) reaches here, and seeding it
+            // unchecked would put a phantom into a group where no chip matches
+            // and the Clear control is the only way out.
+            offDays: isOffDaysPattern(initial.offDays) ? initial.offDays : "",
             notes: initial.notes ?? "",
           }
         : { ...freshDraft(), ...carried },
@@ -338,6 +350,15 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   const [date, setDate] = useState<string>(start.date);
 
   /** What the app works out this shot was meant to be, given today's settings. */
+  // The recall window the off-days question is asking about. Recomputed as the
+  // date changes, so backdating an entry re-measures rather than keeping a span
+  // from the date it was opened with.
+  const offDaysSpan = useMemo(
+    () =>
+      offDaysWindowLabel(offDaysWindowDays(shots, date, editingShot?.id)),
+    [shots, date, editingShot?.id],
+  );
+
   const plan = useMemo(
     () =>
       planShot({
@@ -485,7 +506,10 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   const [pain, setPain] = useState<PainLevel | "">(start.pain);
   /** Where Clear hands focus when it removes itself — see its onClick. */
   const firstPainChipRef = useRef<HTMLInputElement>(null);
-  const [mood, setMood] = useState<string>(start.mood);
+  const firstOffDaysChipRef = useRef<HTMLInputElement>(null);
+  const [offDays, setOffDays] = useState<OffDaysPattern | "">(
+    start.offDays,
+  );
   const [notes, setNotes] = useState<string>(start.notes);
 
   // Suggestions derived from past entries — one tap to reuse a value you've
@@ -539,7 +563,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     setInjectionSite("");
     setInjectionSitePosition("");
     setPain("");
-    setMood("");
+    setOffDays("");
     setNotes("");
     // Carried-forward fields reset to the last shot's values, not to empty.
     const { doseMg, testosteroneEster, carrierOil } = carriedRef.current;
@@ -672,7 +696,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       testosteroneEster: testosteroneEster || undefined,
       carrierOil: carrierOil || undefined,
       pain: pain === "" ? undefined : pain,
-      mood: mood || undefined,
+      offDays: offDays || undefined,
       notes: notes || undefined,
       // Frozen here and never recomputed. An emptied field means "no planned
       // date", which is a real answer rather than a prompt to guess one.
@@ -761,7 +785,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     testosteroneEster,
     carrierOil,
     pain,
-    mood,
+    offDays,
     notes,
   };
 
@@ -985,8 +1009,8 @@ export const ShotForm: React.FC<ShotFormProps> = ({
                 // (`suggestionsFor` already dedupes case-insensitively, so
                 // capitalisation would not split the chip list — this is about
                 // the letters, not the case.)
-                // Notes and Mood are left alone: those are prose, where the
-                // phone's help is help.
+                // Notes is left alone: that is prose, where the phone's
+                // help is help.
                 autoCapitalize="none"
                 autoCorrect="off"
                 spellCheck={false}
@@ -1139,15 +1163,69 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             )}
           </div>
 
-          <label>
-            Mood
-            <input
-              type="text"
-              value={mood}
-              onChange={(e) => setMood(e.target.value)}
-              placeholder="e.g. low, okay, good"
-            />
-          </label>
+          {/* The same shape as the pain group directly above — native radios
+              in a fieldset, so arrow keys roam the group for free and it is one
+              tab stop, which `useFocusTrap` already handles for an unchecked
+              radio group. */}
+          <fieldset className="off-days-field">
+            <legend>Any days you felt off?</legend>
+            {/* The recall window, named rather than assumed. Never "this week":
+                cadence here runs from 3 to 14 days, so a fixed word would be
+                wrong for most people. It says which shot you are answering
+                about, which is also what lets the four answers keep one meaning
+                each at any interval length — the chips do not change, the span
+                does. */}
+            {offDaysSpan && (
+              <p className="off-days-field__span">{offDaysSpan}</p>
+            )}
+            <div className="off-days-chips">
+              {OFF_DAYS_PATTERNS.map((pattern) => (
+                <label
+                  key={pattern}
+                  className={`off-days-chip${
+                    offDays === pattern ? " off-days-chip--on" : ""
+                  }`}
+                >
+                  <input
+                    ref={
+                      pattern === OFF_DAYS_PATTERNS[0]
+                        ? firstOffDaysChipRef
+                        : undefined
+                    }
+                    type="radio"
+                    name="offDays"
+                    value={pattern}
+                    checked={offDays === pattern}
+                    onChange={() => setOffDays(pattern)}
+                  />
+                  {offDaysLabel(pattern)}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          {/* Only once something is set, and the only way back to "not
+              recorded" — a different fact from "not really". Same control, same
+              reasoning and same focus hand-off as the pain group's. */}
+          {offDays !== "" && (
+            <button
+              type="button"
+              className="link-button pain-clear"
+              // Named for what it clears: outside the fieldset, a screen reader
+              // browsing by button hears only "Clear", beside a separate "Clear
+              // form" in the same dialog.
+              aria-label="Clear off days"
+              onClick={() => {
+                setOffDays("");
+                // Removes ITSELF — the condition rendering it is the value it
+                // just cleared — so it hands focus on first, back to the group
+                // it belongs to. Without this, focus lands on <body> inside a
+                // dialog whose #root is inert, where the trap cannot re-engage.
+                handOffFocus(firstOffDaysChipRef, headingRef);
+              }}
+            >
+              Clear
+            </button>
+          )}
         </div>
 
         {/* Only when the settings answer the question. With no cadence there is

@@ -7,7 +7,7 @@ import { APP_NAME, FORMAT_VERSION } from "../appMeta";
 import { isRealDate, isShotDateInRange } from "./civilDate";
 import { WEEKDAYS } from "./weekday";
 import { MIN_INTERVAL_DAYS, MAX_INTERVAL_DAYS } from "../types/profile";
-import { PAIN_LEVELS } from "../types/shot";
+import { OFF_DAYS_PATTERNS, PAIN_LEVELS } from "../types/shot";
 
 const TIME_RE = /^\d{2}:\d{2}$/; // HH:MM
 
@@ -46,7 +46,7 @@ export const shotEntrySchema = z.strictObject({
   testosteroneEster: z.string().min(1).optional(),
   carrierOil: z.string().min(1).optional(),
   pain: z.enum(PAIN_LEVELS).optional(),
-  mood: z.string().min(1).optional(),
+  offDays: z.enum(OFF_DAYS_PATTERNS).optional(),
   notes: z.string().min(1).optional(),
   // Same range rule as `date`: a planned date is a date the app could have
   // produced, so it is bounded identically. Import is the other way into

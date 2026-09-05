@@ -29,6 +29,48 @@ export function isPainLevel(value: unknown): value is PainLevel {
   );
 }
 
+/**
+ * Where the off days sat in the interval just gone — a PATTERN, not an amount.
+ *
+ * This replaces free-text `mood`, and it is deliberately not a 1–5 intensity
+ * scale either. A count cannot tell three scattered off days from three stacked
+ * against the next shot, and only the second is a conversation about a shorter
+ * interval or a split dose. Naming the shape gets both in one tap, and it is
+ * the one insight this app can produce that a daily mood tracker structurally
+ * cannot — because only this app knows where in the interval you were.
+ *
+ * Asked as "any days you felt off?" rather than "how was it": you notice
+ * feeling off, so counting good days is counting non-events. That is a
+ * deliberate departure from WHO-5, which is worded toward wellbeing and is also
+ * answered under supervision rather than one-handed beside a sharps bin. It is
+ * vague in the useful direction too — flat, irritable, foggy and dysphoric all
+ * fit, without the app deciding any of them is a symptom.
+ *
+ * Accepted, and both real: the values are NOT a clean ordinal ("here-and-there"
+ * is neither more nor less than "right-before"), so charts count how often each
+ * appears rather than averaging; and off days landing AFTER a shot have no true
+ * home here, which is a reported pattern rather than a hypothetical one. A
+ * fifth value is additive and free while pre-GA.
+ *
+ * `undefined` is NOT `"none"`, exactly as with pain: one says there weren't
+ * any, the other says nobody answered.
+ */
+export const OFF_DAYS_PATTERNS = [
+  "none",
+  "here-and-there",
+  "right-before",
+  "most-of-the-time",
+] as const;
+
+export type OffDaysPattern = (typeof OFF_DAYS_PATTERNS)[number];
+
+export function isOffDaysPattern(value: unknown): value is OffDaysPattern {
+  return (
+    typeof value === "string" &&
+    (OFF_DAYS_PATTERNS as readonly string[]).includes(value)
+  );
+}
+
 // Core model for a single HRT shot log.
 // Intentionally PII-free: only HRT-related fields.
 export interface ShotEntry {
@@ -41,7 +83,7 @@ export interface ShotEntry {
   testosteroneEster?: string; // e.g. "cypionate", "enanthate"
   carrierOil?: string; // e.g. "cottonseed", "sesame", "grapeseed"
   pain?: PainLevel; // how much the injection itself hurt
-  mood?: string; // free text or later enum
+  offDays?: OffDaysPattern; // where the off days sat in the interval before this
   notes?: string; // long-form notes
   /** The day this shot was meant to be, frozen at save time (YYYY-MM-DD).
    *

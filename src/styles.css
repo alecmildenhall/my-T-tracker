@@ -1111,6 +1111,116 @@ select {
   font-size: 0.78rem;
 }
 
+/* ---- "Any days you felt off?" ------------------------------------------
+   Structurally the pain group, and deliberately NOT its colour ramp. Pain rises
+   none → severe, so colour rising with it says something true. These four are a
+   PATTERN, not an amount: "here and there" is neither more nor less than "right
+   before this one", so a ramp would assert an order the values do not have, and
+   a red-ish "most of the time" would grade an answer the app has no business
+   grading. Neutral chips, accent only for the one you chose. */
+.off-days-field {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0; /* a fieldset defaults to min-content, which breaks flex rows */
+}
+
+.off-days-field legend {
+  padding: 0;
+  font-size: 0.8rem;
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* The recall window. Sits between the question and the answers because that is
+   the order you read them in — you need to know what you are answering about
+   before the options mean anything. */
+.off-days-field__span {
+  margin: 0.25rem 0 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* A margin rather than the container's gap, because a <legend> is not a flex
+   item — the same reason the pain row needs one. */
+.off-days-chips {
+  display: flex;
+  /* These WILL wrap, unlike the pain row, and that is expected rather than a
+     fallback: "Right before this one" is three times the width of "Moderate",
+     and four of them cannot share a phone row at a legible size. Measured
+     rather than assumed — see the browser pass. */
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.45rem;
+}
+
+.off-days-chip {
+  position: relative;
+  flex: 0 0 auto;
+  min-height: 44px;
+  min-width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-subtle);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  /* Stated, because the global `label` rule sets 600 — without this the
+     selected state's 600 would be no change at all, which is exactly what the
+     pain chips were measured doing. */
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+/* Invisible rather than `display: none`: a hidden input is not focusable, and
+   the native radio is here precisely for its keyboard and arrow-key behaviour. */
+.off-days-chip input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+/* AFTER the base rule: both are a single class, so at equal specificity source
+   order decides, and this branch has already shipped that bug three times.
+   Fill, border and weight together — never one signal, and never hue alone. */
+.off-days-chip--on {
+  border-color: var(--accent);
+  background: rgba(56, 189, 248, 0.16);
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* The ring goes on the LABEL: the input is transparent and stretched over the
+   pill, so an outline on it would trace the same box invisibly. */
+.off-days-chip:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Without `:has()` (Firefox before 121) the rule above never matches and the
+   chips have NO visible focus indicator at all, since the real radio is
+   `opacity: 0` — a WCAG 2.4.7 failure. `:focus-within` is the only selector
+   that reaches a parent without `:has()`, and it is fenced so a browser that
+   has `:has()` never sees it: it has no modality-aware form, so unfenced it
+   would bring back the ring-on-tap this stylesheet took care to avoid. */
+@supports not selector(:has(*)) {
+  .off-days-chip:focus-within {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+
 .field-error {
   margin-top: 0.3rem;
   font-size: 0.75rem;

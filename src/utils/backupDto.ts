@@ -8,7 +8,11 @@
 // Keeping one allowlist for each shape means export and the strict import schema
 // can never drift apart (which would let an export produce a file its own
 // importer rejects).
-import { isPainLevel, type ShotEntry } from "../types/shot";
+import {
+  isOffDaysPattern,
+  isPainLevel,
+  type ShotEntry,
+} from "../types/shot";
 import type { Profile } from "../types/profile";
 import { isValidIntervalDays } from "../types/profile";
 import { isShotDateInRange } from "./civilDate";
@@ -48,8 +52,7 @@ export function pickShotFields(s: ShotEntry): ShotEntry {
   // Backup export is the only recovery path in this product's durability model,
   // so a file that cannot be restored is the worst thing it can produce.
   if (isPainLevel(s.pain)) shot.pain = s.pain;
-  const mood = nonBlankString(s.mood);
-  if (mood !== undefined) shot.mood = mood;
+  if (isOffDaysPattern(s.offDays)) shot.offDays = s.offDays;
   const notes = nonBlankString(s.notes);
   if (notes !== undefined) shot.notes = notes;
   // The allowlist is on BOTH the export and the import path, so a field missing

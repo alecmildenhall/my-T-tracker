@@ -5,7 +5,8 @@ import { WASH_ANIMATION } from "../utils/wash";
 import { formatTimeForDisplay } from "../utils/datetime";
 import { daysFromPlanned } from "../utils/schedule";
 import { painLabel } from "../utils/painLabel";
-import { isPainLevel } from "../types/shot";
+import { offDaysLabel } from "../utils/offDaysLabel";
+import { isOffDaysPattern, isPainLevel } from "../types/shot";
 
 /** Name of the wash keyframes, shared with styles.css. */
 
@@ -106,7 +107,12 @@ export const ShotListItem: React.FC<ShotListItemProps> = ({
           <span> • Type: {shot.testosteroneEster}</span>
         )}
         {shot.carrierOil && <span> • Oil: {shot.carrierOil}</span>}
-        {shot.mood && <span> • Mood: {shot.mood}</span>}
+        {/* Guarded like pain, and for the same measured reason: storage is
+            lenient, so an unrecognised value reaches here and an unchecked
+            lookup renders "Off days: " with nothing after it. */}
+        {isOffDaysPattern(shot.offDays) && (
+          <span> • Off days: {offDaysLabel(shot.offDays)}</span>
+        )}
       </div>
 
       {plannedLabel && (

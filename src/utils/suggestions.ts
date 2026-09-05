@@ -9,8 +9,7 @@ export type TextField =
   | "injectionSite"
   | "injectionSitePosition"
   | "testosteroneEster"
-  | "carrierOil"
-  | "mood";
+  | "carrierOil";
 
 /** Fields that can be reused from past entries as tap suggestions. */
 export type SuggestField = TextField | "doseMg";

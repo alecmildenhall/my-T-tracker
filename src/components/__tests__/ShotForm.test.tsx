@@ -91,7 +91,7 @@ describe("ShotForm suggestion chips", () => {
     ).toBe("");
   });
 
-  it("starts the next shot with per-shot fields empty (site, position, pain, mood, notes)", () => {
+  it("starts the next shot with per-shot fields empty (site, position, pain, off days, notes)", () => {
     const onAddShot = vi.fn();
     const first = render(<ShotForm onAddShot={onAddShot} shots={history} />);
 
@@ -102,9 +102,7 @@ describe("ShotForm suggestion chips", () => {
       target: { value: "left" },
     });
     fireEvent.click(screen.getByRole("radio", { name: "Moderate" }));
-    fireEvent.change(screen.getByPlaceholderText(/low, okay, good/i), {
-      target: { value: "good" },
-    });
+    fireEvent.click(screen.getByRole("radio", { name: "Here and there" }));
     fireEvent.change(screen.getByPlaceholderText(/remember for later/i), {
       target: { value: "felt fine" },
     });
@@ -138,15 +136,13 @@ describe("ShotForm suggestion chips", () => {
         ) as HTMLInputElement
       ).value,
     ).toBe("");
-    // Pain resets to nothing selected, not to "None" — which would put an
-    // answer on a shot nobody answered for.
+    // BOTH chip groups reset to nothing selected, not to their first option —
+    // which would put an answer on a shot nobody answered for. `getAllByRole`
+    // covers pain and off days together, so a new group added to this sheet is
+    // held to the same rule without anyone remembering to add it here.
     screen
       .getAllByRole("radio")
       .forEach((chip) => expect(chip).not.toBeChecked());
-    expect(
-      (screen.getByPlaceholderText(/low, okay, good/i) as HTMLInputElement)
-        .value,
-    ).toBe("");
     expect(
       (
         screen.getByPlaceholderText(
@@ -240,7 +236,9 @@ describe("ShotForm field mapping", () => {
     fireEvent.change(byLabel("Type of T"), { target: { value: "enanthate" } });
     fireEvent.change(byLabel("Carrier oil"), { target: { value: "sesame" } });
     fireEvent.click(screen.getByRole("radio", { name: "Moderate" }));
-    fireEvent.change(byLabel("Mood"), { target: { value: "good" } });
+    fireEvent.click(
+      screen.getByRole("radio", { name: "Right before this one" }),
+    );
     fireEvent.change(byLabel("Notes"), { target: { value: "smooth one" } });
 
     fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
@@ -256,7 +254,7 @@ describe("ShotForm field mapping", () => {
       testosteroneEster: "enanthate",
       carrierOil: "sesame",
       pain: "moderate",
-      mood: "good",
+      offDays: "right-before",
       notes: "smooth one",
     });
     expect(saved.id).toBeTruthy();
@@ -489,7 +487,7 @@ describe("ShotForm field mapping", () => {
       "testosteroneEster",
       "carrierOil",
       "pain",
-      "mood",
+      "offDays",
       "notes",
     ] as const) {
       expect(saved[key]).toBeUndefined();
@@ -578,7 +576,7 @@ describe("ShotForm draft publishing", () => {
     testosteroneEster: "",
     carrierOil: "",
     pain: "",
-    mood: "",
+    offDays: "",
     notes,
   });
 
@@ -1302,7 +1300,7 @@ describe("ShotForm — the planned date", () => {
       testosteroneEster: "",
       carrierOil: "",
       pain: "",
-      mood: "",
+      offDays: "",
       notes: "",
     };
     const onAddShot = vi.fn((): SaveOutcome => "saved");
@@ -1420,7 +1418,7 @@ describe("ShotForm — the planned date", () => {
           testosteroneEster: "",
           carrierOil: "",
           pain: "",
-          mood: "",
+          offDays: "",
           notes: "",
         }}
       />,
@@ -1498,7 +1496,7 @@ describe("ShotForm — the planned date", () => {
       testosteroneEster: "",
       carrierOil: "",
       pain: "",
-      mood: "",
+      offDays: "",
       notes: "",
     };
     render(
@@ -1796,5 +1794,171 @@ describe("ShotForm — the pain group is one tab stop", () => {
     fireEvent.click(screen.getByRole("radio", { name: "Moderate" }));
     const form = document.querySelector("form")!;
     expect(form.querySelectorAll('input[name="pain"]:checked')).toHaveLength(1);
+  });
+});
+
+describe("ShotForm — off days", () => {
+  const chip = (name: string) => screen.getByRole("radio", { name });
+
+  it("saves the pattern the chip stands for, not its label", () => {
+    const onAddShot = vi.fn((shot: ShotEntry): SaveOutcome =>
+      shot ? "saved" : "ignored",
+    );
+    render(<ShotForm onAddShot={onAddShot} />);
+    fireEvent.click(chip("Right before this one"));
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+    expect(onAddShot.mock.calls[0][0].offDays).toBe("right-before");
+  });
+
+  it("offers Clear only once something is set, and it returns to unrecorded", () => {
+    // `undefined` is not `"none"`: nobody answered, versus there weren't any.
+    // Clear is the ONLY way back to the first, so without it a mis-tap on an
+    // optional field would be permanent.
+    const onAddShot = vi.fn((shot: ShotEntry): SaveOutcome =>
+      shot ? "saved" : "ignored",
+    );
+    render(<ShotForm onAddShot={onAddShot} />);
+
+    expect(screen.queryByRole("button", { name: "Clear off days" })).toBeNull();
+
+    fireEvent.click(chip("Here and there"));
+    expect(chip("Here and there")).toBeChecked();
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear off days" }));
+    expect(chip("Here and there")).not.toBeChecked();
+    expect(screen.queryByRole("button", { name: "Clear off days" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+    expect(onAddShot.mock.calls[0][0].offDays).toBeUndefined();
+  });
+
+  it("hands focus on when Clear removes itself", () => {
+    // Clear's rendering condition IS the value it clears, so it deletes itself
+    // on activation. Without a hand-off, focus lands on <body> inside a dialog
+    // whose #root is inert, where the trap cannot re-engage — the nine-defect
+    // class from slice B.
+    render(<ShotForm onAddShot={vi.fn()} />);
+    fireEvent.click(chip("Most of the time"));
+    const clear = screen.getByRole("button", { name: "Clear off days" });
+    clear.focus();
+    fireEvent.click(clear);
+    // Synchronous, not `expectFocusSettled`: no dialog unmounts here. The form
+    // stays mounted and only the button goes, so React has already re-rendered
+    // by the time `fireEvent` returns — the same helper the pain group's Clear
+    // uses, for the same reason.
+    expectFocusSomewhereUseful("clearing off days");
+    // A different assertion: the one above only says focus is not nowhere.
+    expectVisibleFocusRing("after clearing off days");
+  });
+
+  it("keeps its own Clear separate from the pain group's", () => {
+    // Two Clear controls can be on screen at once, and both are named "Clear".
+    // Only the accessible name tells them apart, so clearing one must not
+    // disturb the other.
+    render(<ShotForm onAddShot={vi.fn()} />);
+    fireEvent.click(chip("Moderate"));
+    fireEvent.click(chip("Here and there"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear off days" }));
+    expect(chip("Moderate")).toBeChecked();
+    expect(chip("Here and there")).not.toBeChecked();
+  });
+
+  it("restores a stored pattern, and ignores one the enum does not know", () => {
+    // Storage is lenient — `sanitizeShots` vets only id and date — so a value
+    // predating the enum reaches the seed. Cast unchecked it would put a
+    // phantom into a group where no chip matches and Clear is the only way out.
+    const { unmount } = render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        onUpdateShot={vi.fn()}
+        editingShot={{ id: "a", date: "2026-08-05", offDays: "right-before" }}
+        shots={[]}
+      />,
+    );
+    expect(chip("Right before this one")).toBeChecked();
+    unmount();
+
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        onUpdateShot={vi.fn()}
+        editingShot={
+          {
+            id: "b",
+            date: "2026-08-05",
+            offDays: "a bit rough",
+          } as unknown as ShotEntry
+        }
+        shots={[]}
+      />,
+    );
+    screen.getAllByRole("radio").forEach((c) => expect(c).not.toBeChecked());
+    expect(screen.queryByRole("button", { name: "Clear off days" })).toBeNull();
+  });
+
+  it("is one tab stop while nothing is chosen", () => {
+    // `tabbable` reports EVERY radio as tabbable while none is checked — right
+    // about focusability, wrong about tab order. The trap owns Tab, so without
+    // its unchecked-group hatch the four chips become four stops in the state
+    // every new shot starts in.
+    render(<ShotForm onAddShot={vi.fn()} />);
+    const form = document.querySelector("form")!;
+    expect(form.querySelectorAll('input[name="offDays"]')).toHaveLength(4);
+    expect(
+      form.querySelectorAll('input[name="offDays"]:checked'),
+    ).toHaveLength(0);
+    fireEvent.click(chip("Not really"));
+    expect(
+      form.querySelectorAll('input[name="offDays"]:checked'),
+    ).toHaveLength(1);
+  });
+
+  describe("the recall window", () => {
+    it("names the real span rather than saying 'this week'", () => {
+      // Cadence here runs 3–14 days, so a fixed word would be wrong for most
+      // people. Naming the span is also what lets the four answers keep one
+      // meaning each at any interval length.
+      render(
+        <ShotForm
+          onAddShot={vi.fn()}
+          shots={[{ id: "prev", date: "2026-08-12" }]}
+        />,
+      );
+      fireEvent.change(screen.getByLabelText("Date"), {
+        target: { value: "2026-08-25" },
+      });
+      expect(
+        screen.getByText("Since your last shot · 13 days"),
+      ).toBeInTheDocument();
+    });
+
+    it("re-measures when the date is changed", () => {
+      render(
+        <ShotForm
+          onAddShot={vi.fn()}
+          shots={[{ id: "prev", date: "2026-08-12" }]}
+        />,
+      );
+      fireEvent.change(screen.getByLabelText("Date"), {
+        target: { value: "2026-08-19" },
+      });
+      expect(screen.getByText("Since your last shot · 7 days")).toBeInTheDocument();
+      fireEvent.change(screen.getByLabelText("Date"), {
+        target: { value: "2026-08-13" },
+      });
+      expect(screen.getByText("Since your last shot · 1 day")).toBeInTheDocument();
+    });
+
+    it("still asks the question when it cannot name the window", () => {
+      // The first shot logged here has no predecessor, but the person may have
+      // been injecting for years and knows their own last one. So the question
+      // stays and only the span goes — saying nothing beats guessing.
+      render(<ShotForm onAddShot={vi.fn()} shots={[]} />);
+      expect(
+        screen.getByRole("radio", { name: "Not really" }),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/Since your last shot/)).toBeNull();
+    });
   });
 });

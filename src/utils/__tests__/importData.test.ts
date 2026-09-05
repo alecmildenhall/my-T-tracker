@@ -24,7 +24,7 @@ describe("parseBackup — happy path", () => {
   it("round-trips a real export", () => {
     const shots = [
       shot({ doseMg: 50, injectionSite: "thigh", pain: "mild" }),
-      shot({ date: "2026-07-05", mood: "good", notes: "fine" }),
+      shot({ date: "2026-07-05", offDays: "none", notes: "fine" }),
     ];
     const result = parseBackup(toJson(shots));
     expect(result.ok).toBe(true);
@@ -46,7 +46,7 @@ describe("parseBackup — happy path", () => {
       testosteroneEster: "cypionate",
       carrierOil: "sesame",
       pain: "moderate",
-      mood: "okay",
+      offDays: "here-and-there",
       notes: "n",
     });
     const result = parseBackup(toJson([full]));
@@ -236,7 +236,11 @@ describe("parseBackup — a bad entry is skipped, not the file", () => {
     ["an out-of-range time", { id: "x", date: "2026-07-12", time: "24:99" }],
     ["an unknown pain level", { id: "x", date: "2026-07-12", pain: "excruciating" }],
     ["an unexpected extra key", { id: "x", date: "2026-07-12", evil: "surprise" }],
-    ["an empty-string optional field", { id: "x", date: "2026-07-12", mood: "" }],
+    ["an empty-string optional field", { id: "x", date: "2026-07-12", notes: "" }],
+    [
+      "an unknown off-days pattern",
+      { id: "x", date: "2026-07-12", offDays: "a bit rough" },
+    ],
   ])("restores the good entry and skips one with %s", (_label, bad) => {
     const result = skipOne(bad);
     expect(result.ok).toBe(true);
@@ -351,7 +355,7 @@ describe("parseBackup — size cap", () => {
           testosteroneEster: "cypionate",
           carrierOil: "sesame",
           pain: "mild",
-          mood: "okay",
+          offDays: "here-and-there",
           notes: "a fairly typical note about how the shot felt today",
         })
       );
