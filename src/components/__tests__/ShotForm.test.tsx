@@ -1797,6 +1797,38 @@ describe("ShotForm — the pain group is one tab stop", () => {
   });
 });
 
+describe("every member of a field row is a field-cell", () => {
+  it("holds for every row in the sheet", () => {
+    /*
+     * `.form-row` is a flex row above 560px and `.field-cell` is `flex: 1 1 0`.
+     * A bare child gets `flex: 0 1 auto` with a max-content basis instead, takes
+     * the row, and starves its neighbours. The off-days fieldset shipped without
+     * the wrapper and did exactly that: measured in a browser, the pain cell was
+     * 1px at 600px and 8px above it, its four chips stacked vertically and
+     * painted over the next column, with "Injection pain" overprinting "Any days
+     * you felt off?".
+     *
+     * STATED HONESTLY: this is a structural check, and it cannot see the crush —
+     * jsdom computes no layout, so the widths above are browser-only. It guards
+     * the invariant that produces them, which is the most this environment can
+     * do; the real check is the browser pass, and the reason THIS one exists is
+     * that the browser pass swept 320–430px only, all below the breakpoint, so
+     * nothing it measured could have caught it.
+     */
+    render(<ShotForm onAddShot={vi.fn()} />);
+    const rows = [...document.querySelectorAll(".form-row")];
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      const strays = [...row.children].filter(
+        (child) => !child.classList.contains("field-cell"),
+      );
+      expect(
+        strays.map((el) => `${el.tagName.toLowerCase()}.${el.className}`),
+      ).toEqual([]);
+    }
+  });
+});
+
 describe("ShotForm — off days", () => {
   const chip = (name: string) => screen.getByRole("radio", { name });
 
@@ -1905,13 +1937,13 @@ describe("ShotForm — off days", () => {
     render(<ShotForm onAddShot={vi.fn()} />);
     const form = document.querySelector("form")!;
     expect(form.querySelectorAll('input[name="offDays"]')).toHaveLength(4);
-    expect(
-      form.querySelectorAll('input[name="offDays"]:checked'),
-    ).toHaveLength(0);
+    expect(form.querySelectorAll('input[name="offDays"]:checked')).toHaveLength(
+      0,
+    );
     fireEvent.click(chip("Not really"));
-    expect(
-      form.querySelectorAll('input[name="offDays"]:checked'),
-    ).toHaveLength(1);
+    expect(form.querySelectorAll('input[name="offDays"]:checked')).toHaveLength(
+      1,
+    );
   });
 
   describe("the recall window", () => {
@@ -1929,7 +1961,7 @@ describe("ShotForm — off days", () => {
         target: { value: "2026-08-25" },
       });
       expect(
-        screen.getByText("Since your last shot · 13 days"),
+        screen.getByText("The 13 days before this shot"),
       ).toBeInTheDocument();
     });
 
@@ -1943,11 +1975,68 @@ describe("ShotForm — off days", () => {
       fireEvent.change(screen.getByLabelText("Date"), {
         target: { value: "2026-08-19" },
       });
-      expect(screen.getByText("Since your last shot · 7 days")).toBeInTheDocument();
+      expect(
+        screen.getByText("The 7 days before this shot"),
+      ).toBeInTheDocument();
       fireEvent.change(screen.getByLabelText("Date"), {
         target: { value: "2026-08-13" },
       });
-      expect(screen.getByText("Since your last shot · 1 day")).toBeInTheDocument();
+      expect(
+        screen.getByText("The 1 day before this shot"),
+      ).toBeInTheDocument();
+    });
+
+    it("names the window of the shot being EDITED, not of the latest one", () => {
+      // The screen where the first wording ("since your last shot") was false.
+      // Editing a shot from months back measures the gap before IT — correctly
+      // — while "your last shot" means the recent one, so the number and the
+      // words described different things.
+      render(
+        <ShotForm
+          onAddShot={vi.fn()}
+          onUpdateShot={vi.fn()}
+          editingShot={{ id: "old", date: "2026-05-20" }}
+          shots={[
+            { id: "older", date: "2026-05-13" },
+            { id: "old", date: "2026-05-20" },
+            { id: "recent", date: "2026-08-25" },
+          ]}
+        />,
+      );
+      expect(
+        screen.getByText("The 7 days before this shot"),
+      ).toBeInTheDocument();
+    });
+
+    it("describes the group with the window, so it is not sighted-only", () => {
+      // The group's accessible name is the legend and each radio's is its own
+      // label, so without aria-describedby the span reaches neither and a
+      // screen-reader user never hears which window they are answering about.
+      render(
+        <ShotForm
+          onAddShot={vi.fn()}
+          shots={[{ id: "prev", date: "2026-08-12" }]}
+        />,
+      );
+      fireEvent.change(screen.getByLabelText("Date"), {
+        target: { value: "2026-08-25" },
+      });
+      const group = document.querySelector(".off-days-field")!;
+      const id = group.getAttribute("aria-describedby");
+      expect(id).toBeTruthy();
+      expect(document.getElementById(id!)?.textContent).toBe(
+        "The 13 days before this shot",
+      );
+    });
+
+    it("carries no dangling description when there is no window", () => {
+      // A pointer to an element that does not exist is worse than none.
+      render(<ShotForm onAddShot={vi.fn()} shots={[]} />);
+      expect(
+        document
+          .querySelector(".off-days-field")
+          ?.getAttribute("aria-describedby"),
+      ).toBeNull();
     });
 
     it("still asks the question when it cannot name the window", () => {
@@ -1958,7 +2047,7 @@ describe("ShotForm — off days", () => {
       expect(
         screen.getByRole("radio", { name: "Not really" }),
       ).toBeInTheDocument();
-      expect(screen.queryByText(/Since your last shot/)).toBeNull();
+      expect(screen.queryByText(/days before this shot/)).toBeNull();
     });
   });
 });

@@ -41,13 +41,20 @@ export function offDaysWindowDays(
   return days > 0 ? days : null;
 }
 
-/** "Since your last shot · 13 days", or null when the window is unknown. */
+/** "The 13 days before this shot", or null when the window is unknown. */
 export function offDaysWindowLabel(days: number | null): string | null {
   if (days === null) return null;
-  // The ISO date is deliberately NOT spelled out here. Every date this app
+  // "Before THIS shot", not "since your last shot" — which was the first
+  // wording and is false on the screen where it matters most. Open a shot from
+  // three months ago and the gap measured is the one before IT, correctly, but
+  // "your last shot" means the one last week. Naming the window relative to the
+  // shot in front of you is true whether it is new or being edited, and for a
+  // new shot the two mean the same thing anyway.
+  //
+  // The ISO dates are deliberately NOT spelled out. Every date this app
   // displays is the stored ISO string, and ShotListItem's own comment warns
   // against "inventing a second format" — a friendly "12–25 Aug" beside a
-  // `2026-08-25` field would be exactly that. The day count is the part that
-  // does the work; the dates are one tap away in History.
-  return `Since your last shot · ${days} ${days === 1 ? "day" : "days"}`;
+  // `2026-08-25` field would be exactly that. The day count is the part doing
+  // the work; the dates are one tap away in History.
+  return `The ${days} ${days === 1 ? "day" : "days"} before this shot`;
 }

@@ -58,12 +58,15 @@ describe("offDaysWindowDays", () => {
 });
 
 describe("offDaysWindowLabel", () => {
-  it("names the span in days", () => {
-    expect(offDaysWindowLabel(13)).toBe("Since your last shot · 13 days");
+  it("names the span relative to THIS shot, not to your latest one", () => {
+    // "Since your last shot" was the first wording and is false where it
+    // matters: editing a shot from three months ago measures the gap before
+    // IT, correctly, while "your last shot" means the one last week.
+    expect(offDaysWindowLabel(13)).toBe("The 13 days before this shot");
   });
 
   it("says 'day' for one", () => {
-    expect(offDaysWindowLabel(1)).toBe("Since your last shot · 1 day");
+    expect(offDaysWindowLabel(1)).toBe("The 1 day before this shot");
   });
 
   it("says nothing when the window is unknown", () => {

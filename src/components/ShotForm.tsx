@@ -17,10 +17,7 @@ import {
 } from "../types/shot";
 import { painLabel } from "../utils/painLabel";
 import { offDaysLabel } from "../utils/offDaysLabel";
-import {
-  offDaysWindowDays,
-  offDaysWindowLabel,
-} from "../utils/offDaysWindow";
+import { offDaysWindowDays, offDaysWindowLabel } from "../utils/offDaysWindow";
 import type { Profile } from "../types/profile";
 import { suggestionsFor } from "../utils/suggestions";
 import { todayLocalISO, nowHHMM } from "../utils/datetime";
@@ -39,7 +36,7 @@ import {
 /**
  * The fields worth pre-filling on a new shot: dose, type of T, and carrier oil
  * rarely change between shots, so re-entering them every time is pure friction.
- * Everything else (time, site, position, pain, mood, notes) is genuinely
+ * Everything else (time, site, position, pain, off days, notes) is genuinely
  * per-shot — site especially, since rotating it is the point.
  *
  * Sourced from the most recent shot rather than remembered in state, so it holds
@@ -354,8 +351,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   // date changes, so backdating an entry re-measures rather than keeping a span
   // from the date it was opened with.
   const offDaysSpan = useMemo(
-    () =>
-      offDaysWindowLabel(offDaysWindowDays(shots, date, editingShot?.id)),
+    () => offDaysWindowLabel(offDaysWindowDays(shots, date, editingShot?.id)),
     [shots, date, editingShot?.id],
   );
 
@@ -507,9 +503,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   /** Where Clear hands focus when it removes itself — see its onClick. */
   const firstPainChipRef = useRef<HTMLInputElement>(null);
   const firstOffDaysChipRef = useRef<HTMLInputElement>(null);
-  const [offDays, setOffDays] = useState<OffDaysPattern | "">(
-    start.offDays,
-  );
+  const [offDays, setOffDays] = useState<OffDaysPattern | "">(start.offDays);
   const [notes, setNotes] = useState<string>(start.notes);
 
   // Suggestions derived from past entries — one tap to reuse a value you've
@@ -1163,69 +1157,99 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             )}
           </div>
 
-          {/* The same shape as the pain group directly above — native radios
-              in a fieldset, so arrow keys roam the group for free and it is one
-              tab stop, which `useFocusTrap` already handles for an unchecked
-              radio group. */}
-          <fieldset className="off-days-field">
-            <legend>Any days you felt off?</legend>
-            {/* The recall window, named rather than assumed. Never "this week":
+          {/* The `.field-cell` wrapper is NOT decoration — this shipped without
+              one and crushed the pain group beside it. `.form-row` is a flex row
+              above 560px where every member is a `.field-cell` (`flex: 1 1 0`);
+              a bare fieldset gets `flex: 0 1 auto` with a ~509px max-content
+              basis instead, so it took the row and left pain with 1px at 600px
+              and 8px above that. Measured: the four pain chips stacked
+              vertically inside an 8px box and painted over this column, with
+              "Injection pain" overprinting "Any days you felt off?".
+
+              It also repaired itself the moment a chip was tapped — Clear
+              becomes a third flex item and the row wraps — so the broken state
+              was the one every sheet opens in. On main this row's second member
+              was a text input, whose small content basis hid the difference.
+              The phone widths I swept were all below the breakpoint, so none of
+              them could see it.
+
+              Inside it, the same shape as the pain group: native radios in a
+              fieldset, so arrow keys roam the group for free and it is one tab
+              stop, which `useFocusTrap` already handles for an unchecked
+              group. */}
+          <div className="field-cell">
+            <fieldset
+              className="off-days-field"
+              aria-describedby={offDaysSpan ? "off-days-span" : undefined}
+            >
+              <legend>Any days you felt off?</legend>
+              {/* The recall window, named rather than assumed. Never "this week":
                 cadence here runs from 3 to 14 days, so a fixed word would be
                 wrong for most people. It says which shot you are answering
                 about, which is also what lets the four answers keep one meaning
                 each at any interval length — the chips do not change, the span
                 does. */}
-            {offDaysSpan && (
-              <p className="off-days-field__span">{offDaysSpan}</p>
-            )}
-            <div className="off-days-chips">
-              {OFF_DAYS_PATTERNS.map((pattern) => (
-                <label
-                  key={pattern}
-                  className={`off-days-chip${
-                    offDays === pattern ? " off-days-chip--on" : ""
-                  }`}
-                >
-                  <input
-                    ref={
-                      pattern === OFF_DAYS_PATTERNS[0]
-                        ? firstOffDaysChipRef
-                        : undefined
-                    }
-                    type="radio"
-                    name="offDays"
-                    value={pattern}
-                    checked={offDays === pattern}
-                    onChange={() => setOffDays(pattern)}
-                  />
-                  {offDaysLabel(pattern)}
-                </label>
-              ))}
-            </div>
-          </fieldset>
-          {/* Only once something is set, and the only way back to "not
+              {offDaysSpan && (
+                // Described BY the group, or it is invisible in forms mode: the
+                // group's accessible name is the legend and each radio's is its
+                // own label, so without this the span contributes to neither
+                // and a screen-reader user tabbing in never hears which window
+                // they are answering about. That window is what lets the four
+                // answers keep one meaning each at any cadence, so it cannot be
+                // sighted-only.
+                <p id="off-days-span" className="off-days-field__span">
+                  {offDaysSpan}
+                </p>
+              )}
+              <div className="off-days-chips">
+                {OFF_DAYS_PATTERNS.map((pattern) => (
+                  <label
+                    key={pattern}
+                    className={`off-days-chip${
+                      offDays === pattern ? " off-days-chip--on" : ""
+                    }`}
+                  >
+                    <input
+                      ref={
+                        pattern === OFF_DAYS_PATTERNS[0]
+                          ? firstOffDaysChipRef
+                          : undefined
+                      }
+                      type="radio"
+                      name="offDays"
+                      value={pattern}
+                      checked={offDays === pattern}
+                      onChange={() => setOffDays(pattern)}
+                    />
+                    {offDaysLabel(pattern)}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            {/* Only once something is set, and the only way back to "not
               recorded" — a different fact from "not really". Same control, same
               reasoning and same focus hand-off as the pain group's. */}
-          {offDays !== "" && (
-            <button
-              type="button"
-              className="link-button pain-clear"
-              // Named for what it clears: outside the fieldset, a screen reader
-              // browsing by button hears only "Clear", beside a separate "Clear
-              // form" in the same dialog.
-              aria-label="Clear off days"
-              onClick={() => {
-                setOffDays("");
-                // Removes ITSELF — the condition rendering it is the value it
-                // just cleared — so it hands focus on first, back to the group
-                // it belongs to. Without this, focus lands on <body> inside a
-                // dialog whose #root is inert, where the trap cannot re-engage.
-                handOffFocus(firstOffDaysChipRef, headingRef);
-              }}
-            >
-              Clear
-            </button>
-          )}
+            {offDays !== "" && (
+              <button
+                type="button"
+                className="link-button pain-clear"
+                // Named for what it clears: outside the fieldset, a screen reader
+                // browsing by button hears only "Clear", beside a separate "Clear
+                // form" in the same dialog.
+                aria-label="Clear off days"
+                onClick={() => {
+                  setOffDays("");
+                  // Removes ITSELF — the condition rendering it is the value it
+                  // just cleared — so it hands focus on first, back to the group
+                  // it belongs to. Without this, focus lands on <body> inside a
+                  // dialog whose #root is inert, where the trap cannot re-engage.
+                  handOffFocus(firstOffDaysChipRef, headingRef);
+                }}
+              >
+                Clear
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Only when the settings answer the question. With no cadence there is
