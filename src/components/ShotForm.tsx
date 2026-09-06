@@ -350,10 +350,33 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   // The recall window the off-days question is asking about. Recomputed as the
   // date changes, so backdating an entry re-measures rather than keeping a span
   // from the date it was opened with.
-  const offDaysSpan = useMemo(
+  const liveOffDaysSpan = useMemo(
     () => offDaysWindowLabel(offDaysWindowDays(shots, date, editingShot?.id)),
     [shots, date, editingShot?.id],
   );
+
+  /**
+   * Frozen for the ✓ beat, because the sheet must not change under its own
+   * confirmation.
+   *
+   * The same defect the post-save field reset was deleted for, arriving by a
+   * different route: not a reset, but a recomputation. Saving a NEW shot puts it
+   * into `shots` with the date on screen, and `previousShotDateBefore` counts a
+   * same-day shot as the one before — right for the schedule — so the shot
+   * became its own predecessor, the gap read 0, and the span went away. It
+   * blinked out under "✓ Saved" while the sheet sat there for ~440ms. Measured.
+   *
+   * Frozen on `confirming` rather than fixed by excluding the new id, because
+   * the rule generalises: anything in this sheet derived from `shots` would do
+   * the same thing at the same moment, and one guard covers all of them. The
+   * ref is written from an effect, so on the render where `confirming` flips it
+   * still holds the last value from before the save — which is the one to show.
+   */
+  const spanBeforeConfirm = useRef(liveOffDaysSpan);
+  useEffect(() => {
+    if (!confirming) spanBeforeConfirm.current = liveOffDaysSpan;
+  }, [confirming, liveOffDaysSpan]);
+  const offDaysSpan = confirming ? spanBeforeConfirm.current : liveOffDaysSpan;
 
   const plan = useMemo(
     () =>
@@ -1127,7 +1150,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             {pain !== "" && (
               <button
                 type="button"
-                className="link-button pain-clear"
+                className="link-button chip-clear"
                 // Named for what it clears. It sits OUTSIDE the fieldset, so the
                 // group's name is not in its accessible context — a screen
                 // reader browsing by button hears only "Clear", beside a
@@ -1178,29 +1201,33 @@ export const ShotForm: React.FC<ShotFormProps> = ({
               stop, which `useFocusTrap` already handles for an unchecked
               group. */}
           <div className="field-cell">
-            <fieldset
-              className="off-days-field"
-              aria-describedby={offDaysSpan ? "off-days-span" : undefined}
-            >
-              <legend>Any days you felt off?</legend>
-              {/* The recall window, named rather than assumed. Never "this week":
+            <fieldset className="off-days-field">
+              {/* The window lives INSIDE the legend, so it is part of the
+                  group's accessible NAME rather than a description of it.
+                  `aria-describedby` on a fieldset was the first attempt and it
+                  was a prediction, not a measurement: group-level descriptions
+                  are announced inconsistently, and iOS VoiceOver — this app's
+                  primary platform — does not reliably surface fieldset
+                  semantics at all. A name is announced on entering the group by
+                  every AT there is, so this shape does not depend on support we
+                  cannot check from here. It reads the same on screen. */}
+              <legend>
+                {/* The explicit space is load-bearing. JSX strips the newline
+                    between this text and the expression below, so the group's
+                    accessible name computed as "...felt off?The 13 days..." —
+                    measured. The span is `display: block`, so nothing shows the
+                    join on screen and only the NAME is wrong. */}
+                Any days you felt off?{" "}
+                {/* The recall window, named rather than assumed. Never "this week":
                 cadence here runs from 3 to 14 days, so a fixed word would be
                 wrong for most people. It says which shot you are answering
                 about, which is also what lets the four answers keep one meaning
                 each at any interval length — the chips do not change, the span
                 does. */}
-              {offDaysSpan && (
-                // Described BY the group, or it is invisible in forms mode: the
-                // group's accessible name is the legend and each radio's is its
-                // own label, so without this the span contributes to neither
-                // and a screen-reader user tabbing in never hears which window
-                // they are answering about. That window is what lets the four
-                // answers keep one meaning each at any cadence, so it cannot be
-                // sighted-only.
-                <p id="off-days-span" className="off-days-field__span">
-                  {offDaysSpan}
-                </p>
-              )}
+                {offDaysSpan && (
+                  <span className="off-days-field__span">{offDaysSpan}</span>
+                )}
+              </legend>
               <div className="off-days-chips">
                 {OFF_DAYS_PATTERNS.map((pattern) => (
                   <label
@@ -1232,7 +1259,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             {offDays !== "" && (
               <button
                 type="button"
-                className="link-button pain-clear"
+                className="link-button chip-clear"
                 // Named for what it clears: outside the fieldset, a screen reader
                 // browsing by button hears only "Clear", beside a separate "Clear
                 // form" in the same dialog.

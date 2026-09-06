@@ -8,10 +8,10 @@
 //
 // Three distinct operations, deliberately named so each says what it reads:
 //   - filterShots    — structured, field-scoped constraints (date range, site,
-//                       position, pain band, ester). Faceted matching: a shot
-//                       either satisfies a facet or it doesn't.
-//   - searchShotText  — fuzzy free-text over the human-written fields (notes,
-//                       (notes). One string, substring match, case-insensitive.
+//                       position, ester, pain, off days). Faceted matching: a
+//                       shot either satisfies a facet or it doesn't.
+//   - searchShotText  — free text over the only free-text field left, `notes`.
+//                       One string, substring match, case-insensitive.
 //   - queryShots      — the composition: filter → search → sort → paginate,
 //                       returning a result envelope ({ items, total, hasMore }).
 //

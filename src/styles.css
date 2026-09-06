@@ -1105,7 +1105,11 @@ select {
   }
 }
 
-.pain-clear {
+/* Shared by both chip groups. Named for the job rather than for the first
+   caller: as `.pain-clear` it was sizing and positioning a control it was not
+   named for, so a change made for the pain group would have silently moved the
+   off-days one. */
+.chip-clear {
   align-self: flex-start;
   margin-top: 0.4rem;
   font-size: 0.78rem;
@@ -1136,8 +1140,13 @@ select {
    the order you read them in — you need to know what you are answering about
    before the options mean anything. */
 .off-days-field__span {
-  margin: 0.25rem 0 0;
+  /* `block` because it now lives inside the <legend>, where it is part of the
+     group's accessible NAME rather than a description hung off it — see the
+     note in ShotForm. Inline it would run on after the question. */
+  display: block;
+  margin-top: 0.25rem;
   font-size: 0.75rem;
+  font-weight: 400;
   color: var(--text-muted);
 }
 

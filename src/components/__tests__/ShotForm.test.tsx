@@ -2008,10 +2008,12 @@ describe("ShotForm — off days", () => {
       ).toBeInTheDocument();
     });
 
-    it("describes the group with the window, so it is not sighted-only", () => {
-      // The group's accessible name is the legend and each radio's is its own
-      // label, so without aria-describedby the span reaches neither and a
-      // screen-reader user never hears which window they are answering about.
+    it("puts the window in the group's NAME, not a description of it", () => {
+      // A description on a fieldset was the first attempt and it was a
+      // prediction: group-level descriptions are announced inconsistently, and
+      // iOS VoiceOver — this app's primary platform — does not reliably surface
+      // fieldset semantics at all. A NAME is announced on entering the group
+      // everywhere, so this shape does not rest on support we cannot check.
       render(
         <ShotForm
           onAddShot={vi.fn()}
@@ -2021,22 +2023,59 @@ describe("ShotForm — off days", () => {
       fireEvent.change(screen.getByLabelText("Date"), {
         target: { value: "2026-08-25" },
       });
-      const group = document.querySelector(".off-days-field")!;
-      const id = group.getAttribute("aria-describedby");
-      expect(id).toBeTruthy();
-      expect(document.getElementById(id!)?.textContent).toBe(
-        "The 13 days before this shot",
-      );
+      // EXACT, not `\s*`. The loose form was the first version and it would
+      // have passed either way — JSX strips the newline between the question
+      // and the span, so the name really did compute as "...off?The 13...".
+      // Verified against the browser's own accname computation, which is what
+      // this string is a stand-in for.
+      const group = screen.getByRole("group", {
+        name: "Any days you felt off? The 13 days before this shot",
+      });
+      expect(group).toBeInTheDocument();
+      // And nothing hangs off a description that may never be read.
+      expect(group.getAttribute("aria-describedby")).toBeNull();
     });
 
-    it("carries no dangling description when there is no window", () => {
-      // A pointer to an element that does not exist is worse than none.
+    it("holds still under the ✓ instead of blinking out", () => {
+      // The sheet must not change under its own confirmation — the rule the
+      // post-save field reset was deleted for. This broke it by a different
+      // route: saving a NEW shot puts it into `shots` with the date on screen,
+      // and a same-day shot counts as the one before, so the shot became its
+      // own predecessor, the gap read 0, and the window vanished. It blinked
+      // out under "✓ Saved" while the sheet sat there for ~440ms.
+      const saved = { id: "new", date: "2026-08-25" };
+      const { rerender } = render(
+        <ShotForm
+          onAddShot={vi.fn()}
+          shots={[{ id: "prev", date: "2026-08-12" }]}
+          confirming={false}
+        />,
+      );
+      fireEvent.change(screen.getByLabelText("Date"), {
+        target: { value: "2026-08-25" },
+      });
+      expect(
+        screen.getByText("The 13 days before this shot"),
+      ).toBeInTheDocument();
+
+      // What App does at save: the new shot lands in `shots` and the ✓ starts.
+      rerender(
+        <ShotForm
+          onAddShot={vi.fn()}
+          shots={[{ id: "prev", date: "2026-08-12" }, saved]}
+          confirming
+        />,
+      );
+      expect(
+        screen.getByText("The 13 days before this shot"),
+      ).toBeInTheDocument();
+    });
+
+    it("names the group by the question alone when there is no window", () => {
       render(<ShotForm onAddShot={vi.fn()} shots={[]} />);
       expect(
-        document
-          .querySelector(".off-days-field")
-          ?.getAttribute("aria-describedby"),
-      ).toBeNull();
+        screen.getByRole("group", { name: "Any days you felt off?" }),
+      ).toBeInTheDocument();
     });
 
     it("still asks the question when it cannot name the window", () => {

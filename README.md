@@ -554,7 +554,7 @@ Worth knowing what this rule is suspending, since it stops being free the day so
 
     **Accepted costs, both real.** It is **not a clean ordinal** — "Here and there" is not more or less than "Right before this one", so there is no line to plot and no average to take; charts count how often each pattern appears. And someone whose off days land *after* the shot (the peak-side pattern, reported for spikes rather than troughs) has nowhere true to put them and will pick "Here and there". Miscategorised is worse than missing, so that is a genuine loss — accepted because the pre-shot trough is far more commonly reported, and a fifth value is additive and free to add while pre-GA.
 
-    **Wording rules that outlast the options.** Never *"this week"* — cadence may be 3 days or 14, so the card names the real span ("Since your last shot · 13 days, 12–25 Aug"). Every chip anchors to a shot rather than to a position in the span, so they read as one set: an earlier draft mixed "Early on" (a place in the interval) with "Before this shot" (a distance from an event). And "before this shot" alone is ambiguous — the *entire* window is before this shot — so only **"right before"** says near it.
+    **Wording rules that outlast the options.** Never *"this week"* — cadence may be 3 days or 14, so the card names the real span ("The 13 days before this shot"). Every chip anchors to a shot rather than to a position in the span, so they read as one set: an earlier draft mixed "Early on" (a place in the interval) with "Before this shot" (a distance from an event). And "before this shot" alone is ambiguous — the *entire* window is before this shot — so only **"right before"** says near it.
 
     **Deferred out of the B½ spine, deliberately** — see the slice B½ item below for why.
   - **Bleeding & cramps — optional, opt-in, neutrally named** (see the safety model below).
@@ -672,7 +672,7 @@ Worth knowing what this rule is suspending, since it stops being free the day so
        The fix is NOT to vary the chips by interval, which would make one stored
        value mean different things for different users — the overloaded-value
        bug spread across a population instead of a field. One vocabulary, and
-       the span line carries the length: "Since your last shot · 13 days",
+       the span line carries the length: "The 13 days before this shot",
        named rather than assumed because cadence runs 3–14 days and "this week"
        would be wrong for most people. The dates are deliberately not spelled
        out; every date this app shows is the stored ISO string.
