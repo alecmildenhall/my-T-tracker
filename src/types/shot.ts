@@ -46,17 +46,35 @@ export function isPainLevel(value: unknown): value is PainLevel {
  * vague in the useful direction too — flat, irritable, foggy and dysphoric all
  * fit, without the app deciding any of them is a symptom.
  *
- * Accepted, and both real: the values are NOT a clean ordinal ("here-and-there"
- * is neither more nor less than "right-before"), so charts count how often each
- * appears rather than averaging; and off days landing AFTER a shot have no true
- * home here, which is a reported pattern rather than a hypothetical one. A
- * fifth value is additive and free while pre-GA.
+ * `right-after` is the PEAK side, and it is here because the trough is only half
+ * the story. Weekly IM testosterone peaks 24–48h after the injection, most
+ * around day 2, and estradiol rises with it — reported as weepy, emotional,
+ * irritable. The trough side is the mirror: the last 1–2 days before the next
+ * dose, on a peak-to-trough swing that reaches 2.5–3:1. Both are documented and
+ * the four-value version could express only the second, so anyone whose bad days
+ * land after a shot had to answer "here and there" and lose the pattern.
+ *
+ * That matters beyond tidiness: the trans-specific guidance says cyclic symptoms
+ * are the trigger for measuring peak and trough levels and, if the swing is
+ * wide, shortening the interval or moving to a transdermal. "My off days cluster
+ * right after every injection" is a sentence that points at a real clinical
+ * conversation, and the app could not produce it before.
+ *
+ * The ORDER is the display order, and it walks the interval — nothing, then the
+ * start, scattered, the end, then most of it — so the strip beside each option
+ * in the log sheet reads as an index rather than decoration.
+ *
+ * Accepted, and still real: these are NOT a clean ordinal ("here-and-there" is
+ * neither more nor less than "right-before"), so charts count how often each
+ * appears rather than averaging. And "off both early and late" still has no
+ * home; it stays a best-fit question.
  *
  * `undefined` is NOT `"none"`, exactly as with pain: one says there weren't
  * any, the other says nobody answered.
  */
 export const OFF_DAYS_PATTERNS = [
   "none",
+  "right-after",
   "here-and-there",
   "right-before",
   "most-of-the-time",

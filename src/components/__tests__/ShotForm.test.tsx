@@ -102,7 +102,7 @@ describe("ShotForm suggestion chips", () => {
       target: { value: "left" },
     });
     fireEvent.click(screen.getByRole("radio", { name: "Moderate" }));
-    fireEvent.click(screen.getByRole("radio", { name: "Here and there" }));
+    fireEvent.click(screen.getByRole("radio", { name: /^Here and there/ }));
     fireEvent.change(screen.getByPlaceholderText(/remember for later/i), {
       target: { value: "felt fine" },
     });
@@ -236,9 +236,7 @@ describe("ShotForm field mapping", () => {
     fireEvent.change(byLabel("Type of T"), { target: { value: "enanthate" } });
     fireEvent.change(byLabel("Carrier oil"), { target: { value: "sesame" } });
     fireEvent.click(screen.getByRole("radio", { name: "Moderate" }));
-    fireEvent.click(
-      screen.getByRole("radio", { name: "Right before this one" }),
-    );
+    fireEvent.click(screen.getByRole("radio", { name: /^Right before/ }));
     fireEvent.change(byLabel("Notes"), { target: { value: "smooth one" } });
 
     fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
@@ -1598,7 +1596,7 @@ describe("ShotForm required/optional marking", () => {
 });
 
 describe("ShotForm — injection pain", () => {
-  const chip = (name: string) => screen.getByRole("radio", { name });
+  const chip = (name: string | RegExp) => screen.getByRole("radio", { name });
 
   it("names the field so you can tell what is being asked", () => {
     // "How the injection felt" was the roadmap's wording and never says pain,
@@ -1830,16 +1828,60 @@ describe("every member of a field row is a field-cell", () => {
 });
 
 describe("ShotForm — off days", () => {
-  const chip = (name: string) => screen.getByRole("radio", { name });
+  const chip = (name: string | RegExp) => screen.getByRole("radio", { name });
 
   it("saves the pattern the chip stands for, not its label", () => {
     const onAddShot = vi.fn((shot: ShotEntry): SaveOutcome =>
       shot ? "saved" : "ignored",
     );
     render(<ShotForm onAddShot={onAddShot} />);
-    fireEvent.click(chip("Right before this one"));
+    fireEvent.click(chip(/^Right before/));
     fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
     expect(onAddShot.mock.calls[0][0].offDays).toBe("right-before");
+  });
+
+  it("offers the peak side as well as the trough", () => {
+    // The four-value version could only express the trough — the last 1–2 days
+    // before the next dose. Testosterone peaks 24–48h AFTER the injection, with
+    // estradiol rising alongside it, so anyone whose off days land there had to
+    // answer "here and there" and lose the pattern. Both windows are documented,
+    // and the cyclic one is what the guidance says to investigate.
+    const onAddShot = vi.fn((shot: ShotEntry): SaveOutcome =>
+      shot ? "saved" : "ignored",
+    );
+    render(<ShotForm onAddShot={onAddShot} />);
+    fireEvent.click(chip(/^Early on/));
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+    expect(onAddShot.mock.calls[0][0].offDays).toBe("right-after");
+  });
+
+  it("keeps the position in the accessible name, not only in the dots", () => {
+    // Short visible labels move the position into the strip, and the strip is
+    // aria-hidden — so the name is where that fact has to survive, or it exists
+    // only in something assistive tech cannot see (WCAG 1.3.1). And the name
+    // starts with the visible text, so voice control still matches (2.5.3).
+    render(<ShotForm onAddShot={vi.fn()} />);
+    const early = chip(/^Early on/);
+    expect(early).toHaveAccessibleName(
+      "Early on — the days right after your last shot",
+    );
+
+    const row = early.closest(".off-days-row")!;
+    expect(row.querySelector(".off-days-row__label")!.textContent).toBe(
+      "Early on",
+    );
+    expect(
+      row.querySelector(".off-days-row__strip")!.getAttribute("aria-hidden"),
+    ).toBe("true");
+  });
+
+  it("draws all five rows, each with an eight-slot strip", () => {
+    render(<ShotForm onAddShot={vi.fn()} />);
+    const rows = document.querySelectorAll(".off-days-row");
+    expect(rows).toHaveLength(5);
+    rows.forEach((r) =>
+      expect(r.querySelectorAll(".off-days-row__strip i")).toHaveLength(8),
+    );
   });
 
   it("offers Clear only once something is set, and it returns to unrecorded", () => {
@@ -1853,11 +1895,11 @@ describe("ShotForm — off days", () => {
 
     expect(screen.queryByRole("button", { name: "Clear off days" })).toBeNull();
 
-    fireEvent.click(chip("Here and there"));
-    expect(chip("Here and there")).toBeChecked();
+    fireEvent.click(chip(/^Here and there/));
+    expect(chip(/^Here and there/)).toBeChecked();
 
     fireEvent.click(screen.getByRole("button", { name: "Clear off days" }));
-    expect(chip("Here and there")).not.toBeChecked();
+    expect(chip(/^Here and there/)).not.toBeChecked();
     expect(screen.queryByRole("button", { name: "Clear off days" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
@@ -1870,7 +1912,7 @@ describe("ShotForm — off days", () => {
     // whose #root is inert, where the trap cannot re-engage — the nine-defect
     // class from slice B.
     render(<ShotForm onAddShot={vi.fn()} />);
-    fireEvent.click(chip("Most of the time"));
+    fireEvent.click(chip(/^Most days/));
     const clear = screen.getByRole("button", { name: "Clear off days" });
     clear.focus();
     fireEvent.click(clear);
@@ -1889,11 +1931,11 @@ describe("ShotForm — off days", () => {
     // disturb the other.
     render(<ShotForm onAddShot={vi.fn()} />);
     fireEvent.click(chip("Moderate"));
-    fireEvent.click(chip("Here and there"));
+    fireEvent.click(chip(/^Here and there/));
 
     fireEvent.click(screen.getByRole("button", { name: "Clear off days" }));
     expect(chip("Moderate")).toBeChecked();
-    expect(chip("Here and there")).not.toBeChecked();
+    expect(chip(/^Here and there/)).not.toBeChecked();
   });
 
   it("restores a stored pattern, and ignores one the enum does not know", () => {
@@ -1908,7 +1950,7 @@ describe("ShotForm — off days", () => {
         shots={[]}
       />,
     );
-    expect(chip("Right before this one")).toBeChecked();
+    expect(chip(/^Right before/)).toBeChecked();
     unmount();
 
     render(
@@ -1936,7 +1978,7 @@ describe("ShotForm — off days", () => {
     // every new shot starts in.
     render(<ShotForm onAddShot={vi.fn()} />);
     const form = document.querySelector("form")!;
-    expect(form.querySelectorAll('input[name="offDays"]')).toHaveLength(4);
+    expect(form.querySelectorAll('input[name="offDays"]')).toHaveLength(5);
     expect(form.querySelectorAll('input[name="offDays"]:checked')).toHaveLength(
       0,
     );

@@ -16,7 +16,11 @@ import {
   type ShotEntry,
 } from "../types/shot";
 import { painLabel } from "../utils/painLabel";
-import { offDaysLabel } from "../utils/offDaysLabel";
+import {
+  offDaysShortLabel,
+  offDaysSpokenLabel,
+  offDaysStrip,
+} from "../utils/offDaysLabel";
 import { offDaysWindowDays, offDaysWindowLabel } from "../utils/offDaysWindow";
 import type { Profile } from "../types/profile";
 import { suggestionsFor } from "../utils/suggestions";
@@ -1228,12 +1232,18 @@ export const ShotForm: React.FC<ShotFormProps> = ({
                   <span className="off-days-field__span">{offDaysSpan}</span>
                 )}
               </legend>
-              <div className="off-days-chips">
+              {/* Rows, not chips. Choice chips are specified for "one to two
+                  short words", which the pain group fits and this one never
+                  did — "Right before this one" measured 158.6px against
+                  Moderate's 77, so four wrapped to two or three lines and a
+                  wrapped grid has no reading order left to follow. A radio LIST
+                  is the control for single-select with longer labels. */}
+              <div className="off-days-rows">
                 {OFF_DAYS_PATTERNS.map((pattern) => (
                   <label
                     key={pattern}
-                    className={`off-days-chip${
-                      offDays === pattern ? " off-days-chip--on" : ""
+                    className={`off-days-row${
+                      offDays === pattern ? " off-days-row--on" : ""
                     }`}
                   >
                     <input
@@ -1247,8 +1257,27 @@ export const ShotForm: React.FC<ShotFormProps> = ({
                       value={pattern}
                       checked={offDays === pattern}
                       onChange={() => setOffDays(pattern)}
+                      // The visible text is short because the strip draws the
+                      // position; this is where that position stays available to
+                      // anyone who cannot see the strip. It always begins with
+                      // the visible label, which is what WCAG 2.5.3 asks for and
+                      // what keeps "tap Early on" working in voice control.
+                      aria-label={offDaysSpokenLabel(pattern)}
                     />
-                    {offDaysLabel(pattern)}
+                    <span className="off-days-row__mark" aria-hidden="true" />
+                    <span className="off-days-row__label">
+                      {offDaysShortLabel(pattern)}
+                    </span>
+                    {/* Decorative, and safely so: `offDaysSpokenLabel` above
+                        carries the same fact in words. Three of the five light
+                        the same NUMBER of slots in different places, which is
+                        the whole reason to draw it — a count cannot tell them
+                        apart and the position can. */}
+                    <span className="off-days-row__strip" aria-hidden="true">
+                      {offDaysStrip(pattern).map((on, i) => (
+                        <i key={i} className={on ? "is-off" : undefined} />
+                      ))}
+                    </span>
                   </label>
                 ))}
               </div>

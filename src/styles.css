@@ -1152,38 +1152,39 @@ select {
 
 /* A margin rather than the container's gap, because a <legend> is not a flex
    item — the same reason the pain row needs one. */
-.off-days-chips {
+.off-days-rows {
   display: flex;
-  /* These WILL wrap, unlike the pain row, and that is expected rather than a
-     fallback: "Right before this one" measures 158.6px against "Moderate"'s
-     ~77, so four cannot share a phone row at a legible size. Measured in the
-     real sheet: TWO rows from 375px through 430px, three at 320px, every chip
-     still at least 44x44, and the sheet never scrolls sideways. Shortening the
-     labels to force one row would cost the wording the question depends on —
-     "right before" is the only phrasing that says NEAR the shot, since the
-     whole interval is before it. */
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 0.3rem;
   margin-top: 0.45rem;
 }
 
-.off-days-chip {
+/* One option per line: full-width target, and a column has a reading order
+   where the wrapped chip grid had none. */
+.off-days-row {
   position: relative;
-  flex: 0 0 auto;
-  min-height: 44px;
-  min-width: 44px;
-  display: inline-flex;
+  display: flex;
+  /* BOTH declared, and neither is redundant. `.off-days-row` is a <label>, and
+     the base `label` rule sets `flex-direction: column` and `flex: 1 1 0` for
+     the label-above-input pattern the rest of this form uses. Declaring only
+     `display: flex` left those two in force — measured heights and wrap checks
+     all passed because the row was still 48px tall, and only a SCREENSHOT
+     showed the mark, the words and the strip stacked in a centred column.
+     (`.pain-chip` has the same gap and gets away with it by having one child.) */
+  flex-direction: row;
+  flex: none;
   align-items: center;
-  justify-content: center;
-  padding: 0 0.7rem;
-  border-radius: 999px;
+  gap: 0.55rem;
+  min-height: 48px;
+  padding: 0.4rem 0.65rem;
+  border-radius: 10px;
   border: 1px solid var(--border-subtle);
   background: var(--surface-subtle);
   color: var(--text-muted);
   font-size: 0.8rem;
-  /* Stated, because the global `label` rule sets 600 — without this the
-     selected state's 600 would be no change at all, which is exactly what the
-     pain chips were measured doing. */
+  /* Stated, because the global `label` rule sets 600 — without it the selected
+     state's 600 would be no change at all, which is what the pain chips were
+     measured doing. */
   font-weight: 500;
   cursor: pointer;
   transition:
@@ -1193,8 +1194,8 @@ select {
 }
 
 /* Invisible rather than `display: none`: a hidden input is not focusable, and
-   the native radio is here precisely for its keyboard and arrow-key behaviour. */
-.off-days-chip input {
+   the native radio is here for its keyboard and arrow-key behaviour. */
+.off-days-row input {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -1204,31 +1205,92 @@ select {
   cursor: pointer;
 }
 
+/* The radio's stand-in. Drawn rather than shown, because the real input has to
+   cover the whole row to make it one target. */
+.off-days-row__mark {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--border-subtle);
+  display: grid;
+  place-items: center;
+}
+.off-days-row__mark::after {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--accent);
+  transform: scale(0);
+  transition: transform 0.12s ease;
+}
+
+.off-days-row__label {
+  flex: 1;
+}
+
+/* Eight slots across the interval. Small on purpose — it is an index for the
+   row, not a chart. */
+.off-days-row__strip {
+  flex: none;
+  display: flex;
+  gap: 2px;
+}
+.off-days-row__strip i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border-subtle);
+}
+.off-days-row__strip i.is-off {
+  background: var(--accent);
+}
+
 /* AFTER the base rule: both are a single class, so at equal specificity source
-   order decides, and this branch has already shipped that bug three times.
-   Fill, border and weight together — never one signal, and never hue alone. */
-.off-days-chip--on {
+   order decides, and this branch has already shipped that bug. Fill, border,
+   weight AND the mark together — never one signal, never hue alone. */
+.off-days-row--on {
   border-color: var(--accent);
   background: rgba(56, 189, 248, 0.16);
   color: var(--text);
   font-weight: 600;
 }
+.off-days-row--on .off-days-row__mark {
+  border-color: var(--accent);
+}
+.off-days-row--on .off-days-row__mark::after {
+  transform: scale(1);
+}
+.off-days-row--on .off-days-row__strip i {
+  background: rgba(148, 163, 184, 0.35);
+}
+.off-days-row--on .off-days-row__strip i.is-off {
+  background: var(--accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .off-days-row,
+  .off-days-row__mark::after {
+    transition: none;
+  }
+}
 
 /* The ring goes on the LABEL: the input is transparent and stretched over the
-   pill, so an outline on it would trace the same box invisibly. */
-.off-days-chip:has(input:focus-visible) {
+   whole row, so an outline on it would trace the same box invisibly. */
+.off-days-row:has(input:focus-visible) {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-/* Without `:has()` (Firefox before 121) the rule above never matches and the
-   chips have NO visible focus indicator at all, since the real radio is
-   `opacity: 0` — a WCAG 2.4.7 failure. `:focus-within` is the only selector
-   that reaches a parent without `:has()`, and it is fenced so a browser that
-   has `:has()` never sees it: it has no modality-aware form, so unfenced it
-   would bring back the ring-on-tap this stylesheet took care to avoid. */
+/* Without `:has()` (Firefox before 121) the rule above never matches and these
+   rows have NO visible focus indicator, since the real radio is `opacity: 0` —
+   a WCAG 2.4.7 failure. `:focus-within` is the only selector that reaches a
+   parent without `:has()`, and it is fenced so a browser that HAS `:has()`
+   never sees it: it has no modality-aware form, so unfenced it would bring back
+   the ring-on-tap this stylesheet took care to avoid. */
 @supports not selector(:has(*)) {
-  .off-days-chip:focus-within {
+  .off-days-row:focus-within {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
   }
