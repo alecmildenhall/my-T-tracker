@@ -438,6 +438,12 @@ Worth knowing what this rule is suspending, since it stops being free the day so
 
 - [x] Slow the sheet exit from **200ms to 240ms** (`SHEET_EXIT_MS` in `Modal.tsx`, plus the two matching `200ms` values in `styles.css` — they are a set and must move together, or the sheet unmounts mid-slide). The easing is already right: emphasized accelerate is correct for something leaving. The problem is that 200ms across a full-screen surface means it is travelling fastest at the instant it vanishes, which reads as dropped rather than dismissed. 240 keeps exits quick — Material's reasoning is that they are "less of a priority for the user's attention than the next task" — while giving the surface enough time to look like it left on purpose.
 
+  **A commit gets the ✓ beat; a cancel goes straight out. The axis is reversibility, not which surface it is** — written down because it has now been derived twice from scratch, once for the sheet and once for the first-run card, and step 6 adds two more surfaces that will need a dismiss control. Measured on the real build: card **Done 460ms**, sheet **Save 449ms**, sheet **✕ 244ms**. The two commits match each other; the cancel is deliberately the odd one out.
+
+  Dismissing the sheet is fully reversible — the draft is preserved and reopening restores it — so there is nothing to acknowledge and the beat would only be a delay. `Done` is irreversible: the card never returns and no Settings control brings it back. Acknowledging an act you cannot undo is exactly when a confirm beat earns its place.
+
+  Both numbers sit where the guidance wants them (244ms inside the 200–300ms standard band, 449/460 inside the 300–500ms band for larger transitions), and Material is explicit that timing should match the complexity of the change rather than be uniform — so the difference is the point, not an inconsistency. **460ms is the app's longest anything and sits near the 500ms line where motion starts reading as sluggish**; it was checked on a phone and does not, so it stays. If that ever changes, the fix is a separate exit constant for the card at ~150ms, keeping `CONFIRM_MS` shared — and the guard that pins every CSS copy of `SHEET_EXIT_MS` has to grow a second value rather than lose the card.
+
   **Not confetti.** It is seen ~52 times a year and has to survive every one of them, including the weeks when the shot hurt. Confetti is also the wrong register for a routine act of self-care, and spends the good feeling that belongs to the milestones.
 
   Sound and haptic wait for the Capacitor build (iOS Safari has no Vibration API), and plenty of people will keep both off — in public, a T tracker making a noise is an outing risk rather than a preference — so the visual and the words must carry it alone. Under `prefers-reduced-motion` the movement goes and the message stays: still green, still ✓, the row still tinted.
@@ -546,15 +552,21 @@ Worth knowing what this rule is suspending, since it stops being free the day so
 
     **The question is "Any days you felt off?"**, asked once a shot, answered with one tap:
 
-    > `Not really` · `Here and there` · `Right before this one` · `Most of the time`
+    > `Not really` · `Early on` · `Here and there` · `Right before` · `Most days`
 
     **Why "off" rather than "how was it".** More answerable, because it is more memorable — you notice feeling off, you don't notice feeling normal, so counting good days is counting non-events. It is also vague in the useful direction: it covers flat, irritable, tearful, foggy and dysphoric without making anyone pick which, and without the app deciding any of them is a symptom. This overrides the obvious precedent — WHO-5 is deliberately worded toward wellbeing rather than symptoms — because that instrument is answered under supervision and this one is tapped one-handed next to a sharps bin.
 
     **Why the answers name a pattern, not an amount.** The pre-shot trough is the one insight this app can produce and a daily mood tracker structurally cannot, because only this app knows where in the interval you were when you felt it. A pure count cannot see it: three off days scattered and three stacked before your shot answer identically. Naming the pattern gets both in a single tap, and produces the sentence that leads somewhere — *"the days right before my shot were the off ones, four cycles running"* is a conversation about a shorter interval or a split dose, where *"I feel rough sometimes"* is not.
 
-    **Accepted costs, both real.** It is **not a clean ordinal** — "Here and there" is not more or less than "Right before this one", so there is no line to plot and no average to take; charts count how often each pattern appears. And someone whose off days land *after* the shot (the peak-side pattern, reported for spikes rather than troughs) has nowhere true to put them and will pick "Here and there". Miscategorised is worse than missing, so that is a genuine loss — accepted because the pre-shot trough is far more commonly reported, and a fifth value is additive and free to add while pre-GA.
+    **The peak side is one of the five, and that was not the original plan.** This bullet used to list four answers and record the after-the-shot pattern as an accepted loss — "has nowhere true to put them and will pick 'Here and there'" — with a fifth value noted as free to add later. It was added, because the loss turned out to be bigger than the note implied. Testosterone peaks **24–48h after** the injection with estradiol rising alongside it (reported as weepy, emotional, irritable); the trough is the mirror, the last 1–2 days before the next dose on a swing that reaches 2.5–3:1. Both are documented, and the trans-specific guidance makes **cyclic symptoms the trigger** for measuring peak and trough levels and, if the swing is wide, shortening the interval or moving to a transdermal. A four-answer version could not produce the sentence that starts that conversation.
 
-    **Wording rules that outlast the options.** Never *"this week"* — cadence may be 3 days or 14, so the card names the real span ("The 13 days before this shot"). Every chip anchors to a shot rather than to a position in the span, so they read as one set: an earlier draft mixed "Early on" (a place in the interval) with "Before this shot" (a distance from an event). And "before this shot" alone is ambiguous — the *entire* window is before this shot — so only **"right before"** says near it.
+    **Accepted costs, still real.** It is **not a clean ordinal** — "Here and there" is not more or less than "Right before", so there is no line to plot and no average to take; charts count how often each pattern appears. And "off days both early *and* late" still has no home, so it stays a **best-fit** question. Multi-select is not the fix: two answers lit is a tally again, and the tally is what this design exists to beat.
+
+    **Wording rules that outlast the options.** Never *"this week"* — cadence may be 3 days or 14, so the span line names the real window ("The 13 days before this shot"). And "before this shot" alone is ambiguous, since the *entire* window is before this shot, so only **"right before"** says near it.
+
+    **The anchor-on-a-shot rule was relaxed, deliberately, and only where a picture replaced it.** It used to say every answer must name a shot rather than a position, and it rejected "Early on" by name for mixing the two frames. That rule existed because the WORDS alone had to carry the anchor. In the log sheet they no longer do — each row draws where the days sat — so the short labels are "Early on" and "Right before" and the strip supplies the frame. It still holds everywhere the answer stands **alone**: the History facet and the row pill use the long forms, which is why `offDaysLabel` and `offDaysShortLabel` are two functions and not one.
+
+    **Short labels moved the meaning into a picture, so it had to be put back in words for anyone who cannot see it.** The strip is `aria-hidden`, so each row's accessible name carries the full phrasing — "Early on — the days right after your last shot" — starting with the visible text, which is what WCAG 2.5.3 asks and what keeps voice control matching. Without that the position would exist only where assistive tech cannot reach it (1.3.1).
 
     **Deferred out of the B½ spine, deliberately** — see the slice B½ item below for why.
   - **Bleeding & cramps — optional, opt-in, neutrally named** (see the safety model below).
@@ -667,9 +679,8 @@ Worth knowing what this rule is suspending, since it stops being free the day so
        whose length the app did not yet track — the same reasoning the soreness
        card uses for its own buckets. Cadence made that length real, and the
        question it was waiting on had a real answer: the options blur at short
-       intervals. Over three days "Most of the time" and "Right before this one"
-       converge.
-       The fix is NOT to vary the chips by interval, which would make one stored
+       intervals. Over three days "Most days" and "Right before" converge.
+       The fix is NOT to vary the answers by interval, which would make one stored
        value mean different things for different users — the overloaded-value
        bug spread across a population instead of a field. One vocabulary, and
        the span line carries the length: "The 13 days before this shot",
@@ -678,13 +689,13 @@ Worth knowing what this rule is suspending, since it stops being free the day so
        out; every date this app shows is the stored ISO string.
 
        **Two limits accepted, both real and both found by checking the research
-       rather than by reasoning.** The four answers are neither mutually
+       rather than by reasoning.** The answers are neither mutually
        exclusive (off days both scattered *and* clustered fit two chips) nor
-       collectively exhaustive (off days landing *after* a shot have no home —
-       and a post-injection crash 3–4 days in is a reported pattern, so that
-       population exists). A fifth value is additive and free while pre-GA.
-       Multi-select is **not** the fix: two chips lit is a tally again, and the
-       tally is what this design exists to beat.
+       collectively exhaustive. The second was closed by **adding the fifth
+       answer** (`right-after`) rather than accepting it — see the bullet above
+       for the evidence. The first remains: "off both early and late" fits two
+       answers, so it stays a best-fit question. Multi-select is **not** the fix:
+       two lit is a tally again, and the tally is what this design exists to beat.
 
        Retrospective recall is the standing trade, taken knowingly: the
        literature says people overestimate symptom **intensity and duration**,
@@ -772,7 +783,7 @@ Local-only storage is a privacy guarantee, not a persistence one, and the browse
   - **Focus is handed on only when the card was holding it.** The same commit path runs the hand-off, so an unconditional one pulled focus off the tab the user had just tapped. `firstRunDone` is not derivable from anything else, which is what separates it from the soreness card's open/closed state — that one really does follow from whether a later shot exists.
 - ~~Add optional **symptom tagging** (fatigue, anxiety, headache)~~ — _pulled earlier into **slice B½ (Logging model)**; charts need the model first_
 - Add a local-only **“shot due soon”** reminder — _builds on the interval/cadence concept introduced in slice B½_
-- ~~Add improved **mood encoding** (emoji scale or fixed categories)~~ — _pulled earlier into **slice B½**, and it landed as neither: one question ("Any days you felt off?") whose four answers name a **pattern** rather than rating an intensity, so a single tap can still surface the pre-shot trough_
+- ~~Add improved **mood encoding** (emoji scale or fixed categories)~~ — _pulled earlier into **slice B½**, and it landed as neither: one question ("Any days you felt off?") whose five answers name a **pattern** rather than rating an intensity, so a single tap surfaces the pre-shot trough — or the peak-side one, which a rating could not distinguish from it at all_
 - ~~Replace the raw 0–10 pain number with a friendlier **pain scale**: tappable None / Mild / Moderate / Severe chips~~ — _pulled earlier into **slice B½**; pain also demotes to a filter facet rather than a headline chart_
 - Add PDF export with charts and summary information for healthcare conversations
 - Improve desktop web layout for charts, review, exporting, and printing

@@ -20,6 +20,45 @@ const wrap = (shots: unknown) =>
     shots,
   });
 
+describe("a backup from the build before mood was retired", () => {
+  // The shape that made this worth fixing: `shotEntrySchema` is a strictObject,
+  // so a retired key is an unknown key and the whole ENTRY is skipped. Measured
+  // before the fix — a real export fed straight back lost the shot's notes,
+  // dose, site, pain and planned date because it still carried `mood`.
+  const legacy = (over: Record<string, unknown> = {}) => {
+    const real = JSON.parse(
+      toJson([
+        { id: "a", date: "2026-07-01", notes: "keep me", doseMg: 50 },
+        { id: "b", date: "2026-07-08" },
+      ]),
+    );
+    Object.assign(real.shots[0], { mood: "good", ...over });
+    return JSON.stringify(real);
+  };
+
+  it("keeps the rest of the entry and drops only the retired field", () => {
+    const r = parseBackup(legacy());
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.skipped).toEqual([]);
+    expect(r.shots).toHaveLength(2);
+    const restored = r.shots.find((s) => s.id === "a")!;
+    expect(restored.notes).toBe("keep me");
+    expect(restored.doseMg).toBe(50);
+    expect("mood" in restored).toBe(false);
+  });
+
+  it("still refuses a key it has never heard of", () => {
+    // Retiring a field must not loosen the strict check into "ignore anything
+    // unexpected" — that guard is what keeps a hand-edited file out of storage.
+    const r = parseBackup(legacy({ evil: "surprise" }));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.skipped).toHaveLength(1);
+    expect(r.shots).toHaveLength(1);
+  });
+});
+
 describe("parseBackup — happy path", () => {
   it("round-trips a real export", () => {
     const shots = [

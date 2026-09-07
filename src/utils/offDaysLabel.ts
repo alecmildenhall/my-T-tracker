@@ -18,7 +18,12 @@ import type { OffDaysPattern } from "../types/shot";
  */
 const LABELS: Record<OffDaysPattern, string> = {
   none: "Not really",
-  "right-after": "Right after the last shot",
+  // "the previous shot", not "the last shot". These render where the answer
+  // stands alone — on a row FOR a shot, and in a dropdown with no shot in sight
+  // — and there "the last shot" reads as the one you are looking at, which is
+  // the opposite of what it means. Its sibling anchors on "this shot", so the
+  // pair has to name two different shots to be read as two directions.
+  "right-after": "Right after the previous shot",
   "here-and-there": "Here and there",
   "right-before": "Right before this shot",
   "most-of-the-time": "Most days",

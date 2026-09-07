@@ -43,10 +43,19 @@ describe("off-days labels", () => {
   it("stands alone where there is no strip beside it", () => {
     // The History facet and the row pill render the answer with no picture and
     // no question above it, so those labels name the shot they anchor to.
-    expect(offDaysLabel("right-after")).toBe("Right after the last shot");
+    expect(offDaysLabel("right-after")).toBe("Right after the previous shot");
     expect(offDaysLabel("right-before")).toBe("Right before this shot");
     // ...and the short ones deliberately do not, which is why they are separate.
     expect(offDaysShortLabel("right-after")).toBe("Early on");
+  });
+
+  it("names two different shots for the two directions", () => {
+    // On a row FOR a shot, and in a dropdown with no shot in sight, "the last
+    // shot" reads as the one in front of you — the opposite of the stored
+    // meaning. The pair only reads as two directions if they anchor differently.
+    expect(offDaysLabel("right-after")).toContain("previous shot");
+    expect(offDaysLabel("right-before")).toContain("this shot");
+    expect(offDaysLabel("right-after")).not.toContain("last shot");
   });
 
   it("draws the three positional patterns with the same number of days", () => {
