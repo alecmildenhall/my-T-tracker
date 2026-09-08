@@ -58,18 +58,30 @@ describe("offDaysWindowDays", () => {
 });
 
 describe("offDaysWindowLabel", () => {
-  it("names the span relative to THIS shot, not to your latest one", () => {
+  it("names the window relative to THIS shot, not to your latest one", () => {
     // "Since your last shot" was the first wording and is false where it
-    // matters: editing a shot from three months ago measures the gap before
-    // IT, correctly, while "your last shot" means the one last week.
-    expect(offDaysWindowLabel(13)).toBe("The 13 days before this shot");
+    // matters: editing an entry from months ago measures the gap before IT,
+    // correctly, while "your last shot" means the recent one — so the words and
+    // the number described different things.
+    expect(offDaysWindowLabel(13)).toBe("Since your previous shot · 13 days");
+    expect(offDaysWindowLabel(13)).not.toContain("last shot");
   });
 
   it("says 'day' for one", () => {
-    expect(offDaysWindowLabel(1)).toBe("The 1 day before this shot");
+    expect(offDaysWindowLabel(1)).toBe("Since your previous shot · 1 day");
   });
 
-  it("says nothing when the window is unknown", () => {
-    expect(offDaysWindowLabel(null)).toBeNull();
+  it("still names the window when it cannot measure it", () => {
+    // The whole point of the change. A first entry has no predecessor, so the
+    // length is unknown — but "since your previous shot" is still true, because
+    // the person logging it has one even when the app does not. Dropping the
+    // line entirely left the one shot with least context saying nothing.
+    expect(offDaysWindowLabel(null)).toBe("Since your previous shot");
+  });
+
+  it("never returns null, so the anchor cannot go missing", () => {
+    for (const d of [null, 1, 3, 13, 90]) {
+      expect(offDaysWindowLabel(d)).toContain("Since your previous shot");
+    }
   });
 });

@@ -2003,7 +2003,7 @@ describe("ShotForm — off days", () => {
         target: { value: "2026-08-25" },
       });
       expect(
-        screen.getByText("The 13 days before this shot"),
+        screen.getByText("Since your previous shot · 13 days"),
       ).toBeInTheDocument();
     });
 
@@ -2018,13 +2018,13 @@ describe("ShotForm — off days", () => {
         target: { value: "2026-08-19" },
       });
       expect(
-        screen.getByText("The 7 days before this shot"),
+        screen.getByText("Since your previous shot · 7 days"),
       ).toBeInTheDocument();
       fireEvent.change(screen.getByLabelText("Date"), {
         target: { value: "2026-08-13" },
       });
       expect(
-        screen.getByText("The 1 day before this shot"),
+        screen.getByText("Since your previous shot · 1 day"),
       ).toBeInTheDocument();
     });
 
@@ -2046,7 +2046,7 @@ describe("ShotForm — off days", () => {
         />,
       );
       expect(
-        screen.getByText("The 7 days before this shot"),
+        screen.getByText("Since your previous shot · 7 days"),
       ).toBeInTheDocument();
     });
 
@@ -2071,7 +2071,7 @@ describe("ShotForm — off days", () => {
       // Verified against the browser's own accname computation, which is what
       // this string is a stand-in for.
       const group = screen.getByRole("group", {
-        name: "Any days you felt off? The 13 days before this shot",
+        name: "Any days you felt off? Since your previous shot · 13 days",
       });
       expect(group).toBeInTheDocument();
       // And nothing hangs off a description that may never be read.
@@ -2097,7 +2097,7 @@ describe("ShotForm — off days", () => {
         target: { value: "2026-08-25" },
       });
       expect(
-        screen.getByText("The 13 days before this shot"),
+        screen.getByText("Since your previous shot · 13 days"),
       ).toBeInTheDocument();
 
       // What App does at save: the new shot lands in `shots` and the ✓ starts.
@@ -2109,26 +2109,31 @@ describe("ShotForm — off days", () => {
         />,
       );
       expect(
-        screen.getByText("The 13 days before this shot"),
+        screen.getByText("Since your previous shot · 13 days"),
       ).toBeInTheDocument();
     });
 
-    it("names the group by the question alone when there is no window", () => {
+    it("carries the anchor in the group's name even with no length", () => {
       render(<ShotForm onAddShot={vi.fn()} shots={[]} />);
       expect(
-        screen.getByRole("group", { name: "Any days you felt off?" }),
+        screen.getByRole("group", {
+          name: "Any days you felt off? Since your previous shot",
+        }),
       ).toBeInTheDocument();
     });
 
-    it("still asks the question when it cannot name the window", () => {
-      // The first shot logged here has no predecessor, but the person may have
-      // been injecting for years and knows their own last one. So the question
-      // stays and only the span goes — saying nothing beats guessing.
+    it("still names the window when it cannot measure it", () => {
+      // The first entry has no predecessor, so there is no length — and this is
+      // exactly where the anchor used to disappear, leaving the shot with the
+      // least context saying nothing about what window was being asked about.
+      // "Since your previous shot" is true even when the app cannot compute it.
       render(<ShotForm onAddShot={vi.fn()} shots={[]} />);
       expect(
         screen.getByRole("radio", { name: "Not really" }),
       ).toBeInTheDocument();
-      expect(screen.queryByText(/days before this shot/)).toBeNull();
+      expect(screen.getByText("Since your previous shot")).toBeInTheDocument();
+      // ...and no invented length beside it.
+      expect(screen.queryByText(/·/)).toBeNull();
     });
   });
 });

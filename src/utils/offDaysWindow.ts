@@ -41,20 +41,35 @@ export function offDaysWindowDays(
   return days > 0 ? days : null;
 }
 
-/** "The 13 days before this shot", or null when the window is unknown. */
-export function offDaysWindowLabel(days: number | null): string | null {
-  if (days === null) return null;
-  // "Before THIS shot", not "since your last shot" — which was the first
-  // wording and is false on the screen where it matters most. Open a shot from
-  // three months ago and the gap measured is the one before IT, correctly, but
-  // "your last shot" means the one last week. Naming the window relative to the
-  // shot in front of you is true whether it is new or being edited, and for a
-  // new shot the two mean the same thing anyway.
-  //
-  // The ISO dates are deliberately NOT spelled out. Every date this app
-  // displays is the stored ISO string, and ShotListItem's own comment warns
-  // against "inventing a second format" — a friendly "12–25 Aug" beside a
-  // `2026-08-25` field would be exactly that. The day count is the part doing
-  // the work; the dates are one tap away in History.
-  return `The ${days} ${days === 1 ? "day" : "days"} before this shot`;
+/**
+ * What window the question is asking about — ALWAYS a string, never null.
+ *
+ * The anchor used to disappear when the length was unknown, which is the one
+ * shot where it was needed most: on a first entry there is no predecessor to
+ * measure from, so the only surface naming the window vanished for the person
+ * with the least context. And "since when" was never in the question itself, so
+ * nothing on screen said it.
+ *
+ * "Since your previous shot" is true even when the app cannot compute it —
+ * someone logging their first shot here may have been injecting for years and
+ * knows their own previous one. So this says WHAT the window is always, and adds
+ * HOW LONG only when it knows, which is the same split the planned date already
+ * uses when the schedule cannot answer.
+ *
+ * "Previous", not "last", and not by preference: "your last shot" means the most
+ * recent one, so on an entry from three months ago the words and the number
+ * described different things. "Previous" is relative to the shot in front of
+ * you, which is what is measured — and it matches `offDaysLabel`, which anchors
+ * on "the previous shot" for the same reason.
+ *
+ * The ISO dates stay out of it. Every date this app displays is the stored
+ * string, and ShotListItem's comment warns against inventing a second format.
+ * Measured at 236px — the narrowest this field ever gets, at a 561px viewport,
+ * NOT on a phone — this fits one line where "Since the shot before this one ·
+ * 13 days" wraps.
+ */
+export function offDaysWindowLabel(days: number | null): string {
+  const anchor = "Since your previous shot";
+  if (days === null) return anchor;
+  return `${anchor} · ${days} ${days === 1 ? "day" : "days"}`;
 }

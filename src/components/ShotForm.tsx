@@ -1228,9 +1228,12 @@ export const ShotForm: React.FC<ShotFormProps> = ({
                 about, which is also what lets the four answers keep one meaning
                 each at any interval length — the chips do not change, the span
                 does. */}
-                {offDaysSpan && (
-                  <span className="off-days-field__span">{offDaysSpan}</span>
-                )}
+                {/* Unconditional. It used to render only when the length was
+                    known, which hid the anchor on a first entry — the one shot
+                    where nothing else on screen says what window is being asked
+                    about. `offDaysWindowLabel` now always names the window and
+                    adds the length only when it has one. */}
+                <span className="off-days-field__span">{offDaysSpan}</span>
               </legend>
               {/* Rows, not chips. Choice chips are specified for "one to two
                   short words", which the pain group fits and this one never
