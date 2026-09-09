@@ -1123,15 +1123,6 @@ select {
   }
 }
 
-/* Shared by both chip groups. Named for the job rather than for the first
-   caller: as `.pain-clear` it was sizing and positioning a control it was not
-   named for, so a change made for the pain group would have silently moved the
-   off-days one. */
-.chip-clear {
-  align-self: flex-start;
-  margin-top: 0.4rem;
-  font-size: 0.78rem;
-}
 
 /* ---- "Any days you felt off?" ------------------------------------------
    Structurally the pain group, and deliberately NOT its colour ramp. Pain rises
@@ -1844,6 +1835,50 @@ select {
   font-weight: 550;
   cursor: pointer;
   border-radius: var(--radius-md);
+}
+
+/* AFTER `.link-button`, and that is load-bearing rather than tidy. Both are a
+   single class, so at equal specificity source order decides — and sitting 700
+   lines earlier this rule lost `padding-inline` AND `font-size` to it silently.
+   Measured: the text stayed 2px off the field's axis and rendered at 0.82rem,
+   so half of this rule had never applied at all. Fourth time on this branch
+   that a rule reading like an override has lost to source order, which is why
+   there is a test pinning it now.
+*/
+/* Every "take this back" text action: the pain and off-days Clears, and the
+   Remove-start-date on both the first-run card and Settings.
+   Named for the job rather than the first caller — as `.pain-clear` it was
+   sizing a control it was not named for, and a change for one group would have
+   silently moved another.
+
+   LEFT-ALIGNED, on the field's own edge. `.link-button` centres its text, which
+   is right for a button filling a dialog and wrong here: the Settings copy
+   stretched to the full column and centred, the card's shrank and read left, so
+   the same action sat in two different places. Form guidance is explicit that
+   actions align to the input's leading edge — "a strong vertical axis" is what
+   tells you where the form's spine is.
+
+   `width: fit-content` rather than `align-self`, because these sit in both flex
+   and block parents and `align-self` silently does nothing in the second. */
+.field-clear {
+  display: block;
+  width: fit-content;
+  text-align: left;
+  /* Flush with the field's edge. `.link-button` carries 0.15rem of inline
+     padding, which put the text 2px off the axis it is supposed to sit on —
+     invisible alone and exactly the sort of thing that makes a column look
+     almost-aligned. The vertical padding stays: it is what keeps the 36px
+     target. */
+  padding-inline: 0;
+  font-size: 0.78rem;
+}
+
+/* The first-run card's field container is a flex column with its own 0.3rem
+   gap, where the Settings field has none — so the same class landed 5px below
+   one field and 6px below the other. The difference is one pixel and it is
+   still worth closing: this is the row someone sees twice and compares. */
+.first-shot-card__field .field-clear {
+  margin-top: 0.1rem;
 }
 
 @media (hover: hover) {

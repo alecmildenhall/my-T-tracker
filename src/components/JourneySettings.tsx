@@ -330,7 +330,7 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
       {profile.startDate && (
         <button
           type="button"
-          className="link-button"
+          className="link-button field-clear"
           // This control removes ITSELF — it only renders while a start date is
           // set — so it has to hand focus on before it goes, or a keyboard or
           // screen-reader user is dropped to <body> with nothing announced and

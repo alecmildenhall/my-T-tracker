@@ -501,7 +501,7 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
         {profile.startDate && (
           <button
             type="button"
-            className="link-button chip-clear"
+            className="link-button field-clear"
             // Removes ITSELF — it renders only while a start date is set — so
             // it hands focus on first. To the card's HEADING, never back to the
             // date field: focusing an `input[type=date]` from a click handler

@@ -1154,7 +1154,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             {pain !== "" && (
               <button
                 type="button"
-                className="link-button chip-clear"
+                className="link-button field-clear"
                 // Named for what it clears. It sits OUTSIDE the fieldset, so the
                 // group's name is not in its accessible context — a screen
                 // reader browsing by button hears only "Clear", beside a
@@ -1291,7 +1291,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             {offDays !== "" && (
               <button
                 type="button"
-                className="link-button chip-clear"
+                className="link-button field-clear"
                 // Named for what it clears: outside the fieldset, a screen reader
                 // browsing by button hears only "Clear", beside a separate "Clear
                 // form" in the same dialog.
