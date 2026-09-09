@@ -70,6 +70,53 @@ describe("FirstShotCard — the start date", () => {
   });
 });
 
+describe("FirstShotCard — the interval's unit", () => {
+  const box = () =>
+    screen.getByLabelText("Or every how many days?") as HTMLInputElement;
+
+  it("shows the unit beside the box, where it cannot disappear", () => {
+    // It lived only in the placeholder, which goes the moment a chip or a
+    // keystroke fills the box — screenshotted on a phone showing a bare "2".
+    renderCard();
+    expect(document.querySelector(".first-shot-card__unit")!.textContent).toBe(
+      "days",
+    );
+    expect(box().placeholder).toBe("");
+  });
+
+  it("still shows it once a quick pick has filled the box", () => {
+    renderCard();
+    fireEvent.click(screen.getByRole("button", { name: "2 weeks" }));
+    expect(box().value).toBe("14");
+    expect(document.querySelector(".first-shot-card__unit")!.textContent).toBe(
+      "days",
+    );
+  });
+
+  it("keeps the unit out of the accessible name", () => {
+    // The unit is NOT inside a wrapping <label>, deliberately. When it was, the
+    // name computed as "Or every how many days? days" — the duplication that
+    // `aria-hidden` is meant to prevent, except the name comes from the label's
+    // contents and tools disagree about honouring it there. Associating the
+    // label by id puts the unit outside it however that is computed.
+    renderCard();
+    expect(box()).toHaveAccessibleName("Or every how many days?");
+    expect(
+      document.querySelector(".first-shot-card__unit")!.getAttribute("aria-hidden"),
+    ).toBe("true");
+  });
+
+  it("leaves the group heading unit-neutral, because it covers the chips too", () => {
+    // Unlike the Settings copy, where the label is tied to the input alone. Here
+    // the heading sits above chips in WEEKS and a box in DAYS, so naming either
+    // unit in it would be wrong for the other.
+    renderCard();
+    expect(
+      screen.getByText("How often do you take it?"),
+    ).toBeInTheDocument();
+  });
+});
+
 describe("FirstShotCard — the disabled shot day", () => {
   const notice = () => screen.getByText(/No shot day with a non-weekly/);
 
@@ -97,8 +144,8 @@ describe("FirstShotCard — the disabled shot day", () => {
     seedProfile({ shotDay: "wednesday", intervalDays: 7 });
     renderCard();
 
-    const interval = screen.getByPlaceholderText(
-      "Every ___ days",
+    const interval = screen.getByLabelText(
+      "Or every how many days?",
     ) as HTMLInputElement;
     fireEvent.change(interval, { target: { value: "10" } });
     fireEvent.blur(interval);
@@ -150,8 +197,8 @@ describe("FirstShotCard — drafts follow the profile", () => {
     // interval draft would call setIntervalDays(undefined) and delete both the
     // cadence and the schedule anchor another tab had just set.
     renderCard(); // mounts with an empty interval draft
-    const box = screen.getByPlaceholderText(
-      "Every ___ days",
+    const box = screen.getByLabelText(
+      "Or every how many days?",
     ) as HTMLInputElement;
     expect(box.value).toBe("");
 
@@ -187,8 +234,8 @@ describe("FirstShotCard — drafts follow the profile", () => {
     // explicitly here the way the real blur handler passes it.
     seedProfile({ intervalDays: 14 });
     renderCard();
-    const box = screen.getByPlaceholderText(
-      "Every ___ days",
+    const box = screen.getByLabelText(
+      "Or every how many days?",
     ) as HTMLInputElement;
     expect(box.value).toBe("14");
 

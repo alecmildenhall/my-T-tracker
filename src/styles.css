@@ -680,14 +680,29 @@ select {
    question rather than a separate field. */
 .first-shot-card__other {
   display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
   flex: 1 1 9rem;
   min-width: 9rem;
 }
 
 .first-shot-card__other input {
-  width: 100%;
+  /* `flex: 1` rather than `width: 100%`: the unit beside it is a sibling now,
+     and 100% would push it out of the pill. */
+  flex: 1 1 auto;
+  min-width: 0;
   border-radius: 999px;
   padding-inline: 0.85rem;
+}
+
+/* `aria-hidden` in the markup — the input's own visually-hidden label already
+   says "days", so announcing it twice is noise. This is the VISIBLE half, which
+   is the half that was missing. No `font-size`: the coarse-pointer rule owns
+   that for controls, and this sits beside one. */
+.first-shot-card__unit {
+  flex: none;
+  color: var(--text-muted);
+  font-size: 0.8rem;
 }
 
 /* The History pain facet, tinted to match the log sheet's chips so a level reads
