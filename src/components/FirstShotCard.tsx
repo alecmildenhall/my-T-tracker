@@ -498,10 +498,24 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
             has: without it, an answer given on this card could not be taken
             back at all, on the one screen someone meets before they know
             Settings exists. */}
-        {profile.startDate && (
+        {/* The DRAFT, matching Settings and the two chip Clears: keyed to the
+            committed profile this appeared only after blur, a visible lag on
+            the control that undoes what you just entered. */}
+        {isRealDate(startDraft) && (
           <button
             type="button"
             className="link-button field-clear"
+            // Keep the press from destroying its own target. This control
+            // now renders while the date field still has focus, so tapping it
+            // blurs the field first — that commits, re-renders, and the mouseup
+            // lands on a different node, so the click never fires. Measured: the
+            // event sequence was ["blur"] alone and the date survived.
+            //
+            // `preventDefault` on mousedown stops focus moving at all, so there
+            // is no blur, no re-render, and the click lands. Keyboard is
+            // untouched — Enter and Space fire click without a mousedown — and
+            // the handler moves focus deliberately anyway.
+            onMouseDown={(e) => e.preventDefault()}
             // Removes ITSELF — it renders only while a start date is set — so
             // it hands focus on first. To the card's HEADING, never back to the
             // date field: focusing an `input[type=date]` from a click handler

@@ -69,6 +69,59 @@ describe("FirstShotCard — the start date", () => {
     expect(startField().value).toBe("");
   });
 
+  it("offers Remove as soon as the date is entered, not after blur", () => {
+    // It used to render on the committed profile, which only updates on blur —
+    // so entering a date and looking at it showed nothing until you tapped
+    // away. The pain and off-days Clears key to their drafts and appear on the
+    // tap; this matches them.
+    renderCard();
+    fireEvent.change(startField(), { target: { value: "2025-06-01" } });
+    // No blur.
+    expect(
+      screen.getByRole("button", { name: "Remove start date" }),
+    ).toBeInTheDocument();
+  });
+
+  // The condition is `isRealDate(draft)` rather than `draft !== ""`, so the
+  // control cannot flash on and off between segments as someone types. That is
+  // NOT tested here, and a test that looked like it was has been removed: a
+  // date input's value sanitization turns "2025-06" into "" (measured in jsdom
+  // and in Chromium), so the assertion passed under either condition and a
+  // mutation to `!== ""` broke nothing. Partial input needs a real browser —
+  // see the browser pass, which types segment by segment.
+
+  it("does not let the press blur the field out from under itself", () => {
+    // The control renders while the date field still has focus, so pressing it
+    // used to blur the field first — which committed, re-rendered, and left the
+    // mouseup on a different node, so the click never fired. Measured in a
+    // browser: the event sequence was ["blur"] alone and the date survived.
+    // `preventDefault` on mousedown stops focus moving, so there is no blur to
+    // race. Asserting the DEFAULT is prevented, since jsdom will happily
+    // dispatch a click either way and would pass without it.
+    renderCard();
+    fireEvent.change(startField(), { target: { value: "2025-06-01" } });
+    const remove = screen.getByRole("button", { name: "Remove start date" });
+
+    const prevented = !fireEvent.mouseDown(remove);
+    expect(prevented).toBe(true);
+  });
+
+  it("removes a date that was entered but never committed", () => {
+    // The case keying to the draft creates. The profile never got this value,
+    // so clearing it changes nothing there and no sync fires — without the
+    // draft being cleared explicitly, the date would sit in the field with no
+    // way left to remove it.
+    renderCard();
+    fireEvent.change(startField(), { target: { value: "2025-06-01" } });
+    fireEvent.click(screen.getByRole("button", { name: "Remove start date" }));
+
+    expect(startField().value).toBe("");
+    expect(storedProfile().startDate).toBeUndefined();
+    expect(
+      screen.queryByRole("button", { name: "Remove start date" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("offers no Remove control when there is no date to remove", () => {
     renderCard();
     expect(

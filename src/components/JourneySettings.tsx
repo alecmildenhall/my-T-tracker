@@ -327,10 +327,28 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
           }}
         />
       </div>
-      {profile.startDate && (
+      {/* On the DRAFT, not the committed profile. Keyed to the profile it only
+          appeared after blur, so entering a date and looking at it showed
+          nothing until you tapped away — a visible lag on the one control that
+          undoes what you just did. The pain and off-days Clears next door
+          already key to their drafts and appear on the tap; this now matches
+          them. `isRealDate`, not `!== ""`, so a half-typed date does not flash
+          it on and off between segments. */}
+      {isRealDate(dateDraft) && (
         <button
           type="button"
           className="link-button field-clear"
+          // Keep the press from destroying its own target. This control
+          // now renders while the date field still has focus, so tapping it
+          // blurs the field first — that commits, re-renders, and the mouseup
+          // lands on a different node, so the click never fires. Measured: the
+          // event sequence was ["blur"] alone and the date survived.
+          //
+          // `preventDefault` on mousedown stops focus moving at all, so there
+          // is no blur, no re-render, and the click lands. Keyboard is
+          // untouched — Enter and Space fire click without a mousedown — and
+          // the handler moves focus deliberately anyway.
+          onMouseDown={(e) => e.preventDefault()}
           // This control removes ITSELF — it only renders while a start date is
           // set — so it has to hand focus on before it goes, or a keyboard or
           // screen-reader user is dropped to <body> with nothing announced and
@@ -349,10 +367,14 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
           // <body>, and handOffFocus verifies each candidate rather than assuming.
           onClick={() => {
             handOffFocus(headingRef, dateFieldRef);
-            // The field empties itself: the profile changes, so the sync above
-            // pulls the draft to "". Setting it here as well was redundant, and
-            // a mutation check caught that no test could tell the difference.
             setStartDate(undefined);
+            // And the draft explicitly. This USED to be redundant — the profile
+            // changed, and the sync above pulled the draft to "" — but the
+            // control now renders on the draft, and the draft can hold a date
+            // the profile never got (typed, not yet blurred). In that case the
+            // profile does not change, so nothing syncs, and without this the
+            // date would sit in the field with no way left to remove it.
+            setDateDraft("");
           }}
         >
           Remove start date

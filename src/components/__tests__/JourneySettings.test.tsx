@@ -196,6 +196,39 @@ describe("JourneySettings", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("offers Remove as soon as the date is entered, not after blur", () => {
+    // Keyed to the committed profile it appeared only after blur — a visible
+    // lag on the control that undoes what you just typed.
+    renderPanel();
+    fireEvent.change(dateInput(), { target: { value: "1998-07-04" } });
+    expect(
+      screen.getByRole("button", { name: "Remove start date" }),
+    ).toBeInTheDocument();
+  });
+
+  it("does not let the press blur the field out from under itself", () => {
+    // Same race as the card's copy, same guard — see the note there.
+    renderPanel();
+    fireEvent.change(dateInput(), { target: { value: "1998-07-04" } });
+    const remove = screen.getByRole("button", { name: "Remove start date" });
+    expect(!fireEvent.mouseDown(remove)).toBe(true);
+  });
+
+  it("removes a date that was entered but never committed", () => {
+    // The profile never got this value, so clearing it changes nothing there
+    // and the draft sync never fires. Without clearing the draft explicitly the
+    // date would sit in the field with no way left to remove it — which is why
+    // a line this test's predecessor called redundant is now load-bearing.
+    renderPanel();
+    fireEvent.change(dateInput(), { target: { value: "1998-07-04" } });
+    fireEvent.click(screen.getByRole("button", { name: "Remove start date" }));
+
+    expect(dateInput().value).toBe("");
+    expect(
+      screen.queryByRole("button", { name: "Remove start date" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("offers no Remove control when there is no start date to remove", () => {
     renderPanel();
     expect(
