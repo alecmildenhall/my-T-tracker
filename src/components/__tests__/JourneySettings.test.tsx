@@ -311,6 +311,30 @@ describe("JourneySettings", () => {
     });
   });
 
+  it("does NOT treat a HALF-TYPED date as a deletion on the way out", () => {
+    // An empty `<input type="date">` reports `""` for "I cleared this" AND for
+    // "I am mid-retype". On unmount React has already detached the ref, so the
+    // hatch has no `validity` to read -- and it used to assert `false` there,
+    // which is a guess wearing a check's clothes, and it picked the branch that
+    // deletes. Measured before the fix: stored date gone after a tab change,
+    // while the same state on blur restored it.
+    localStorage.setItem(
+      STORAGE_KEYS.profile,
+      JSON.stringify({ startDate: "2020-01-01" }),
+    );
+    const { removePanel } = renderRemovablePanel();
+    // Stub BEFORE the change: the fact is only observable at the moment it
+    // happens, and stubbing afterwards passes for the wrong reason.
+    Object.defineProperty(dateInput(), "validity", {
+      configurable: true,
+      value: { badInput: true },
+    });
+    fireEvent.change(dateInput(), { target: { value: "" } });
+    removePanel();
+
+    expect(stored().startDate).toBe("2020-01-01");
+  });
+
   it("commits a picked date when the panel goes away", () => {
     // Changing tab destroys this panel, which on a phone is a likelier exit than
     // blurring the field.

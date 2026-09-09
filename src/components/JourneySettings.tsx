@@ -172,9 +172,25 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
   // refuses.
   const draftRef = useRef(dateDraft);
   const commitRef = useRef(setStartDate);
+  /** What is actually stored, so the hatch can skip a write that changes nothing. */
+  const savedRef = useRef(profile.startDate);
+  /**
+   * The last `badInput` the REAL control reported, kept because the unmount
+   * hatch has no control left to ask -- React detaches the ref before a passive
+   * cleanup runs. Asserting `false` there was a guess that the field had been
+   * cleared on purpose, and it chose the branch that deletes.
+   *
+   * Observed rather than tracked: this effect runs after every render, so it
+   * reads the live element each time and the ref holds the last true answer.
+   * A parallel flag written beside the draft would be a second thing to keep in
+   * step, which is how the two readers of `ShotDraft.date` drifted apart twice.
+   */
+  const midEditRef = useRef(false);
   useEffect(() => {
     draftRef.current = dateDraft;
     commitRef.current = setStartDate;
+    savedRef.current = profile.startDate;
+    midEditRef.current = dateFieldRef.current?.validity.badInput ?? false;
   });
 
   useEffect(() => {
@@ -206,10 +222,27 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
       // draft is correct there anyway, because that exit involves no picker.
       const el = dateFieldRef.current;
       const value = el ? el.value : draftRef.current;
-      const badInput = el ? el.validity.badInput : false;
+      // With no element there is no `validity` to read, and this used to assert
+      // `false` -- which is not "we checked", it is a GUESS that the field was
+      // cleared on purpose, and it picked the destructive branch every time.
+      // Measured: a half-typed date plus a tab change deleted a stored start
+      // date, while the same state on blur restored it correctly. The two
+      // readers disagreeing about an empty string is precisely the bug this
+      // shared helper exists to prevent, reintroduced one layer up.
+      const badInput = el ? el.validity.badInput : midEditRef.current;
       const commit = commitDateDraft(value, badInput);
       if (commit.action === "set") commitRef.current(commit.date);
-      else if (commit.action === "clear") commitRef.current(undefined);
+      // Only on a real change, which is the guard `FirstShotCard` and
+      // `commitInterval` both already carry and this one was missing. It runs
+      // from an effect cleanup, and with no start date set the field is empty
+      // and well-formed -- so "clear" fired on EVERY exit from Settings. That
+      // is invisible while storage works, because `useLocalStorage` skips a
+      // serialized-equal write, and stops being invisible on a full device,
+      // where touching storage at all can raise the banner for an edit nobody
+      // made.
+      else if (commit.action === "clear" && savedRef.current !== undefined) {
+        commitRef.current(undefined);
+      }
     };
     const onHide = () => {
       if (document.visibilityState === "hidden") commitFromField();

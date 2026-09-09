@@ -190,6 +190,30 @@ describe("FirstShotCard — leaving without blurring", () => {
     expect(storedProfile().startDate).toBeUndefined();
   });
 
+  it("does NOT carry out a HALF-TYPED date as a deletion", () => {
+    // The mirror of the test above, and the one that matters more, because it
+    // fails the other way: an empty `<input type="date">` reports `""` for both
+    // "I cleared this" and "I am mid-retype", so the hatch cannot tell them
+    // apart from the draft alone. It used to assert `badInput: false` when the
+    // element was already detached -- not a check, a guess -- and the guess
+    // chose the destructive branch. Measured before the fix: a stored start
+    // date was gone after a tab change, while the SAME state on blur restored
+    // it correctly.
+    seedProfile({ startDate: "2020-01-01" });
+    const { removeCard } = renderRemovableCard();
+    // Ordering is load-bearing: the fact has to be true AT the change, which is
+    // the only moment it is observable. Stubbing it afterwards measures a field
+    // that was well-formed while the handler ran, and passes vacuously.
+    Object.defineProperty(startField(), "validity", {
+      configurable: true,
+      value: { badInput: true },
+    });
+    fireEvent.change(startField(), { target: { value: "" } });
+    removeCard();
+
+    expect(storedProfile().startDate).toBe("2020-01-01");
+  });
+
   it("still carries an entered date out with it", () => {
     // The behaviour the hatch exists for, which the clear must not cost.
     const { removeCard } = renderRemovableCard();
