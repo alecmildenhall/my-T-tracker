@@ -178,18 +178,48 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
   });
 
   useEffect(() => {
-    const commitIfReal = () => {
-      if (isRealDate(draftRef.current)) commitRef.current(draftRef.current);
+    // The same decision blur makes, from the same source: the LIVE element.
+    //
+    // This used to be `if (isRealDate(draftRef.current)) commit(...)`, which
+    // could only express SET. Once an emptied field started meaning "clear",
+    // that made the hatch disagree with blur — measured: emptying the field and
+    // backgrounding (or switching tab, which unmounts this panel) put the old
+    // date straight back, and the field showed it again on return.
+    //
+    // Reading the element rather than the draft matters twice over here. On iOS
+    // the picker's Reset fires no change event, so the draft still holds the
+    // date the user just removed — committing THAT on backgrounding is the
+    // deletion silently undoing itself, which is the failure class this app
+    // treats as severe.
+    //
+    // "restore" does nothing: it only ever affected what the field displays,
+    // and there is nothing to display on the way out.
+    const commitFromField = () => {
+      // The element when it is still there, the draft when it is not — and both
+      // are needed, for different exits.
+      //
+      // On BACKGROUNDING, `visibilitychange` fires while the panel is mounted,
+      // so the element is readable and is the only source that survives iOS's
+      // picker Reset firing no change event. On UNMOUNT (changing tab), React
+      // has already detached the ref by the time this passive cleanup runs, so
+      // the element is null — measured, it committed nothing at all — and the
+      // draft is correct there anyway, because that exit involves no picker.
+      const el = dateFieldRef.current;
+      const value = el ? el.value : draftRef.current;
+      const badInput = el ? el.validity.badInput : false;
+      const commit = commitDateDraft(value, badInput);
+      if (commit.action === "set") commitRef.current(commit.date);
+      else if (commit.action === "clear") commitRef.current(undefined);
     };
     const onHide = () => {
-      if (document.visibilityState === "hidden") commitIfReal();
+      if (document.visibilityState === "hidden") commitFromField();
     };
     document.addEventListener("visibilitychange", onHide);
     return () => {
       document.removeEventListener("visibilitychange", onHide);
       // Unmount too: changing tab destroys this panel, and on a phone that is a
       // likelier exit than blurring the field.
-      commitIfReal();
+      commitFromField();
     };
   }, []);
 

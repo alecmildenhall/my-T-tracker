@@ -323,6 +323,23 @@ describe("JourneySettings", () => {
     expect(stored()).toEqual({ startDate: "2001-09-11" });
   });
 
+  it("commits a CLEARED date when the panel goes away", () => {
+    // The hatch could only ever say "set". Once an emptied field started meaning
+    // "clear", that made it disagree with blur — measured before the fix:
+    // emptying the field and switching tab put the old date straight back, and
+    // the field showed it again on return.
+    localStorage.setItem(
+      STORAGE_KEYS.profile,
+      JSON.stringify({ startDate: "2024-03-15" }),
+    );
+    const { removePanel } = renderRemovablePanel();
+    fireEvent.change(dateInput(), { target: { value: "" } });
+    // No blur — the user changes tab instead.
+    removePanel();
+
+    expect(stored().startDate).toBeUndefined();
+  });
+
   it("commits nothing on the way out when the draft is half-typed", () => {
     // The transit values stay out of storage on every path, not just on blur —
     // `0002` is not a date anyone meant.

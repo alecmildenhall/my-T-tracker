@@ -679,9 +679,6 @@ select {
   font-weight: 600;
 }
 
-/* Sits in the chip row, so it reads as one more way to answer the same
-   question rather than a separate field. */
-
 /* The History pain facet, tinted to match the log sheet's chips so a level reads
    the same wherever you meet it. The SELECT only — the <option>s deliberately
    carry NO colour, and that is a contrast decision rather than the platform

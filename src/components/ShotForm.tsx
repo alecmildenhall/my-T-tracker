@@ -350,7 +350,6 @@ export const ShotForm: React.FC<ShotFormProps> = ({
 
   const [date, setDate] = useState<string>(start.date);
 
-  /** What the app works out this shot was meant to be, given today's settings. */
   // The recall window the off-days question is asking about. Recomputed as the
   // date changes, so backdating an entry re-measures rather than keeping a span
   // from the date it was opened with.
@@ -382,6 +381,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   }, [confirming, liveOffDaysSpan]);
   const offDaysSpan = confirming ? spanBeforeConfirm.current : liveOffDaysSpan;
 
+  /** What the app works out this shot was meant to be, given today's settings. */
   const plan = useMemo(
     () =>
       planShot({

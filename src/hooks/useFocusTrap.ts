@@ -295,9 +295,9 @@ export function useFocusTrap(
         // NEXT RADIO IN THE SAME GROUP — quietly reinstating the multiple tab
         // stops this branch exists to remove, in exactly the position where
         // nothing else can help. Not reachable in today's log sheet, where the
-        // off-days group, notes and Save follow the pain chips; B½ adds fields to this sheet, which
-        // is the same ordering assumption the segmented-input hatch above
-        // already records as fragile.
+        // off-days group, notes and Save follow the pain chips; B½ adds
+        // fields to this sheet, which is the same ordering assumption the
+        // segmented-input hatch above already records as fragile.
         at = e.shiftKey ? first : last;
       }
 

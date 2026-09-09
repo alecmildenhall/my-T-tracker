@@ -189,12 +189,28 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
       // write is real. The card unmounts the moment the first shot is logged,
       // which on a quota-exhausted device raised the storage-failure banner on
       // top of "Logged for you." for an edit nobody made.
-      if (
-        startDraft.trim() !== "" &&
-        isRealDate(startDraft) &&
-        startDraft !== profile.startDate
-      ) {
-        setStartDate(startDraft);
+      // `commitDateDraft`, not an `isRealDate` guard, so this hatch can express
+      // a CLEAR. It could only ever say "set" — so once an emptied field started
+      // meaning "clear", emptying one and then backgrounding put the old date
+      // straight back, and the two fields that are meant to agree on this
+      // question agreed on blur and diverged here.
+      //
+      // The element when it is still there, the draft when it is not: on
+      // backgrounding `visibilitychange` fires while this is mounted, and it is
+      // the only source that survives iOS's picker Reset firing no change
+      // event; on unmount React has already detached the ref, and that exit
+      // involves no picker so the draft is right.
+      const el = startFieldRef.current;
+      const value = el ? el.value : startDraft;
+      const badInput = el ? el.validity.badInput : false;
+      const commit = commitDateDraft(value, badInput);
+      // Still only on a real CHANGE, for the reason `commitInterval` documents:
+      // this runs from an effect cleanup, so writing unconditionally wrote the
+      // profile on every navigation away.
+      if (commit.action === "set" && commit.date !== profile.startDate) {
+        setStartDate(commit.date);
+      } else if (commit.action === "clear" && profile.startDate !== undefined) {
+        setStartDate(undefined);
       }
     };
   });
@@ -223,6 +239,8 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
   const intervalRef = useRef<HTMLInputElement>(null);
   const shotDaySelectRef = useRef<HTMLSelectElement>(null);
   const noticeRef = useRef<HTMLParagraphElement>(null);
+  /** The start-date input, read by the escape hatch while it is still mounted. */
+  const startFieldRef = useRef<HTMLInputElement>(null);
   /** Where "Remove start date" hands focus when it removes itself. */
   const titleRef = useRef<HTMLHeadingElement>(null);
 
@@ -453,6 +471,7 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
               reverted in this card and accepted in Settings. */}
           <input
             id="first-shot-start"
+            ref={startFieldRef}
             type="date"
             value={startDraft}
             aria-describedby="first-shot-start-hint"

@@ -159,6 +159,56 @@ describe("FirstShotCard — the start date", () => {
   // decision actually lives — see `dateDraft.test.ts`.
 });
 
+describe("FirstShotCard — leaving without blurring", () => {
+  /*
+   * The card is removed while the PROVIDER stays mounted — the shape
+   * `renderRemovablePanel` already uses for the Settings copy. Unmounting the
+   * whole tree instead looks equivalent and is not: the provider is what writes
+   * to storage, so tearing it down in the same commit means the hatch's write
+   * has nowhere to land, and the test fails for a reason that has nothing to do
+   * with the hatch. Measured, both ways.
+   */
+  const renderRemovableCard = () => {
+    const Harness = ({ shown }: { shown: boolean }) => (
+      <ProfileProvider>
+        {shown && <FirstShotCard onGoToSettings={vi.fn()} onDone={vi.fn()} />}
+      </ProfileProvider>
+    );
+    const view = render(<Harness shown />);
+    return { removeCard: () => view.rerender(<Harness shown={false} />) };
+  };
+
+  it("carries a cleared start date out with it", () => {
+    // Same gap as the Settings copy, and the two are explicitly meant to agree
+    // on this question: they agreed on blur and diverged on backgrounding,
+    // because this hatch could only express "set".
+    seedProfile({ startDate: "2024-03-15" });
+    const { removeCard } = renderRemovableCard();
+    fireEvent.change(startField(), { target: { value: "" } });
+    removeCard();
+
+    expect(storedProfile().startDate).toBeUndefined();
+  });
+
+  it("still carries an entered date out with it", () => {
+    // The behaviour the hatch exists for, which the clear must not cost.
+    const { removeCard } = renderRemovableCard();
+    fireEvent.change(startField(), { target: { value: "2025-06-01" } });
+    removeCard();
+
+    expect(storedProfile().startDate).toBe("2025-06-01");
+  });
+
+  it("writes nothing when there was nothing to change", () => {
+    // It runs from an effect cleanup, so an unconditional write hit the profile
+    // on every navigation away — and on a full device that raised the storage
+    // banner for an edit nobody made.
+    const { removeCard } = renderRemovableCard();
+    removeCard();
+    expect(localStorage.getItem(STORAGE_KEYS.profile)).toBeNull();
+  });
+});
+
 describe("FirstShotCard — the interval's unit", () => {
   const box = () =>
     screen.getByLabelText("How many days between your shots?") as HTMLInputElement;
