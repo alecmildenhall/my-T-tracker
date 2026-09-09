@@ -333,10 +333,62 @@ describe("JourneySettings", () => {
   });
 });
 
+describe("JourneySettings — the interval's unit", () => {
+  /*
+   * The unit used to live ONLY in the placeholder ("Every ___ days"), which
+   * disappears as soon as there is a value — and the commonest action on this
+   * screen, tapping the "2 weeks" chip, is exactly what puts one there. So the
+   * last unit anyone had read said WEEKS while the box quietly held 14. Three
+   * cues, and the only one naming days was the one that vanished.
+   */
+  it("names the unit in the label, where it cannot disappear", () => {
+    renderPanel();
+    // Not a placeholder and not only a suffix: a suffix is aria-hidden, so the
+    // label is the only place a screen reader can learn the unit.
+    expect(
+      screen.getByLabelText("How many days between your shots?"),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the unit beside the value, and hides it from the accessible name", () => {
+    renderPanel();
+    const unit = document.querySelector(".interval-field__unit")!;
+    expect(unit.textContent).toBe("days");
+    // Decoration: the label already says it, so announcing it twice is noise.
+    expect(unit.getAttribute("aria-hidden")).toBe("true");
+    expect(
+      screen.getByLabelText("How many days between your shots?"),
+    ).toHaveAccessibleName("How many days between your shots?");
+  });
+
+  it("keeps no placeholder holding the unit", () => {
+    // The regression that matters: putting it back in the placeholder would
+    // look identical while empty and lose the unit the moment you answer.
+    renderPanel();
+    const box = screen.getByLabelText(
+      "How many days between your shots?",
+    ) as HTMLInputElement;
+    expect(box.placeholder).toBe("");
+  });
+
+  it("still shows the unit once a chip has filled the box", () => {
+    // The exact moment the old design failed.
+    renderPanel();
+    fireEvent.click(screen.getByRole("button", { name: "2 weeks" }));
+    const box = screen.getByLabelText(
+      "How many days between your shots?",
+    ) as HTMLInputElement;
+    expect(box.value).toBe("14");
+    expect(document.querySelector(".interval-field__unit")!.textContent).toBe(
+      "days",
+    );
+  });
+});
+
 describe("JourneySettings — how often", () => {
   const intervalField = () =>
     screen.getByLabelText(
-      "How often do you take your shot?",
+      "How many days between your shots?",
     ) as HTMLInputElement;
   const shotDay = () =>
     screen.getByLabelText(
@@ -422,7 +474,7 @@ describe("JourneySettings — the interval must not discard the schedule anchor"
       }),
     );
     renderPanel();
-    const box = screen.getByLabelText("How often do you take your shot?");
+    const box = screen.getByLabelText("How many days between your shots?");
 
     fireEvent.focus(box);
     fireEvent.blur(box);

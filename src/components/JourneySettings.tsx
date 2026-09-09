@@ -353,25 +353,47 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
           shot-day select and times from the previous shot instead, and the hint
           was telling that user to do the thing the app had just stopped them
           doing. Stating only the payoff is true in both modes. */}
-      <label htmlFor="journey-interval">How often do you take your shot?</label>
+      {/* The unit is in the LABEL, not only beside the box. A suffix is
+          `aria-hidden` by convention and this one is too, so the label is the
+          only place a screen reader can learn the unit — the guidance that
+          recommends unit adornments says so explicitly ("Height, in inches"
+          beside an "in." suffix). */}
+      <label htmlFor="journey-interval">How many days between your shots?</label>
       <p className="field-hint" id="interval-hint">
         Track how on time your shots are.
       </p>
+      {/* The unit sat only in the PLACEHOLDER, which disappears the moment
+          there is a value — and the most common action here, tapping "2 weeks",
+          is exactly what puts one there. So the last unit you read said WEEKS
+          while the box quietly held 14. Placeholders are the documented wrong
+          home for essential information for precisely this reason.
+
+          The box is sized to its content rather than the column, and "days"
+          sits immediately after it. A full-width field with the unit pinned
+          right — which is how this was first drawn — puts them 580px apart on
+          desktop, where they stop reading as one phrase, and drops the unit
+          straight onto the number spinner Chromium paints there on hover.
+          Measured both. */}
       <div className="form-column">
-        <input
-          id="journey-interval"
-          ref={intervalFieldRef}
-          type="number"
-          min={MIN_INTERVAL_DAYS}
-          max={MAX_INTERVAL_DAYS}
-          step={1}
-          inputMode="numeric"
-          value={intervalDraft}
-          onChange={(e) => setIntervalDraft(e.target.value)}
-          onBlur={(e) => commitInterval(e.target.validity.badInput)}
-          placeholder="Every ___ days"
-          aria-describedby="interval-hint"
-        />
+        <div className="interval-field">
+          <input
+            id="journey-interval"
+            className="interval-field__input"
+            ref={intervalFieldRef}
+            type="number"
+            min={MIN_INTERVAL_DAYS}
+            max={MAX_INTERVAL_DAYS}
+            step={1}
+            inputMode="numeric"
+            value={intervalDraft}
+            onChange={(e) => setIntervalDraft(e.target.value)}
+            onBlur={(e) => commitInterval(e.target.validity.badInput)}
+            aria-describedby="interval-hint"
+          />
+          <span className="interval-field__unit" aria-hidden="true">
+            days
+          </span>
+        </div>
       </div>
       {/* The two cadences almost everyone is on, so most people never type a
           number. Same chip pattern as the log form's reuse values. */}

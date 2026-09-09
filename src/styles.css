@@ -202,6 +202,32 @@ body {
   flex-direction: column;
 }
 
+/* The interval box and its unit, as one phrase.
+   The field is sized to a three-digit number rather than filling the column:
+   full width put "days" 580px from the value on desktop, where the two stop
+   reading together, and dropped it onto the spin buttons Chromium paints at
+   the right edge on hover. Both measured.
+   No `font-size` here — the coarse-pointer rule owns that for every control,
+   and a class selector would out-specify it (the trap CLAUDE.md names). */
+.interval-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.interval-field__input {
+  /* Three digits, plus room for the spinner so it never crowds the value. */
+  width: 6.5rem;
+  flex: none;
+}
+
+/* `aria-hidden` in the markup, so this is decoration and the LABEL carries the
+   unit for anyone who cannot see it. */
+.interval-field__unit {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
 label {
   font-size: 0.8rem;
   /* The question outranks the note under it, and CONTRAST is what says so.
