@@ -26,23 +26,21 @@ const startField = () =>
   screen.getByLabelText("When did you start T?") as HTMLInputElement;
 
 describe("FirstShotCard — the start date", () => {
-  it("does not delete a stored start date when the field is left empty", () => {
-    // An empty date input cannot separate "I cleared this" from "I am retyping
-    // and the segments are incomplete" — both report "". Blur does not
-    // distinguish them, it picks one, and this card picked the destructive one:
-    // the milestone base gone, with no undo and no "Remove start date" control
-    // here to have meant it with. The identical field in Settings already
-    // refused exactly this, in a comment, and the two disagreed.
+  it("clears a stored start date when the field is emptied", () => {
+    // It used to restore instead, so the native picker's own "Reset" emptied
+    // the field and blur put the value straight back — a platform control that
+    // visibly did nothing. And this card has no "Remove start date", so an
+    // answer given here could not be taken back AT ALL, while name and interval
+    // both cleared. `commitDateDraft` carries the reasoning and the measured
+    // `badInput` behaviour that makes it safe.
     seedProfile({ startDate: "2024-03-15" });
     renderCard();
 
     fireEvent.change(startField(), { target: { value: "" } });
     fireEvent.blur(startField());
 
-    expect(storedProfile().startDate).toBe("2024-03-15");
-    // And the field shows what is actually stored, rather than a blank the
-    // profile does not agree with.
-    expect(startField().value).toBe("2024-03-15");
+    expect(storedProfile().startDate).toBeUndefined();
+    expect(startField().value).toBe("");
   });
 
   it("still saves a real date typed into the field", () => {
@@ -54,20 +52,15 @@ describe("FirstShotCard — the start date", () => {
     expect(storedProfile().startDate).toBe("2025-06-01");
   });
 
-  it("restores the stored value when the field holds a non-date", () => {
-    // Note it is 30 February and not year 0202: a start date is deliberately
-    // UNBOUNDED — it is a fact about someone's life and the app has no standing
-    // to call it too long ago — so `0202-03-15` is accepted here on purpose,
-    // unlike a shot date. Only something the calendar rejects is restored.
-    seedProfile({ startDate: "2024-03-15" });
-    renderCard();
-
-    fireEvent.change(startField(), { target: { value: "2024-02-30" } });
-    fireEvent.blur(startField());
-
-    expect(storedProfile().startDate).toBe("2024-03-15");
-    expect(startField().value).toBe("2024-03-15");
-  });
+  // There is no "the field holds a non-date" case to test here, and there used
+  // to be one that passed for the wrong reason. A date input's value
+  // sanitization rejects anything that is not a valid date string, so
+  // "2024-02-30" never reaches the handler — measured on the real control and
+  // in jsdom, both turn it into "". That test was exercising the EMPTY path
+  // while claiming to exercise the non-date one, which is why inverting the
+  // empty behaviour broke it. The mid-edit path it was reaching for is a
+  // `badInput` case, unreachable through `fireEvent`, and is covered where the
+  // decision actually lives — see `dateDraft.test.ts`.
 });
 
 describe("FirstShotCard — the interval's unit", () => {

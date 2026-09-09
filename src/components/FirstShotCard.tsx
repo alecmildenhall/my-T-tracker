@@ -29,6 +29,7 @@ import { handOffFocus } from "../utils/focus";
 import { CONFIRM_MS } from "../utils/timing";
 import { SHEET_EXIT_MS } from "./Modal";
 import { isRealDate } from "../utils/civilDate";
+import { commitDateDraft } from "../utils/dateDraft";
 import {
   isValidIntervalDays,
   MIN_INTERVAL_DAYS,
@@ -450,21 +451,25 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
             value={startDraft}
             aria-describedby="first-shot-start-hint"
             onChange={(e) => setStartDraft(e.target.value)}
-            // An empty field is NOT taken as "delete this", and the same
-            // field in Settings carries the full reasoning: an empty date input
-            // cannot separate "I cleared this" from "I am retyping and the
-            // segments are incomplete", and both report "". Blur does not
-            // distinguish them — it picks one, and picking the destructive one
-            // silently deletes the milestone base with no undo and, on this
-            // card, no "Remove start date" control to have meant it with.
+            // An emptied field CLEARS, and this card and Settings agree on
+            // that — they have drifted apart on this exact question before,
+            // which is worse than either answer alone. `commitDateDraft` holds
+            // the reasoning and the measurements: `badInput` separates a field
+            // emptied outright from one part-way through being retyped, so
+            // "Reset" in the native picker finally does what it says.
             //
-            // Two identical fields answered this opposite ways, which is worse
-            // than either answer. They agree now: leaving a date field empty
-            // restores what is stored, and removing is its own action in
-            // Settings. This card's own commit-on-unmount path already declined
-            // to clear, so blur and backgrounding no longer disagree either.
-            onBlur={() => {
-              if (isRealDate(startDraft)) setStartDate(startDraft);
+            // It matters more here than in Settings. This card has no "Remove
+            // start date" control, so before this an answer given on it could
+            // not be taken back at all — name and interval both cleared, and the
+            // date alone was permanent, on the one screen someone meets before
+            // they know Settings exists.
+            onBlur={(e) => {
+              const commit = commitDateDraft(
+                startDraft,
+                e.target.validity.badInput,
+              );
+              if (commit.action === "set") setStartDate(commit.date);
+              else if (commit.action === "clear") setStartDate(undefined);
               else setStartDraft(profile.startDate ?? "");
             }}
           />

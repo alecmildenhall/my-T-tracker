@@ -6,6 +6,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useProfileContext } from "../context/ProfileContext";
 import { WEEKDAYS, isWeekday, weekdayLabel } from "../utils/weekday";
 import { isRealDate } from "../utils/civilDate";
+import { commitDateDraft } from "../utils/dateDraft";
 import { isWeeklyMultiple } from "../utils/schedule";
 import {
   isValidIntervalDays,
@@ -292,22 +293,26 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
           // It was in front of me in a browser trace (`stored="0202-03-15"`) and
           // I read past it because the final value was right.
           onChange={(e) => setDateDraft(e.target.value)}
-          // Leaving the field is the commit.
+          // Leaving the field is the commit, and an emptied field now CLEARS.
           //
-          // What it deliberately does NOT do is treat an empty field as "delete
-          // this". An empty date input carries two meanings it cannot separate —
-          // "I cleared this" and "I am retyping and the segments are incomplete"
-          // — and both report "". An earlier version resolved that by waiting for
-          // blur, which does not separate the meanings at all; it picks one, and
-          // picks destructively. Measured in Chromium the ambiguity happens to
-          // resolve itself, but that is a reason it does not happen rather than a
-          // reason it cannot — Firefox leaves the value empty — and the cost of
-          // being wrong is a silently deleted start date with no undo. So
-          // removing is its own action, with its own control, below.
-          onBlur={() => {
-            if (isRealDate(dateDraft)) setStartDate(dateDraft);
-            // Half-typed and abandoned: put back what is actually stored, rather
-            // than leaving the field showing a value nothing holds.
+          // It used to restore instead, on the reasoning that an empty date
+          // input cannot separate "I cleared this" from "I am retyping and the
+          // segments are incomplete" — both report "". The ambiguity is real;
+          // the conclusion that nothing could resolve it was not. `badInput` is
+          // false for a field emptied outright and true for one mid-edit, which
+          // `commitDateDraft` measures and this field now trusts, exactly as the
+          // interval box beside it already trusts it for a number.
+          //
+          // What that fixes is a native control appearing to do nothing: the
+          // iOS picker's own "Reset" empties the field, and blur used to put the
+          // value straight back.
+          onBlur={(e) => {
+            const commit = commitDateDraft(
+              dateDraft,
+              e.target.validity.badInput,
+            );
+            if (commit.action === "set") setStartDate(commit.date);
+            else if (commit.action === "clear") setStartDate(undefined);
             else setDateDraft(profile.startDate ?? "");
           }}
         />
@@ -358,7 +363,9 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
           only place a screen reader can learn the unit — the guidance that
           recommends unit adornments says so explicitly ("Height, in inches"
           beside an "in." suffix). */}
-      <label htmlFor="journey-interval">How many days between your shots?</label>
+      <label htmlFor="journey-interval">
+        How many days between your shots?
+      </label>
       <p className="field-hint" id="interval-hint">
         Track how on time your shots are.
       </p>

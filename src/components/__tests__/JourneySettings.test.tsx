@@ -164,25 +164,29 @@ describe("JourneySettings", () => {
     expect(stored()).toEqual({ startDate: "1998-07-04" });
   });
 
-  it("removes the start date only through its own control", () => {
-    // An empty date input means two things it cannot separate — "I cleared this"
-    // and "I am retyping, the segments are incomplete" — and both report "".
-    // Blur does not separate them either; it just picks one, destructively. So
-    // emptiness never deletes, and removing has its own carrier: a control the
-    // user presses on purpose.
+  it("removes the start date two ways: emptying the field, and Remove", () => {
+    // Emptying used to restore, on the reasoning that an empty date input
+    // cannot separate "I cleared this" from "I am mid-retype" — both report "".
+    // The ambiguity is real and `badInput` resolves it, which `commitDateDraft`
+    // measures; the visible consequence of the old behaviour was that the iOS
+    // picker's "Reset" appeared to do nothing at all.
     localStorage.setItem(
       STORAGE_KEYS.profile,
       JSON.stringify({ startDate: "2020-01-01" }),
     );
     renderPanel();
 
-    // Emptying the field and leaving it does NOT delete the saved date...
+    // Emptying the field and leaving it now clears...
     fireEvent.change(dateInput(), { target: { value: "" } });
     fireEvent.blur(dateInput());
-    expect(stored().startDate).toBe("2020-01-01");
-    expect(dateInput().value).toBe("2020-01-01"); // and the field says so
+    expect(stored().startDate).toBeUndefined();
+    expect(dateInput().value).toBe("");
 
-    // ...pressing Remove does.
+    // ...and so does Remove, which stays because it is the explicit path and
+    // the one a keyboard user can find without guessing.
+    fireEvent.change(dateInput(), { target: { value: "2020-01-01" } });
+    fireEvent.blur(dateInput());
+    expect(stored().startDate).toBe("2020-01-01");
     fireEvent.click(screen.getByRole("button", { name: "Remove start date" }));
     expect(stored().startDate).toBeUndefined();
     expect(dateInput().value).toBe("");
