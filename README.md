@@ -455,6 +455,8 @@ Worth knowing what this rule is suspending, since it stops being free the day so
 - [x] Add saved custom injection site/position options for faster repeated logging — _reuse chips on the log form plus a Settings → Manage saved values panel to rename/remove them_
 - [ ] Redesign the UI around a phone-first, warm, readable, non-corporate visual direction
 
+  **Pick the app icon here.** It is currently a placeholder (`public/icon.svg`, the History tab's chart mark, standing in for Vite's logo), and it is the visual identity's most public surface, so it belongs with this work rather than with the PWA bullet that consumes it. Two constraints come from elsewhere and are not stylistic: it must **not announce what the app tracks** (the disguise-mode threat model — a home screen is visible to whoever is nearby), and it must **survive Android's adaptive-icon crop**, which cuts to a centred circle at 80% of the width. Deciding both while drawing is one judgement; discovering the crop afterwards is two. Everything raster follows from this choice in one mechanical pass — see **PWA support** in Mid-Term.
+
   **Do the sheet's close path here, not before.** `closeSheet` ends the exit on a `setTimeout(SHEET_EXIT_MS)`, and that timer is a *proxy* for "the transition ended" — the shape CLAUDE.md warns about, which has cost this project two defect classes already. Deferred rather than fixed on its own, deliberately, and the reasoning is worth keeping because the obvious framing of it is wrong:
 
   - **The constant does not go away.** `transitionend` is not guaranteed to fire — not for a `0s` duration, not when the transition never starts (property unchanged, element not rendered, `display: none`), and not when a browser, extension or OS setting disables transitions outright. A missed event means the sheet **never unmounts**: a stuck modal over an inert `#root`. So a timeout stays as the net, and `SHEET_EXIT_MS` survives, demoted. The win is precision, not simplification.
@@ -773,7 +775,12 @@ Local-only storage is a privacy guarantee, not a persistence one, and the browse
 
 - Add **PWA support** (installable, offline-first) — _also the durability fix for iOS: see **Data Durability** above. Pair it with an install prompt and `navigator.storage.persist()`, and treat install as the point at which the data becomes reasonably safe._
 
-  **The install icons belong to this work, and the SVG favicon does not cover them.** `public/icon.svg` is enough for a browser tab and nothing else. Both install targets want raster PNGs, and each fails *silently* without them — the app looks fine right up until someone installs it:
+  **The install icons are listed here, but the PWA is not what gates them — the icon choice is.** Worth separating, because an earlier draft of this item filed them all under "PWA work" and that would send someone looking for a blocker that isn't there:
+
+  - **`apple-touch-icon` needs no manifest and no service worker** — one `<link>` and one PNG. It could ship the day the artwork exists.
+  - **The manifest's `icons` genuinely wait for the manifest**, since nothing reads them until one exists.
+
+  Both are **deliberately deferred to a single pass after the icon is chosen** (see below). `public/icon.svg` is enough for a browser tab and nothing else, and each target fails *silently* without a raster — the app looks fine right up until someone installs it:
 
   - **iOS ignores SVG favicons and needs `<link rel="apple-touch-icon">` as a PNG (180×180).** With none, adding to the home screen has historically used **a screenshot of the page** as the icon — which here means a thumbnail of Home, greeting and recent shots included, sitting on the springboard. That is a discretion bug rather than a cosmetic one, and it would land on exactly the install this project otherwise pushes people toward for durability. _Verify the current behaviour against WebKit's documentation before relying on the screenshot detail — the fallback has changed before, and the fix (ship the PNG) is the same either way._
   - **Android/Chrome read the manifest's `icons`** — 192 and 512 PNGs — and apply an **adaptive-icon mask**, so a `purpose: "maskable"` variant is needed as well, with its content inside the safe zone (a centred circle of 80% diameter). The current mark runs close to its own edges and would be clipped, so the maskable copy needs **more padding**, not the same drawing at another size.
