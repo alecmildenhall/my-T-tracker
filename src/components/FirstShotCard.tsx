@@ -223,6 +223,8 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
   const intervalRef = useRef<HTMLInputElement>(null);
   const shotDaySelectRef = useRef<HTMLSelectElement>(null);
   const noticeRef = useRef<HTMLParagraphElement>(null);
+  /** Where "Remove start date" hands focus when it removes itself. */
+  const titleRef = useRef<HTMLHeadingElement>(null);
 
   /**
    * Done's three beats: idle, the ✓, then the card leaving.
@@ -389,7 +391,11 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
         dismissal === "leaving" ? " first-shot-card--leaving" : ""
       }`}
     >
-      <h2 className="first-shot-card__title">Before your first shot</h2>
+      {/* `tabIndex={-1}` so "Remove start date" can hand focus here when it
+          takes itself away. It never joins the tab order. */}
+      <h2 className="first-shot-card__title" ref={titleRef} tabIndex={-1}>
+        Before your first shot
+      </h2>
       {/* The "it's all optional" line leads, rather than closing the card.
           Marking every field individually is what you do when SOME are
           required — here none are, so one sentence at the top says it once for
@@ -463,17 +469,54 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
             // not be taken back at all — name and interval both cleared, and the
             // date alone was permanent, on the one screen someone meets before
             // they know Settings exists.
+            // The LIVE element value, not the draft. On iOS the picker's
+            // own Reset either fires NO change event (WebKit, time inputs) or
+            // fires one carrying the PREVIOUS value (WebKit, date inputs) —
+            // both documented React issues — so the draft is stale by exactly
+            // the amount that matters, and the old value round-trips straight
+            // back. By blur the picker has closed and the element itself is
+            // correct, which is the workaround those reports land on: read the
+            // input, not the event.
             onBlur={(e) => {
-              const commit = commitDateDraft(
-                startDraft,
-                e.target.validity.badInput,
-              );
-              if (commit.action === "set") setStartDate(commit.date);
-              else if (commit.action === "clear") setStartDate(undefined);
-              else setStartDraft(profile.startDate ?? "");
+              const live = e.target.value;
+              const commit = commitDateDraft(live, e.target.validity.badInput);
+              if (commit.action === "set") {
+                setStartDraft(commit.date);
+                setStartDate(commit.date);
+              } else if (commit.action === "clear") {
+                setStartDraft("");
+                setStartDate(undefined);
+              } else setStartDraft(profile.startDate ?? "");
             }}
           />
         </div>
+        {/* The control that does NOT depend on the platform reporting a Reset.
+            iOS's picker offers its own Reset, and WebKit either fires no change
+            event for it or fires one carrying the previous value — so the blur
+            handler above is a best effort that cannot be verified from here.
+            This is the guaranteed path, and it is the same control Settings
+            has: without it, an answer given on this card could not be taken
+            back at all, on the one screen someone meets before they know
+            Settings exists. */}
+        {profile.startDate && (
+          <button
+            type="button"
+            className="link-button chip-clear"
+            // Removes ITSELF — it renders only while a start date is set — so
+            // it hands focus on first. To the card's HEADING, never back to the
+            // date field: focusing an `input[type=date]` from a click handler
+            // is what makes iOS throw the picker up again, which is absurd
+            // immediately after an action whose whole point was to have no
+            // date. Same reasoning JourneySettings' Remove already records.
+            onClick={() => {
+              handOffFocus(titleRef, noticeRef);
+              setStartDate(undefined);
+              setStartDraft("");
+            }}
+          >
+            Remove start date
+          </button>
+        )}
       </div>
 
       <div className="first-shot-card__field">

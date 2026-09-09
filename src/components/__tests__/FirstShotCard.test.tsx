@@ -4,6 +4,7 @@ import { FirstShotCard } from "../FirstShotCard";
 import { ProfileProvider } from "../../context/ProfileContext";
 import { STORAGE_KEYS } from "../../storageKeys";
 import { expectVisibleFocusRing } from "../../test/focusRing";
+import { expectFocusSomewhereUseful } from "../../test/focus";
 import { CONFIRM_MS } from "../../utils/timing";
 import { SHEET_EXIT_MS } from "../Modal";
 
@@ -50,6 +51,48 @@ describe("FirstShotCard — the start date", () => {
     fireEvent.blur(startField());
 
     expect(storedProfile().startDate).toBe("2025-06-01");
+  });
+
+  it("offers Remove start date, which does not depend on the platform", () => {
+    // The guaranteed path. iOS's picker has its own Reset and WebKit either
+    // fires no change event for it or one carrying the previous value, so the
+    // blur handler is a best effort that cannot be verified from here. This
+    // control needs none of that — and without it, an answer given on this card
+    // could not be taken back at all, on the one screen someone meets before
+    // they know Settings exists.
+    seedProfile({ startDate: "2024-03-15" });
+    renderCard();
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove start date" }));
+
+    expect(storedProfile().startDate).toBeUndefined();
+    expect(startField().value).toBe("");
+  });
+
+  it("offers no Remove control when there is no date to remove", () => {
+    renderCard();
+    expect(
+      screen.queryByRole("button", { name: "Remove start date" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("hands focus on when Remove takes itself away", () => {
+    // It renders only while a start date is set, so pressing it deletes the
+    // control under the user's finger. And NOT back to the date field: focusing
+    // an `input[type=date]` from a click handler is what throws the iOS picker
+    // up again, immediately after an action whose point was to have no date.
+    seedProfile({ startDate: "2024-03-15" });
+    renderCard();
+
+    const remove = screen.getByRole("button", { name: "Remove start date" });
+    remove.focus();
+    fireEvent.click(remove);
+
+    expectFocusSomewhereUseful("removing the start date");
+    expect(document.activeElement).not.toBe(document.body);
+    // And a ring on whatever it landed on — a hand-off target with none is a
+    // keyboard user losing their place silently.
+    expectVisibleFocusRing("after removing the start date");
   });
 
   // There is no "the field holds a non-date" case to test here, and there used

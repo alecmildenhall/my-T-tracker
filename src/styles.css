@@ -576,6 +576,9 @@ select {
    that control, because a hand-off target with no ring is a keyboard user
    losing their place silently (WCAG 2.4.7). */
 .settings-section__title:focus-visible,
+/* Same control, same reason, on the first-run card — which had no way to remove
+   a start date at all until one was added there too. */
+.first-shot-card__title:focus-visible,
 /* Where the shot-day select hands focus when a non-weekly interval disables it,
    in both the first-run card and Settings. Added in a browser pass: focus
    landed correctly and the element fell back to the UA's own ring, which is

@@ -306,14 +306,24 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
           // What that fixes is a native control appearing to do nothing: the
           // iOS picker's own "Reset" empties the field, and blur used to put the
           // value straight back.
+          // The LIVE element value, not the draft. On iOS the picker's own
+          // Reset either fires NO change event (WebKit, time inputs) or fires
+          // one carrying the PREVIOUS value (WebKit, date inputs) — both
+          // documented React issues — so the draft is stale by exactly the
+          // amount that matters and the old value round-trips straight back.
+          // By blur the picker has closed and the element itself is correct,
+          // which is the workaround those reports land on: read the input, not
+          // the event.
           onBlur={(e) => {
-            const commit = commitDateDraft(
-              dateDraft,
-              e.target.validity.badInput,
-            );
-            if (commit.action === "set") setStartDate(commit.date);
-            else if (commit.action === "clear") setStartDate(undefined);
-            else setDateDraft(profile.startDate ?? "");
+            const live = e.target.value;
+            const commit = commitDateDraft(live, e.target.validity.badInput);
+            if (commit.action === "set") {
+              setDateDraft(commit.date);
+              setStartDate(commit.date);
+            } else if (commit.action === "clear") {
+              setDateDraft("");
+              setStartDate(undefined);
+            } else setDateDraft(profile.startDate ?? "");
           }}
         />
       </div>
