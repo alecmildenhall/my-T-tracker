@@ -55,7 +55,14 @@ describe("off-days labels", () => {
     // meaning. The pair only reads as two directions if they anchor differently.
     expect(offDaysLabel("right-after")).toContain("previous shot");
     expect(offDaysLabel("right-before")).toContain("this shot");
-    expect(offDaysLabel("right-after")).not.toContain("last shot");
+    // EVERY set, not just the visible one. The rule was applied to two of the
+    // three and missed on the spoken labels, where only a screen-reader user
+    // would have heard "your last shot" beside a span saying "your previous".
+    for (const p of OFF_DAYS_PATTERNS) {
+      expect(offDaysLabel(p)).not.toContain("last shot");
+      expect(offDaysShortLabel(p)).not.toContain("last shot");
+      expect(offDaysSpokenLabel(p)).not.toContain("last shot");
+    }
   });
 
   it("draws the three positional patterns with the same number of days", () => {

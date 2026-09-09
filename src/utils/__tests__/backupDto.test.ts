@@ -332,15 +332,16 @@ describe("off days survives a backup round-trip", () => {
     expect(row).not.toContain("nervous");
   });
 
-  it("writes the stored pattern to the CSV, not its label", () => {
-    // Every header here is a field name and every value is as stored — the row
-    // shows `8:45 PM` while the CSV writes `20:45`. Capitalising this one into
-    // "Right before this one" would make it the odd column out in a data file.
+  it("writes the pattern out in words, because the slug is a fragment", () => {
+    // The one column that does NOT write the value as stored, and the reason is
+    // the rule rather than an exception to it: a cell has to be readable on its
+    // own. `mild` is. `right-before` is not — right before WHAT is answerable
+    // only from the label. A provider reads the CSV without the app beside it.
     const row = toCsv([
       { id: "a", date: "2026-08-05", offDays: "right-before" },
     ]).split("\n")[1];
-    expect(row).toContain("right-before");
-    expect(row).not.toContain("Right before this one");
+    expect(row).toContain("Right before this shot");
+    expect(row).not.toContain("right-before,");
   });
 
   it("drops a stored value the enum does not contain, rather than exporting it", () => {

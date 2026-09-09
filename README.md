@@ -562,7 +562,11 @@ Worth knowing what this rule is suspending, since it stops being free the day so
 
     **Accepted costs, still real.** It is **not a clean ordinal** — "Here and there" is not more or less than "Right before", so there is no line to plot and no average to take; charts count how often each pattern appears. And "off days both early *and* late" still has no home, so it stays a **best-fit** question. Multi-select is not the fix: two answers lit is a tally again, and the tally is what this design exists to beat.
 
-    **Wording rules that outlast the options.** Never *"this week"* — cadence may be 3 days or 14, so the span line names the real window ("The 13 days before this shot"). And "before this shot" alone is ambiguous, since the *entire* window is before this shot, so only **"right before"** says near it.
+    **Wording rules that outlast the options.** Never *"this week"* — cadence may be 3 days or 14, so the span line names the real window ("Since your previous shot · 13 days"). And "before this shot" alone is ambiguous, since the *entire* window is before this shot, so only **"right before"** says near it.
+
+    **The anchor is always shown; only the length is conditional.** It used to vanish when the length was unknown, which is the one shot where it was needed most — a first entry has no predecessor to measure from, so the only surface naming the window disappeared for the person with least context, and the question itself never says "since when". "Since your previous shot" is true even when the app cannot compute it, because someone logging their first shot here may have been injecting for years.
+
+    **"Previous", never "last", in every label set.** "Your last shot" means the most recent one, so on an entry from months ago it names a different shot from the one actually measured. The rule was once applied to two of the three sets and missed on the spoken labels, where only a screen-reader user would have met the contradiction — so it is stated here as covering all of them, and a test holds every set to it.
 
     **The anchor-on-a-shot rule was relaxed, deliberately, and only where a picture replaced it.** It used to say every answer must name a shot rather than a position, and it rejected "Early on" by name for mixing the two frames. That rule existed because the WORDS alone had to carry the anchor. In the log sheet they no longer do — each row draws where the days sat — so the short labels are "Early on" and "Right before" and the strip supplies the frame. It still holds everywhere the answer stands **alone**: the History facet and the row pill use the long forms, which is why `offDaysLabel` and `offDaysShortLabel` are two functions and not one.
 
@@ -683,7 +687,7 @@ Worth knowing what this rule is suspending, since it stops being free the day so
        The fix is NOT to vary the answers by interval, which would make one stored
        value mean different things for different users — the overloaded-value
        bug spread across a population instead of a field. One vocabulary, and
-       the span line carries the length: "The 13 days before this shot",
+       the span line carries it: "Since your previous shot · 13 days",
        named rather than assumed because cadence runs 3–14 days and "this week"
        would be wrong for most people. The dates are deliberately not spelled
        out; every date this app shows is the stored ISO string.

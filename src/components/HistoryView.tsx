@@ -382,10 +382,21 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                 ))}
               </select>
             </label>
-            {/* Beside pain, because that is where `PAIN_BANDS` established that
-                an ordinal belongs in Filters rather than in search. Mood used to
-                be matched by `searchShotText`; substring-matching a closed set of
-                four is not searching, it is a worse version of this control. */}
+          </div>
+
+          {/* Its OWN row, not appended to the Type-of-T/Pain pair. Every other
+              `.form-row` here holds two; a third member made this the only one
+              with three, and `.field-cell` is `flex: 1 1 0` with min-content as
+              its floor — so this select claimed 237px for its longest option
+              ("Right after the previous shot") and squeezed the other two to
+              107px. Measured across 561–800px, where the row is side-by-side but
+              the window is still narrow; it evens out only past ~900px.
+
+              An ordinal belongs in Filters rather than in search — that is what
+              `PAIN_BANDS` established, and why mood stopped being matched by
+              `searchShotText`: substring-matching a closed set of five is not
+              searching, it is a worse version of this control. */}
+          <div className="form-row">
             <label>
               Off days
               <select

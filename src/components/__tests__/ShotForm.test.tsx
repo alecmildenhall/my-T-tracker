@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ShotForm, type ShotDraft } from "../ShotForm";
-import type { ShotEntry } from "../../types/shot";
+import { OFF_DAYS_PATTERNS, type ShotEntry } from "../../types/shot";
 import type { SaveOutcome } from "../ShotForm";
 import { todayLocalISO } from "../../utils/datetime";
 import { expectFocusSomewhereUseful } from "../../test/focus";
@@ -1863,7 +1863,7 @@ describe("ShotForm — off days", () => {
     render(<ShotForm onAddShot={vi.fn()} />);
     const early = chip(/^Early on/);
     expect(early).toHaveAccessibleName(
-      "Early on — the days right after your last shot",
+      "Early on — the days right after your previous shot",
     );
 
     const row = early.closest(".off-days-row")!;
@@ -1921,7 +1921,15 @@ describe("ShotForm — off days", () => {
     // by the time `fireEvent` returns — the same helper the pain group's Clear
     // uses, for the same reason.
     expectFocusSomewhereUseful("clearing off days");
-    // A different assertion: the one above only says focus is not nowhere.
+    // `expectVisibleFocusRing` alone is VACUOUS here, exactly as the pain
+    // group's test records: the focused element is the `opacity: 0` radio,
+    // which matches the stylesheet's generic `input:focus` rule, so the guard
+    // passes whether or not the row's own ring exists. Assert the relationship
+    // the ring actually depends on — focus is inside the ROW, which is what
+    // `.off-days-row:has(input:focus-visible)` paints — and which row it is.
+    const active = document.activeElement as HTMLInputElement;
+    expect(active.closest(".off-days-row")).not.toBeNull();
+    expect(active.value).toBe(OFF_DAYS_PATTERNS[0]);
     expectVisibleFocusRing("after clearing off days");
   });
 

@@ -4,7 +4,13 @@
 //   - CSV:  a flat, spreadsheet-friendly export for clinical conversations
 // CSV is export-only — we never parse it back — so it optimises for safety in
 // spreadsheet apps (formula-injection guard) and correctness (RFC 4180 quoting).
-import { isOffDaysPattern, isPainLevel, type ShotEntry } from "../types/shot";
+import {
+  isOffDaysPattern,
+  isPainLevel,
+  type OffDaysPattern,
+  type ShotEntry,
+} from "../types/shot";
+import { offDaysLabel } from "./offDaysLabel";
 import { isShotDateInRange } from "./civilDate";
 import type { Profile } from "../types/profile";
 import { APP_NAME, APP_VERSION, FORMAT_VERSION } from "../appMeta";
@@ -52,6 +58,8 @@ const CSV_COLUMNS: Array<{
   /** Optional gate on the raw stored value, for columns whose validity the
    *  shots store deliberately does not enforce. */
   usable?: (value: unknown) => boolean;
+  /** Optional rendering, for a stored value that is not readable on its own. */
+  format?: (value: unknown) => string;
 }> = [
   { header: "date", key: "date" },
   // Beside the date it belongs to, so a provider reading the CSV can see the
@@ -93,7 +101,25 @@ const CSV_COLUMNS: Array<{
   // pain, for the same reason — a value that predates the enum, or a
   // hand-edited backup, must not be written verbatim into a file a provider
   // reads.
-  { header: "offDays", key: "offDays", usable: isOffDaysPattern },
+  //
+  // And WRITTEN OUT, unlike pain — which looks like an inconsistency and is
+  // the rule applied properly. The rule the pain column states is that a cell
+  // is the value as stored; the rule it is really serving is that a cell must
+  // be readable on its own. `mild` satisfies both. `right-after` satisfies only
+  // the first: it is a fragment, and right after WHAT is answerable only from
+  // the label this field has a whole function for. A provider reading
+  // "Right after the previous shot" needs nothing else; one reading
+  // `right-after` needs the app.
+  //
+  // Nothing depends on the raw form here — CSV is export-only, the backup
+  // format is JSON, and `escapeCsvCell` already quotes to RFC 4180, so the
+  // spaces cost nothing.
+  {
+    header: "offDays",
+    key: "offDays",
+    usable: isOffDaysPattern,
+    format: (v) => offDaysLabel(v as OffDaysPattern),
+  },
   { header: "notes", key: "notes" },
 ];
 
@@ -138,6 +164,7 @@ export function toCsv(shots: ShotEntry[]): string {
       CSV_COLUMNS.map((c) => {
         const value = shot[c.key];
         if (c.usable && value !== undefined && !c.usable(value)) return "";
+        if (c.format && value !== undefined) return escapeCsvCell(c.format(value));
         return escapeCsvCell(value);
       }).join(","),
     );

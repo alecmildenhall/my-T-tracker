@@ -48,6 +48,24 @@ describe("a backup from the build before mood was retired", () => {
     expect("mood" in restored).toBe(false);
   });
 
+  it("names off days as the reason, rather than shrugging", () => {
+    // `pain` is listed because an unrecognised enum value is a NAMEABLE
+    // failure; `offDays` is now the same class. Without an entry the user is
+    // told an entry was skipped but not which field to go and fix.
+    const real = JSON.parse(
+      toJson([
+        { id: "a", date: "2026-07-01" },
+        { id: "b", date: "2026-07-08" },
+      ]),
+    );
+    real.shots[0].offDays = "a bit rough";
+    const r = parseBackup(JSON.stringify(real));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.skipped[0].reason).toContain("off-days");
+    expect(r.skipped[0].reason).not.toBe("some of it couldn’t be read");
+  });
+
   it("still refuses a key it has never heard of", () => {
     // Retiring a field must not loosen the strict check into "ignore anything
     // unexpected" — that guard is what keeps a hand-edited file out of storage.

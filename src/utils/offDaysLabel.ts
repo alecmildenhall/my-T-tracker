@@ -57,10 +57,16 @@ const SHORT: Record<OffDaysPattern, string> = {
  * Each one STARTS with its visible label, which is what WCAG 2.5.3 (Label in
  * Name) asks for: extra context after the visible text is allowed, and leading
  * with it keeps voice control working — "tap Early on" still matches.
+ *
+ * "Previous shot", never "last shot", exactly as in `LABELS` — the rule was
+ * applied to two of the three sets and missed here. On an entry from months
+ * ago, "your last shot" means the most recent one while the span beside it
+ * reads "Since your previous shot": two different shots named as one reference,
+ * and only a screen-reader user would have met the contradiction.
  */
 const SPOKEN: Record<OffDaysPattern, string> = {
   none: "Not really",
-  "right-after": "Early on — the days right after your last shot",
+  "right-after": "Early on — the days right after your previous shot",
   "here-and-there": "Here and there — scattered across the interval",
   "right-before": "Right before — the days right before this shot",
   "most-of-the-time": "Most days",

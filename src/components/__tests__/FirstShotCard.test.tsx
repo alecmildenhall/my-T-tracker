@@ -72,13 +72,13 @@ describe("FirstShotCard — the start date", () => {
 
 describe("FirstShotCard — the interval's unit", () => {
   const box = () =>
-    screen.getByLabelText("Or every how many days?") as HTMLInputElement;
+    screen.getByLabelText("How many days between your shots?") as HTMLInputElement;
 
   it("shows the unit beside the box, where it cannot disappear", () => {
     // It lived only in the placeholder, which goes the moment a chip or a
     // keystroke fills the box — screenshotted on a phone showing a bare "2".
     renderCard();
-    expect(document.querySelector(".first-shot-card__unit")!.textContent).toBe(
+    expect(document.querySelector(".interval-field__unit")!.textContent).toBe(
       "days",
     );
     expect(box().placeholder).toBe("");
@@ -88,7 +88,7 @@ describe("FirstShotCard — the interval's unit", () => {
     renderCard();
     fireEvent.click(screen.getByRole("button", { name: "2 weeks" }));
     expect(box().value).toBe("14");
-    expect(document.querySelector(".first-shot-card__unit")!.textContent).toBe(
+    expect(document.querySelector(".interval-field__unit")!.textContent).toBe(
       "days",
     );
   });
@@ -100,9 +100,9 @@ describe("FirstShotCard — the interval's unit", () => {
     // contents and tools disagree about honouring it there. Associating the
     // label by id puts the unit outside it however that is computed.
     renderCard();
-    expect(box()).toHaveAccessibleName("Or every how many days?");
+    expect(box()).toHaveAccessibleName("How many days between your shots?");
     expect(
-      document.querySelector(".first-shot-card__unit")!.getAttribute("aria-hidden"),
+      document.querySelector(".interval-field__unit")!.getAttribute("aria-hidden"),
     ).toBe("true");
   });
 
@@ -145,7 +145,7 @@ describe("FirstShotCard — the disabled shot day", () => {
     renderCard();
 
     const interval = screen.getByLabelText(
-      "Or every how many days?",
+      "How many days between your shots?",
     ) as HTMLInputElement;
     fireEvent.change(interval, { target: { value: "10" } });
     fireEvent.blur(interval);
@@ -198,7 +198,7 @@ describe("FirstShotCard — drafts follow the profile", () => {
     // cadence and the schedule anchor another tab had just set.
     renderCard(); // mounts with an empty interval draft
     const box = screen.getByLabelText(
-      "Or every how many days?",
+      "How many days between your shots?",
     ) as HTMLInputElement;
     expect(box.value).toBe("");
 
@@ -235,7 +235,7 @@ describe("FirstShotCard — drafts follow the profile", () => {
     seedProfile({ intervalDays: 14 });
     renderCard();
     const box = screen.getByLabelText(
-      "Or every how many days?",
+      "How many days between your shots?",
     ) as HTMLInputElement;
     expect(box.value).toBe("14");
 

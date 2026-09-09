@@ -291,8 +291,7 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
    * question is asked at the last moment it is still itself, and stored.
    */
   const rootRef = useRef<HTMLElement>(null);
-  const heldFocus = () =>
-    !!rootRef.current?.contains(document.activeElement);
+  const heldFocus = () => !!rootRef.current?.contains(document.activeElement);
   const heldFocusAtUnmount = useRef(false);
   useLayoutEffect(
     () => () => {
@@ -482,10 +481,39 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
         <p className="field-hint" id="first-shot-cadence-hint">
           Track how on time your shots are.
         </p>
+        {/* The box ABOVE the chips, and both drawn exactly as Settings draws
+            them — same classes, so there is one style for one control rather
+            than two that drift. This card used to put the chips first and hang
+            the input inside their flex row as a stretchy pill, which made the
+            same question look like two different questions depending on where
+            you met it. The wording still differs, deliberately: this heading
+            covers the chips too, so it stays unit-neutral. */}
+        <div className="interval-field">
+          <label className="visually-hidden" htmlFor="first-shot-interval">
+            How many days between your shots?
+          </label>
+          <input
+            id="first-shot-interval"
+            className="interval-field__input"
+            type="number"
+            min={MIN_INTERVAL_DAYS}
+            max={MAX_INTERVAL_DAYS}
+            step={1}
+            inputMode="numeric"
+            ref={intervalRef}
+            value={intervalDraft}
+            onChange={(e) => setIntervalDraft(e.target.value)}
+            onBlur={(e) => commitInterval(e.target.validity.badInput)}
+            aria-describedby="first-shot-cadence-hint"
+          />
+          <span className="interval-field__unit" aria-hidden="true">
+            days
+          </span>
+        </div>
         <div
           className="suggestion-chips suggestion-chips--tight"
           role="group"
-          aria-label="How often you take your shot"
+          aria-label="Common intervals"
         >
           {QUICK_PICKS.map(({ label, days }) => (
             <button
@@ -501,46 +529,6 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
               {label}
             </button>
           ))}
-          {/* Same defect as the Settings copy of this question, and it needed a
-              different fix. There the <label> is tied to the input alone, so the
-              unit belongs in it. Here the heading above covers the CHIPS TOO —
-              and those are in weeks — so it has to stay unit-neutral, and the
-              unit goes on the two controls separately: the chips say weeks, the
-              box says days.
-
-              The accessible name was already right ("Or every how many days?"),
-              so what was missing was only the VISIBLE unit — which lived in the
-              placeholder and vanished the moment a chip or a keystroke filled
-              the box. Screenshotted on a phone showing a bare "2". */}
-          {/* A wrapper div with an explicitly associated label, NOT a <label>
-              wrapping everything. The unit span sits inside a wrapping label's
-              text, so the input's accessible name became "Or every how many
-              days? days" — the duplication `aria-hidden` is supposed to prevent,
-              except that the name is computed from the label's contents and
-              tools disagree about honouring it there. Associating by id puts
-              the unit outside the label entirely, so it cannot pollute the name
-              however that is computed. */}
-          <div className="first-shot-card__other">
-            <label className="visually-hidden" htmlFor="first-shot-interval">
-              Or every how many days?
-            </label>
-            <input
-              id="first-shot-interval"
-              type="number"
-              min={MIN_INTERVAL_DAYS}
-              max={MAX_INTERVAL_DAYS}
-              step={1}
-              inputMode="numeric"
-              ref={intervalRef}
-              value={intervalDraft}
-              onChange={(e) => setIntervalDraft(e.target.value)}
-              onBlur={(e) => commitInterval(e.target.validity.badInput)}
-              aria-describedby="first-shot-cadence-hint"
-            />
-            <span className="first-shot-card__unit" aria-hidden="true">
-              days
-            </span>
-          </div>
         </div>
       </div>
 
