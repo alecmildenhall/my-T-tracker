@@ -148,7 +148,11 @@ function readableDate(raw: unknown): string | undefined {
  * have decided to discard its value — so it is discarded here, by name, and the
  * strict check still catches everything genuinely unrecognised.
  */
-const RETIRED_KEYS = ["mood"] as const;
+// `painScore` belongs here for the same reason and from the same slice: it
+// became the `pain` enum one PR before `mood` became `offDays`, so a backup
+// from any build older than that carries a key the strict check calls unknown,
+// and the ENTRY — its date, notes, dose, site — is skipped over one dead field.
+const RETIRED_KEYS = ["mood", "painScore"] as const;
 
 function withoutRetiredKeys(entry: unknown): unknown {
   if (typeof entry !== "object" || entry === null) return entry;

@@ -2,7 +2,7 @@
 // Settings → "Your journey": the optional T start date and preferred name that
 // power milestone messages. Both are opt-in, local-only, and clearing a field
 // removes it entirely.
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useProfileContext } from "../context/ProfileContext";
 import { WEEKDAYS, isWeekday, weekdayLabel } from "../utils/weekday";
 import { isRealDate } from "../utils/civilDate";
@@ -174,26 +174,16 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
   const commitRef = useRef(setStartDate);
   /** What is actually stored, so the hatch can skip a write that changes nothing. */
   const savedRef = useRef(profile.startDate);
-  /**
-   * The last `badInput` the REAL control reported, kept because the unmount
-   * hatch has no control left to ask -- React detaches the ref before a passive
-   * cleanup runs. Asserting `false` there was a guess that the field had been
-   * cleared on purpose, and it chose the branch that deletes.
-   *
-   * Observed rather than tracked: this effect runs after every render, so it
-   * reads the live element each time and the ref holds the last true answer.
-   * A parallel flag written beside the draft would be a second thing to keep in
-   * step, which is how the two readers of `ShotDraft.date` drifted apart twice.
-   */
-  const midEditRef = useRef(false);
   useEffect(() => {
     draftRef.current = dateDraft;
     commitRef.current = setStartDate;
     savedRef.current = profile.startDate;
-    midEditRef.current = dateFieldRef.current?.validity.badInput ?? false;
   });
 
-  useEffect(() => {
+  // A LAYOUT effect, so its cleanup runs while the input is still attached and
+  // can be asked directly. Measured: on unmount a passive cleanup sees a null
+  // ref and a layout cleanup sees the element.
+  useLayoutEffect(() => {
     // The same decision blur makes, from the same source: the LIVE element.
     //
     // This used to be `if (isRealDate(draftRef.current)) commit(...)`, which
@@ -222,14 +212,19 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
       // draft is correct there anyway, because that exit involves no picker.
       const el = dateFieldRef.current;
       const value = el ? el.value : draftRef.current;
-      // With no element there is no `validity` to read, and this used to assert
-      // `false` -- which is not "we checked", it is a GUESS that the field was
-      // cleared on purpose, and it picked the destructive branch every time.
-      // Measured: a half-typed date plus a tab change deleted a stored start
-      // date, while the same state on blur restored it correctly. The two
-      // readers disagreeing about an empty string is precisely the bug this
-      // shared helper exists to prevent, reintroduced one layer up.
-      const badInput = el ? el.validity.badInput : midEditRef.current;
+      // Read from the control itself, never from a remembered answer. A
+      // `<input type="date">` fires `input` ONLY when its `value` changes, and
+      // once the value is `""` it stays `""` while further segments are typed
+      // or deleted -- so `badInput` flips with no event, no render, and any
+      // sampled copy goes stale in BOTH directions: stale `true` resurrects a
+      // date the user removed, stale `false` deletes one they were retyping.
+      // This cleanup is a LAYOUT one precisely so the node is still attached
+      // here; measured, a passive cleanup sees `null` and a layout cleanup sees
+      // the element.
+      //
+      // If it is ever null anyway, "cleared on purpose" is not something we can
+      // claim, so say mid-edit and let it restore -- the recoverable failure.
+      const badInput = el ? el.validity.badInput : true;
       const commit = commitDateDraft(value, badInput);
       if (commit.action === "set") commitRef.current(commit.date);
       // Only on a real change, which is the guard `FirstShotCard` and

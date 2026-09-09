@@ -166,16 +166,6 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
    *  ones you have not typed — so committing per keystroke walks a year through
    *  0002, 0020, 0202 before it arrives. */
   const [startDraft, setStartDraft] = useState(profile.startDate ?? "");
-  /**
-   * The last `badInput` the real control reported, for the unmount hatch, which
-   * has no control left to ask. Mirrors `JourneySettings` deliberately: these
-   * two fields have already answered this same question opposite ways once.
-   */
-  const startMidEditRef = useRef(false);
-  useEffect(() => {
-    startMidEditRef.current =
-      startFieldRef.current?.validity.badInput ?? false;
-  });
 
   // The start date follows the profile too, and for the same reason: the commit
   // on unmount would otherwise write a stale draft over a date set elsewhere.
@@ -212,12 +202,13 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
       // involves no picker so the draft is right.
       const el = startFieldRef.current;
       const value = el ? el.value : startDraft;
-      // Asserting `false` with no element to read was a guess that the field
-      // had been cleared on purpose, and it chose the destructive branch: a
-      // half-typed date plus an unmount deleted a stored start date. This card
-      // unmounts on a tab change, the back swipe, Done, and the first logged
-      // shot, so it had MORE ways to reach it than Settings did.
-      const badInput = el ? el.validity.badInput : startMidEditRef.current;
+      // Always the control, never a remembered answer: a date input fires no
+      // event while `value` stays `""`, so `badInput` flips unobserved and a
+      // sampled copy goes stale both ways. The cleanup below is a LAYOUT one so
+      // the node is still attached to be asked. Mirrors `JourneySettings`
+      // exactly -- these two diverging on this question is the whole reason
+      // `commitDateDraft` is shared.
+      const badInput = el ? el.validity.badInput : true;
       const commit = commitDateDraft(value, badInput);
       // Still only on a real CHANGE, for the reason `commitInterval` documents:
       // this runs from an effect cleanup, so writing unconditionally wrote the
@@ -229,7 +220,10 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
       }
     };
   });
-  useEffect(() => {
+  // A LAYOUT effect, so the cleanup runs while the date input is still attached
+  // and can be asked for its own `validity`. Measured: on unmount a passive
+  // cleanup sees a null ref, a layout cleanup sees the element.
+  useLayoutEffect(() => {
     const onHide = () => {
       if (document.visibilityState === "hidden") commitAllRef.current();
     };

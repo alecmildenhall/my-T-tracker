@@ -214,6 +214,37 @@ describe("FirstShotCard — leaving without blurring", () => {
     expect(storedProfile().startDate).toBe("2020-01-01");
   });
 
+  /** Set what the control reports without firing an event — see the twin in
+   *  JourneySettings.test.tsx for why that is the realistic case. */
+  const setBadInput = (el: HTMLInputElement, badInput: boolean) =>
+    Object.defineProperty(el, "validity", {
+      configurable: true,
+      value: { badInput },
+    });
+
+  it("clears when the last segments go, though no event announced it", () => {
+    seedProfile({ startDate: "2020-01-01" });
+    const { removeCard } = renderRemovableCard();
+    setBadInput(startField(), true);
+    fireEvent.change(startField(), { target: { value: "" } });
+    setBadInput(startField(), false); // emptied outright; value never moved
+    removeCard();
+
+    expect(storedProfile().startDate).toBeUndefined();
+  });
+
+  it("restores when retyping starts after a clear, though no event announced it", () => {
+    // The losing direction: a sampled answer deletes a date being re-entered.
+    seedProfile({ startDate: "2020-01-01" });
+    const { removeCard } = renderRemovableCard();
+    setBadInput(startField(), false);
+    fireEvent.change(startField(), { target: { value: "" } });
+    setBadInput(startField(), true); // retyping began; value never moved
+    removeCard();
+
+    expect(storedProfile().startDate).toBe("2020-01-01");
+  });
+
   it("still carries an entered date out with it", () => {
     // The behaviour the hatch exists for, which the clear must not cost.
     const { removeCard } = renderRemovableCard();

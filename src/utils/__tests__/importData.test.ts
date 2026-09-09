@@ -48,6 +48,19 @@ describe("a backup from the build before mood was retired", () => {
     expect("mood" in restored).toBe(false);
   });
 
+  it("also survives a backup carrying the retired painScore", () => {
+    // Retired by the pain-chips slice, one PR before mood — so a backup old
+    // enough to hold `mood` usually holds `painScore` too, and listing only
+    // one of them closes half the door.
+    const r = parseBackup(legacy({ painScore: 5 }));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.skipped).toEqual([]);
+    const restored = r.shots.find((s) => s.id === "a")!;
+    expect(restored.notes).toBe("keep me");
+    expect("painScore" in restored).toBe(false);
+  });
+
   it("names off days as the reason, rather than shrugging", () => {
     // `pain` is listed because an unrecognised enum value is a NAMEABLE
     // failure; `offDays` is now the same class. Without an entry the user is

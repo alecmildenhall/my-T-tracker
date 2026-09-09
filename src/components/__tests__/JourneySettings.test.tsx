@@ -335,6 +335,55 @@ describe("JourneySettings", () => {
     expect(stored().startDate).toBe("2020-01-01");
   });
 
+  /**
+   * Set what the control reports WITHOUT firing an event -- which is not a
+   * contrivance, it is what the real control does. A date input fires `input`
+   * only when its `value` changes, and once the value is `""` it stays `""`
+   * while the remaining segments are typed or deleted, so `badInput` flips with
+   * no event and no render. Anything that samples it into a ref is stale from
+   * that moment, in whichever direction the user moved.
+   */
+  const setBadInput = (el: HTMLInputElement, badInput: boolean) =>
+    Object.defineProperty(el, "validity", {
+      configurable: true,
+      value: { badInput },
+    });
+
+  it("clears when the LAST segments go, though no event announced it", () => {
+    // Half-typed (renders, value "" ) and then emptied outright (no event).
+    // A sampled answer is stuck on "mid-edit" and restores, resurrecting a date
+    // the user deliberately removed -- the bug this whole area was fixed for,
+    // one keystroke further along.
+    localStorage.setItem(
+      STORAGE_KEYS.profile,
+      JSON.stringify({ startDate: "2020-01-01" }),
+    );
+    const { removePanel } = renderRemovablePanel();
+    setBadInput(dateInput(), true);
+    fireEvent.change(dateInput(), { target: { value: "" } });
+    setBadInput(dateInput(), false); // segments cleared; value never moved
+    removePanel();
+
+    expect(stored().startDate).toBeUndefined();
+  });
+
+  it("restores when retyping STARTS after a clear, though no event announced it", () => {
+    // The mirror, and the one that loses data: cleared (renders, badInput
+    // false), then a segment typed (no event). A sampled answer is stuck on
+    // "deliberate" and deletes a date the user was part-way through re-entering.
+    localStorage.setItem(
+      STORAGE_KEYS.profile,
+      JSON.stringify({ startDate: "2020-01-01" }),
+    );
+    const { removePanel } = renderRemovablePanel();
+    setBadInput(dateInput(), false);
+    fireEvent.change(dateInput(), { target: { value: "" } });
+    setBadInput(dateInput(), true); // retyping began; value never moved
+    removePanel();
+
+    expect(stored().startDate).toBe("2020-01-01");
+  });
+
   it("commits a picked date when the panel goes away", () => {
     // Changing tab destroys this panel, which on a phone is a likelier exit than
     // blurring the field.
