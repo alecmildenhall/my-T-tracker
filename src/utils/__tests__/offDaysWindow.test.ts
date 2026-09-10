@@ -26,13 +26,13 @@ describe("offDaysWindowDays", () => {
     expect(offDaysWindowDays([], "2026-08-25")).toBeNull();
   });
 
-  it("has no window for a same-day repeat", () => {
-    // A zero-length window has no days in it to have felt off. The predecessor
-    // helper deliberately counts a same-day shot as the one before — right for
-    // the schedule, where two entries on one day are a plausible mis-log — so
-    // the decision that it is not a WINDOW belongs here.
+  it("measures a same-day repeat as zero, not as unknown", () => {
+    // This returned `null` once, which made "the gap is zero" indistinguishable
+    // from "there is no previous shot" — and they render the same, so the one
+    // case the app knows EXACTLY looked like the case it knows nothing about.
+    // `null` is for unknowable only.
     const shots = [shot("a", "2026-08-25")];
-    expect(offDaysWindowDays(shots, "2026-08-25")).toBeNull();
+    expect(offDaysWindowDays(shots, "2026-08-25")).toBe(0);
   });
 
   it("does not let a shot be its own predecessor when edited", () => {
@@ -58,6 +58,12 @@ describe("offDaysWindowDays", () => {
 });
 
 describe("offDaysWindowLabel", () => {
+  it("reads 'today' for a zero-length window, never '0 days'", () => {
+    // Both are true; only one is readable at a sharps bin. Same instinct as
+    // "first shot" rather than "0 days late".
+    expect(offDaysWindowLabel(0)).toBe("Since your previous shot · today");
+  });
+
   it("names the window relative to THIS shot, not to your latest one", () => {
     // "Since your last shot" was the first wording and is false where it
     // matters: editing an entry from months ago measures the gap before IT,

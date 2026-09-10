@@ -17,9 +17,17 @@ import { previousShotDateBefore } from "./schedule";
  * `null` for the first shot is not a failure. The question still gets asked,
  * because someone logging their first shot here may have been injecting for
  * years and knows their own last one; the app simply cannot name the window, so
- * it says nothing rather than guessing. It is also `null` for a same-day repeat
- * (a zero-length window has no days in it to have felt off) and for a date the
- * form cannot parse yet, which is every date halfway through being typed.
+ * it says nothing rather than guessing. Same for a date the form cannot parse
+ * yet, which is every date halfway through being typed.
+ *
+ * `null` means UNKNOWN and nothing else. A same-day repeat returns `0`, not
+ * `null` -- it used to return `null` on the reasoning that a zero-length window
+ * has no days in it to have felt off, which is true about the question and
+ * wrong about this value. It made `null` carry two meanings, "there is no
+ * predecessor" and "the gap is zero", and they render identically -- so the one
+ * case where the app knows the span EXACTLY was displayed the same as the case
+ * where it has no idea. Zero is a number the app knows; the rule about optional
+ * numbers here has always been that `0` is an answer, not an absence.
  *
  * `excludeId` keeps a shot being EDITED from being its own predecessor.
  */
@@ -38,7 +46,10 @@ export function offDaysWindowDays(
   const previous = previousShotDateBefore(date, shots, excludeId);
   if (previous === undefined || !isShotDateInRange(previous)) return null;
   const days = daysBetweenCivil(previous, date);
-  return days > 0 ? days : null;
+  // Only a NEGATIVE gap is unknowable -- it would mean the predecessor helper
+  // handed back a later shot, so nothing here can be trusted to name a span.
+  // Zero is a real, knowable answer and passes straight through.
+  return days >= 0 ? days : null;
 }
 
 /**
@@ -62,6 +73,11 @@ export function offDaysWindowDays(
  * you, which is what is measured — and it matches `offDaysLabel`, which anchors
  * on "the previous shot" for the same reason.
  *
+ * A zero-length window reads "today" rather than "0 days". Both are accurate;
+ * "0 days" is the sort of true-but-clumsy phrasing a person has to decode, and
+ * this line exists to tell someone at a sharps bin what they are being asked
+ * about. It is the same instinct as "first shot" instead of "0 days late".
+ *
  * The ISO dates stay out of it. Every date this app displays is the stored
  * string, and ShotListItem's comment warns against inventing a second format.
  * Measured at 236px — the narrowest this field ever gets, at a 561px viewport,
@@ -71,5 +87,6 @@ export function offDaysWindowDays(
 export function offDaysWindowLabel(days: number | null): string {
   const anchor = "Since your previous shot";
   if (days === null) return anchor;
+  if (days === 0) return `${anchor} · today`;
   return `${anchor} · ${days} ${days === 1 ? "day" : "days"}`;
 }
