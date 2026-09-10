@@ -182,7 +182,13 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
   const commitAllRef = useRef(() => {});
   useEffect(() => {
     commitAllRef.current = () => {
-      commitInterval();
+      // Ask the live control, exactly like the date field below. Defaulting
+      // `badInput` to false here was a guess that an empty box was a deliberate
+      // clear -- and a number input reports "" for garbage too ("-", "1e"), so
+      // one fumbled keystroke plus a background wiped the cadence AND the frozen
+      // schedule anchor with it. The blur path already asks; the hatch is the
+      // path that exists precisely for when blur never happens.
+      commitInterval(intervalRef.current?.validity.badInput ?? true);
       // Only on a real change, for the reason `commitInterval` above documents:
       // this runs from an effect cleanup, so every navigation away wrote the
       // profile — and `updateProfile` always returns a fresh object, so the

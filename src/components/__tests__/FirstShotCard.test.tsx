@@ -190,6 +190,28 @@ describe("FirstShotCard — leaving without blurring", () => {
     expect(storedProfile().startDate).toBeUndefined();
   });
 
+  it("does NOT wipe the cadence when the interval box holds garbage", () => {
+    // The sibling of the date defect, on the field beside it. A number input
+    // reports value "" for unparseable text too -- "-", "1e", "1.2.3" all
+    // sanitize to "" -- so the hatch's default of `badInput: false` read a
+    // fumbled keystroke as "deliberately emptied" and cleared the cadence. That
+    // also clears `scheduleAnchor`, so the grid every later shot is measured
+    // against goes with it, silently, on a background with no blur.
+    seedProfile({ intervalDays: 14 });
+    const { removeCard } = renderRemovableCard();
+    const box = screen.getByLabelText(
+      "How many days between your shots?",
+    ) as HTMLInputElement;
+    Object.defineProperty(box, "validity", {
+      configurable: true,
+      value: { badInput: true },
+    });
+    fireEvent.change(box, { target: { value: "" } });
+    removeCard();
+
+    expect(storedProfile().intervalDays).toBe(14);
+  });
+
   it("does NOT carry out a HALF-TYPED date as a deletion", () => {
     // The mirror of the test above, and the one that matters more, because it
     // fails the other way: an empty `<input type="date">` reports `""` for both

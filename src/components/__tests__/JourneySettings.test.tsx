@@ -311,6 +311,27 @@ describe("JourneySettings", () => {
     });
   });
 
+  it("does NOT wipe the cadence when the interval box holds garbage", () => {
+    // Mirrors FirstShotCard. `setIntervalDays(undefined)` also clears the
+    // schedule anchor, so this loses the grid as well as the number.
+    localStorage.setItem(
+      STORAGE_KEYS.profile,
+      JSON.stringify({ intervalDays: 14 }),
+    );
+    const { removePanel } = renderRemovablePanel();
+    const box = screen.getByLabelText(
+      "How many days between your shots?",
+    ) as HTMLInputElement;
+    Object.defineProperty(box, "validity", {
+      configurable: true,
+      value: { badInput: true },
+    });
+    fireEvent.change(box, { target: { value: "" } });
+    removePanel();
+
+    expect(stored().intervalDays).toBe(14);
+  });
+
   it("does NOT treat a HALF-TYPED date as a deletion on the way out", () => {
     // An empty `<input type="date">` reports `""` for "I cleared this" AND for
     // "I am mid-retype". On unmount React has already detached the ref, so the

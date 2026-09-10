@@ -644,7 +644,18 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // constraints, which cancels the submit event outright — the button appeared
     // to do nothing at all, with no message and nothing saved. Whatever we reject
     // now, we say why, next to the field.
-    const parsedDate = toTakenDate(date);
+    // An entry ALREADY stored keeps its date when you edit something else.
+    // Import is deliberately not tightened to the taken-date bound (see
+    // `anchorReferenceDate`), so a restored backup can legitimately contain a
+    // future-dated shot — and without this, opening it to fix a typo in the
+    // notes hit "You can log a shot after taking it", blaming the user for a
+    // date they had not touched and offering no way forward but to change it.
+    // Refusing what is being ENTERED is the rule; refusing what is already
+    // there is a dead end. Creating a new future date stays blocked, and the
+    // anchor guard covers the schedule either way.
+    const unchanged = !!editingShot && date === editingShot.date;
+    const parsedDate =
+      toTakenDate(date) ?? (unchanged ? toShotDate(date) : null);
     const parsedDose = doseMg === "" ? undefined : Number(doseMg);
 
     // Blank and malformed are different mistakes and get different words. A
@@ -717,11 +728,19 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // could raise an error for an input that is not on screen. That is exactly
     // the dead Save button the noValidate comment above exists to prevent: the
     // submit blocked, and #planned-error never rendered to say why.
+    // `plannedBound`, NOT `range`. `range` is the date-TAKEN bound and stops at
+    // today; a planned date is allowed to be ahead, and `parsedPlanned` above
+    // uses `toShotDate` accordingly. Naming `range` here told the user a planned
+    // date cannot be after today, which is false — 2027-01-01 saves — while the
+    // picker beside it offered exactly those dates. That is the same defect the
+    // comment above records ("1900 to 2027 while the real bound was
+    // 2027-08-13"), pointing the other way. Read fresh, for the same reason.
+    const plannedBound = shotDateRange();
     const nextPlannedError =
       !showsPlannedField || plannedDraft.trim() === "" || parsedPlanned
         ? null
         : isRealDate(plannedDraft)
-          ? `Check the year — dates run from ${range.min} to ${range.max}.`
+          ? `Check the year — dates run from ${plannedBound.min} to ${plannedBound.max}.`
           : "That isn’t a real calendar date.";
 
     setPlannedError(nextPlannedError);

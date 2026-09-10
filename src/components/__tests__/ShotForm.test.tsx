@@ -8,7 +8,11 @@ import type { SaveOutcome } from "../ShotForm";
 import { todayLocalISO } from "../../utils/datetime";
 import { expectFocusSomewhereUseful } from "../../test/focus";
 import { expectVisibleFocusRing } from "../../test/focusRing";
-import { isShotDateInRange, takenDateRange } from "../../utils/civilDate";
+import {
+  isShotDateInRange,
+  shotDateRange,
+  takenDateRange,
+} from "../../utils/civilDate";
 import { addDaysCivil } from "../../utils/schedule";
 
 beforeEach(() => {
@@ -910,6 +914,53 @@ describe("ShotForm draft publishing", () => {
     expect(ref.current!.date).toBe(todayLocalISO());
   });
 
+  it("lets a restored future-dated shot be edited without touching its date", () => {
+    // Import is deliberately NOT held to the taken-date bound, so a backup can
+    // legitimately restore an entry dated ahead. Blocking Save on a date the
+    // user never typed is a dead end: the message blames them for the one field
+    // they did not change and offers no way out but to alter their own record.
+    const onUpdateShot = vi.fn();
+    const future = addDaysCivil(takenDateRange().max, 30);
+    const editing: ShotEntry = { id: "e1", date: future, notes: "orig" };
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        onUpdateShot={onUpdateShot}
+        editingShot={editing}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Notes"), {
+      target: { value: "fixed the typo" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Update shot/i }));
+
+    expect(onUpdateShot).toHaveBeenCalledTimes(1);
+    expect(onUpdateShot.mock.calls[0][0].date).toBe(future);
+  });
+
+  it("still refuses a future date the user TYPES into an edit", () => {
+    // The other half, and what stops the escape hatch becoming a way in: only
+    // an UNCHANGED stored date is allowed through.
+    const onUpdateShot = vi.fn();
+    const editing: ShotEntry = { id: "e1", date: "2026-05-01", notes: "orig" };
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        onUpdateShot={onUpdateShot}
+        editingShot={editing}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: addDaysCivil(takenDateRange().max, 1) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Update shot/i }));
+
+    expect(onUpdateShot).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent(/after taking it/);
+  });
+
   it("lets an edit's date be put back without leaving the form dirty", () => {
     // The inverse: change a shot's date and change it back, and there is nothing
     // unsaved. Judging against today left the flag stuck true, so the form was
@@ -1199,6 +1250,17 @@ describe("ShotForm — the planned date", () => {
 
     expect(onUpdateShot).not.toHaveBeenCalled();
     expect(screen.getByRole("alert")).toHaveTextContent(/Check the year/i);
+    // And it must name the PLANNED bound, which runs a year ahead -- not the
+    // date-taken bound, which stops at today. Asserting only "Check the year"
+    // passed happily while the message claimed a planned date could not be
+    // after today, contradicting the picker beside it and refusing a value that
+    // in fact saves. A message naming the wrong boundary is the defect this
+    // whole family of messages exists to avoid.
+    const plannedMax = shotDateRange().max;
+    expect(screen.getByRole("alert")).toHaveTextContent(plannedMax);
+    expect(screen.getByRole("alert")).not.toHaveTextContent(
+      takenDateRange().max,
+    );
   });
 
   it("does not freeze the grid when the write was refused", () => {

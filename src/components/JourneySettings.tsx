@@ -226,7 +226,15 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
       // claim, so say mid-edit and let it restore -- the recoverable failure.
       const badInput = el ? el.validity.badInput : true;
       const commit = commitDateDraft(value, badInput);
-      if (commit.action === "set") commitRef.current(commit.date);
+      // Guarded like the clear branch below, and like FirstShotCard's copy: this
+      // runs from an effect cleanup, so an unconditional write re-wrote the
+      // profile on every exit from Settings. `updateProfile` always returns a
+      // fresh object, so every ProfileContext consumer re-rendered for an edit
+      // nobody made -- masked by useLocalStorage's serialized-equal skip, which
+      // is the reasoning the comment below already rejects as insufficient.
+      if (commit.action === "set" && commit.date !== savedRef.current) {
+        commitRef.current(commit.date);
+      }
       // Only on a real change, which is the guard `FirstShotCard` and
       // `commitInterval` both already carry and this one was missing. It runs
       // from an effect cleanup, and with no start date set the field is empty
@@ -260,12 +268,20 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
   // because its `commitIfReal` reads the raw string; `commitInterval` closes
   // over its own draft, so a second ref here was written every render, read by
   // nothing, and looked like protection it was not providing.
-  const commitIntervalRef = useRef(() => {});
+  const commitIntervalRef = useRef<(badInput?: boolean) => void>(() => {});
   useEffect(() => {
     commitIntervalRef.current = commitInterval;
   });
-  useEffect(() => {
-    const commitIfUsable = () => commitIntervalRef.current();
+  // Layout, so the cleanup can still read the input -- the same reason the date
+  // hatch above is one. A passive cleanup sees a detached ref.
+  useLayoutEffect(() => {
+    // Ask the control, never a default. `badInput` false meant "deliberately
+    // emptied", and a number input reports "" for garbage as well, so a fumbled
+    // keystroke plus a background cleared the cadence and its anchor.
+    const commitIfUsable = () =>
+      commitIntervalRef.current(
+        intervalFieldRef.current?.validity.badInput ?? true,
+      );
     const onHide = () => {
       if (document.visibilityState === "hidden") commitIfUsable();
     };
