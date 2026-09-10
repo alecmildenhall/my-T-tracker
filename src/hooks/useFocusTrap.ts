@@ -294,10 +294,10 @@ export function useFocusTrap(
         // Without that the fallthrough stepped to `list[at + 1]`, which is the
         // NEXT RADIO IN THE SAME GROUP — quietly reinstating the multiple tab
         // stops this branch exists to remove, in exactly the position where
-        // nothing else can help. Not reachable in today's log sheet, where mood,
-        // notes and Save follow the chips; B½ adds fields to this sheet, which
-        // is the same ordering assumption the segmented-input hatch above
-        // already records as fragile.
+        // nothing else can help. Not reachable in today's log sheet, where the
+        // off-days group, notes and Save follow the pain chips; B½ adds
+        // fields to this sheet, which is the same ordering assumption the
+        // segmented-input hatch above already records as fragile.
         at = e.shiftKey ? first : last;
       }
 

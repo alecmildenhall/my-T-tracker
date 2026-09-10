@@ -806,7 +806,7 @@ describe("App — editing from History", () => {
     seedShots([{ id: "a", date: "2026-06-01", notes: "an entry" }]);
     renderApp();
     goTo("History");
-    const search = screen.getByLabelText("Search notes and mood");
+    const search = screen.getByLabelText("Search notes");
     search.focus();
     expect(search).toHaveFocus();
 

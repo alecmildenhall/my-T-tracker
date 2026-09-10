@@ -42,7 +42,9 @@ class Journal {
     const plan = planShot({
       date,
       previousShotDate: previousShotDateBefore(date, this.shots),
-      anchorFrom: anchorReferenceDate(date, this.shots),
+      // Nothing here is "in the future": these fixtures are pure schedule
+      // maths and deliberately run past the real clock, so the cutoff is open.
+      anchorFrom: anchorReferenceDate(date, this.shots, "9999-12-31"),
       profile: this.profile,
     });
     // The app persists an anchor the first time one is established.

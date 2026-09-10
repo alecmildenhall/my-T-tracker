@@ -18,9 +18,11 @@ import type { ShotFilter } from "../utils/shotQuery";
 import { queryShots } from "../utils/shotQuery";
 import {
   PAGE_SIZE,
+  OFF_DAYS_BANDS,
   PAIN_BANDS,
   countActiveFacets,
   emptyHistoryQuery,
+  withOffDaysBand,
   withPainBand,
   type HistoryQuery,
 } from "../utils/historyQuery";
@@ -200,6 +202,11 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
     onQueryChange(withPainBand(query, id));
   };
 
+  const setOffDaysBand = (id: string) => {
+    setLimit(PAGE_SIZE);
+    onQueryChange(withOffDaysBand(query, id));
+  };
+
   const clearAll = () => {
     setLimit(PAGE_SIZE);
     onQueryChange(emptyHistoryQuery);
@@ -222,11 +229,11 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
     <section className="history" ref={sectionRef} tabIndex={-1}>
       <div className="history__controls">
         <label className="history__search">
-          <span className="visually-hidden">Search notes and mood</span>
+          <span className="visually-hidden">Search notes</span>
           <input
             type="search"
             value={query.text}
-            placeholder="Search notes &amp; mood"
+            placeholder="Search notes"
             onChange={(e) => patch({ text: e.target.value })}
           />
         </label>
@@ -354,15 +361,12 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
             </label>
             <label>
               Pain
-              {/* Coloured to match the chips on the log sheet, so a level
-                    means the same thing wherever you meet it.
-                    The colour is on the SELECT, keyed to the chosen value —
-                    that is the part you actually look at, and it is the part
-                    that is reliable. Option colours are set too and are honoured
-                    where the list is drawn by the engine; iOS renders it as a
-                    native picker that ignores author colour, so the closed
-                    control carrying the colour is what makes this work there.
-                    The label carries the meaning regardless (WCAG 1.4.1). */}
+              {/* Coloured to match the chips on the log sheet, so a level means
+                  the same thing wherever you meet it — but the colour is on the
+                  SELECT ONLY, which is the part you actually look at. The
+                  options carry none; see the .pain-select-- comment in
+                  styles.css for the contrast measurement behind that. The label
+                  carries the meaning regardless (WCAG 1.4.1). */}
               <select
                 className={`pain-select${
                   query.filter.pain ? ` pain-select--${query.filter.pain}` : ""
@@ -372,10 +376,35 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
               >
                 <option value="">Any</option>
                 {PAIN_BANDS.map((b) => (
-                  // No per-level tint here: see the .pain-select-- comment
-                  // in styles.css. The open list may be painted on a system
-                  // background we do not control, where every token fails
-                  // contrast (Mild is 1.44:1 on white).
+                  <option key={b.id} value={b.id}>
+                    {b.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          {/* Its OWN row, not appended to the Type-of-T/Pain pair. Every other
+              `.form-row` here holds two; a third member made this the only one
+              with three, and `.field-cell` is `flex: 1 1 0` with min-content as
+              its floor — so this select claimed 237px for its longest option
+              ("Right after the previous shot") and squeezed the other two to
+              107px. Measured across 561–800px, where the row is side-by-side but
+              the window is still narrow; it evens out only past ~900px.
+
+              An ordinal belongs in Filters rather than in search — that is what
+              `PAIN_BANDS` established, and why mood stopped being matched by
+              `searchShotText`: substring-matching a closed set of five is not
+              searching, it is a worse version of this control. */}
+          <div className="form-row">
+            <label>
+              Off days
+              <select
+                value={query.filter.offDays ?? ""}
+                onChange={(e) => setOffDaysBand(e.target.value)}
+              >
+                <option value="">Any</option>
+                {OFF_DAYS_BANDS.map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.label}
                   </option>

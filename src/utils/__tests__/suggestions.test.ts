@@ -11,7 +11,7 @@ const shot = (over: Partial<ShotEntry>): ShotEntry => ({
 
 describe("suggestionsFor", () => {
   it("returns an empty array when there are no shots", () => {
-    expect(suggestionsFor([], "mood")).toEqual([]);
+    expect(suggestionsFor([], "carrierOil")).toEqual([]);
   });
 
   it("ignores empty, whitespace-only, and missing values", () => {

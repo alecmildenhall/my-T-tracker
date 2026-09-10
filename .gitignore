@@ -39,6 +39,10 @@ coverage/
 
 # Playwright MCP scratch output (screenshots, snapshots, downloads)
 .playwright-mcp/
+# Browser-pass scratch output. Playwright screenshots default to the cwd when
+# given a bare filename, and one landed at the repo root and was committed by a
+# `git add -A` — 145 KB of a layout bug, referenced by nothing.
+/*.png
 
 # Optional: keep lockfiles or ignore if switching package managers often
 # package-lock.json

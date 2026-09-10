@@ -93,6 +93,7 @@ const REASON_BY_FIELD: Record<string, string> = {
   time: "its time couldn’t be read",
   doseMg: "its dose couldn’t be read",
   pain: "its pain level couldn’t be read",
+  offDays: "its off-days answer couldn’t be read",
 };
 
 const FALLBACK_REASON = "some of it couldn’t be read";
@@ -127,6 +128,41 @@ function readableDate(raw: unknown): string | undefined {
  * Validate raw backup-file text and return clean ShotEntry[] or a generic error.
  * Never throws — all failure modes collapse into `{ ok: false }` or a skip.
  */
+/**
+ * Fields the model has RETIRED, dropped before validation.
+ *
+ * `shotEntrySchema` is a `strictObject`, which is what keeps an unknown key from
+ * riding into storage — but it cannot tell a key we have never heard of from one
+ * we deliberately removed, and it skips the whole ENTRY either way. Measured: a
+ * backup exported by the previous build, fed straight back, lost shot "a"
+ * entirely — its notes, dose, site, pain and planned date — because it still
+ * carried `mood`.
+ *
+ * The roadmap decided that old free-text mood values are dropped. It decided
+ * nothing about dropping the shot around them, and this file's own rule points
+ * the other way: refuse when accepting would write something wrong, DEGRADE when
+ * refusing would withhold data the user already owns. The rest of that entry is
+ * readable and theirs.
+ *
+ * A retired key is therefore not an unknown key. We know exactly what it was and
+ * have decided to discard its value — so it is discarded here, by name, and the
+ * strict check still catches everything genuinely unrecognised.
+ */
+// `painScore` belongs here for the same reason and from the same slice: it
+// became the `pain` enum one PR before `mood` became `offDays`, so a backup
+// from any build older than that carries a key the strict check calls unknown,
+// and the ENTRY — its date, notes, dose, site — is skipped over one dead field.
+const RETIRED_KEYS = ["mood", "painScore"] as const;
+
+function withoutRetiredKeys(entry: unknown): unknown {
+  if (typeof entry !== "object" || entry === null) return entry;
+  const carried = RETIRED_KEYS.filter((k) => k in (entry as object));
+  if (carried.length === 0) return entry;
+  const copy = { ...(entry as Record<string, unknown>) };
+  for (const key of carried) delete copy[key];
+  return copy;
+}
+
 export function parseBackup(text: string): ImportResult {
   if (typeof text !== "string" || text.length === 0) {
     return { ok: false, error: GENERIC_ERROR };
@@ -150,7 +186,7 @@ export function parseBackup(text: string): ImportResult {
   const shots: ShotEntry[] = [];
   const skipped: SkippedEntry[] = [];
   envelope.data.shots.forEach((entry, index) => {
-    const parsed = shotEntrySchema.safeParse(entry);
+    const parsed = shotEntrySchema.safeParse(withoutRetiredKeys(entry));
     if (parsed.success) {
       shots.push(pickShotFields(parsed.data));
       return;

@@ -141,13 +141,24 @@ describe("searchShotText", () => {
     expect(searchShotText(shots, "   ")).toHaveLength(2);
   });
 
-  it("matches notes and mood case-insensitively as a substring", () => {
+  it("matches notes case-insensitively as a substring", () => {
     const inNotes = shot({ notes: "A bit Sore afterward" });
-    const inMood = shot({ mood: "Anxious" });
-    const neither = shot({ notes: "fine", mood: "good" });
-    const shots = [inNotes, inMood, neither];
-    expect(searchShotText(shots, "sore")).toEqual([inNotes]);
-    expect(searchShotText(shots, "anx")).toEqual([inMood]);
+    const other = shot({ notes: "fine" });
+    expect(searchShotText([inNotes, other], "sore")).toEqual([inNotes]);
+  });
+
+  it("does not search the off-days pattern — that is a facet, not free text", () => {
+    // Search used to cover mood as well, back when mood was free text. It is
+    // now one of four fixed values, and substring-matching a closed set is not
+    // searching, it is a worse version of the filter beside it: typing "here"
+    // would silently match "Here and there" while "not really" would not match
+    // the same shot's "none". The facet answers it exactly.
+    const shots = [
+      shot({ offDays: "here-and-there" }),
+      shot({ offDays: "most-of-the-time" }),
+    ];
+    expect(searchShotText(shots, "here")).toEqual([]);
+    expect(searchShotText(shots, "most")).toEqual([]);
   });
 
   it("does not match structured fields, only free text", () => {

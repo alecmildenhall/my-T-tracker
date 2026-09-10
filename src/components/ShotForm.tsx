@@ -7,16 +7,32 @@ import React, {
   useCallback,
 } from "react";
 import {
+  OFF_DAYS_PATTERNS,
   PAIN_LEVELS,
+  isOffDaysPattern,
   isPainLevel,
+  type OffDaysPattern,
   type PainLevel,
   type ShotEntry,
 } from "../types/shot";
 import { painLabel } from "../utils/painLabel";
+import {
+  offDaysShortLabel,
+  offDaysSpokenLabel,
+  offDaysStrip,
+} from "../utils/offDaysLabel";
+import { offDaysWindowDays, offDaysWindowLabel } from "../utils/offDaysWindow";
 import type { Profile } from "../types/profile";
 import { suggestionsFor } from "../utils/suggestions";
 import { todayLocalISO, nowHHMM } from "../utils/datetime";
-import { toShotDate, isRealDate, shotDateRange } from "../utils/civilDate";
+import {
+  toShotDate,
+  toTakenDate,
+  isRealDate,
+  isShotDateInRange,
+  shotDateRange,
+  takenDateRange,
+} from "../utils/civilDate";
 import { newId } from "../utils/id";
 import { SuggestionChips } from "./SuggestionChips";
 import { handOffFocus } from "../utils/focus";
@@ -31,7 +47,7 @@ import {
 /**
  * The fields worth pre-filling on a new shot: dose, type of T, and carrier oil
  * rarely change between shots, so re-entering them every time is pure friction.
- * Everything else (time, site, position, pain, mood, notes) is genuinely
+ * Everything else (time, site, position, pain, off days, notes) is genuinely
  * per-shot — site especially, since rotating it is the point.
  *
  * Sourced from the most recent shot rather than remembered in state, so it holds
@@ -117,7 +133,7 @@ export interface ShotDraft {
   /** The chosen level, or "" for not recorded — the draft mirrors the form,
    *  and the form's "nothing selected" is distinct from "none". */
   pain: PainLevel | "";
-  mood: string;
+  offDays: OffDaysPattern | "";
   notes: string;
 }
 
@@ -136,7 +152,7 @@ function freshDraft(): ShotDraft {
     testosteroneEster: "",
     carrierOil: "",
     pain: "",
-    mood: "",
+    offDays: "",
     notes: "",
   };
 }
@@ -269,7 +285,11 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   // in-component stickiness would silently do nothing.
   // Per render, not per module load: it reads the clock, and a sheet in a session
   // left open across New Year would otherwise bound the picker to last year.
-  const dateRange = shotDateRange();
+  // The date TAKEN stops at today; "Planned for" is allowed to be ahead. Same
+  // control, different questions — one range for both is what let a future shot
+  // become the schedule's anchor.
+  const takenRange = takenDateRange();
+  const plannedRange = shotDateRange();
   const carried = useMemo(() => carryForward(shots), [shots]);
   // Held in a ref so resetForm can stay identity-stable: if it changed whenever
   // `shots` changed, the editing-sync effect below would re-run and wipe fields
@@ -317,7 +337,11 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             // produce. "Four chips cannot produce an invalid value" is true of
             // the chips and was never true of the seed.
             pain: isPainLevel(initial.pain) ? initial.pain : "",
-            mood: initial.mood ?? "",
+            // Validated, not cast: storage is lenient, so a value predating
+            // the enum (or a hand-edited backup) reaches here, and seeding it
+            // unchecked would put a phantom into a group where no chip matches
+            // and the Clear control is the only way out.
+            offDays: isOffDaysPattern(initial.offDays) ? initial.offDays : "",
             notes: initial.notes ?? "",
           }
         : { ...freshDraft(), ...carried },
@@ -337,6 +361,37 @@ export const ShotForm: React.FC<ShotFormProps> = ({
 
   const [date, setDate] = useState<string>(start.date);
 
+  // The recall window the off-days question is asking about. Recomputed as the
+  // date changes, so backdating an entry re-measures rather than keeping a span
+  // from the date it was opened with.
+  const liveOffDaysSpan = useMemo(
+    () => offDaysWindowLabel(offDaysWindowDays(shots, date, editingShot?.id)),
+    [shots, date, editingShot?.id],
+  );
+
+  /**
+   * Frozen for the ✓ beat, because the sheet must not change under its own
+   * confirmation.
+   *
+   * The same defect the post-save field reset was deleted for, arriving by a
+   * different route: not a reset, but a recomputation. Saving a NEW shot puts it
+   * into `shots` with the date on screen, and `previousShotDateBefore` counts a
+   * same-day shot as the one before — right for the schedule — so the shot
+   * became its own predecessor, the gap read 0, and the span went away. It
+   * blinked out under "✓ Saved" while the sheet sat there for ~440ms. Measured.
+   *
+   * Frozen on `confirming` rather than fixed by excluding the new id, because
+   * the rule generalises: anything in this sheet derived from `shots` would do
+   * the same thing at the same moment, and one guard covers all of them. The
+   * ref is written from an effect, so on the render where `confirming` flips it
+   * still holds the last value from before the save — which is the one to show.
+   */
+  const spanBeforeConfirm = useRef(liveOffDaysSpan);
+  useEffect(() => {
+    if (!confirming) spanBeforeConfirm.current = liveOffDaysSpan;
+  }, [confirming, liveOffDaysSpan]);
+  const offDaysSpan = confirming ? spanBeforeConfirm.current : liveOffDaysSpan;
+
   /** What the app works out this shot was meant to be, given today's settings. */
   const plan = useMemo(
     () =>
@@ -349,10 +404,13 @@ export const ShotForm: React.FC<ShotFormProps> = ({
         // fortnightly grid, a 7-day different schedule, then frozen. The
         // exclusion is right for `previousShotDateBefore`, where a shot must not
         // be its own predecessor, and wrong here.
-        anchorFrom: anchorReferenceDate(date, shots),
+        anchorFrom: anchorReferenceDate(date, shots, takenRange.max),
         profile,
       }),
-    [date, shots, editingShot?.id, profile],
+    // `takenRange.max` is today as a plain string, so this recomputes when the
+    // day rolls over and not otherwise — which is what we want, since it is the
+    // cutoff deciding whether a stored shot counts as "not yet taken".
+    [date, shots, editingShot?.id, profile, takenRange.max],
   );
 
   /**
@@ -485,7 +543,8 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   const [pain, setPain] = useState<PainLevel | "">(start.pain);
   /** Where Clear hands focus when it removes itself — see its onClick. */
   const firstPainChipRef = useRef<HTMLInputElement>(null);
-  const [mood, setMood] = useState<string>(start.mood);
+  const firstOffDaysChipRef = useRef<HTMLInputElement>(null);
+  const [offDays, setOffDays] = useState<OffDaysPattern | "">(start.offDays);
   const [notes, setNotes] = useState<string>(start.notes);
 
   // Suggestions derived from past entries — one tap to reuse a value you've
@@ -539,7 +598,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     setInjectionSite("");
     setInjectionSitePosition("");
     setPain("");
-    setMood("");
+    setOffDays("");
     setNotes("");
     // Carried-forward fields reset to the last shot's values, not to empty.
     const { doseMg, testosteroneEster, carrierOil } = carriedRef.current;
@@ -585,7 +644,18 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // constraints, which cancels the submit event outright — the button appeared
     // to do nothing at all, with no message and nothing saved. Whatever we reject
     // now, we say why, next to the field.
-    const parsedDate = toShotDate(date);
+    // An entry ALREADY stored keeps its date when you edit something else.
+    // Import is deliberately not tightened to the taken-date bound (see
+    // `anchorReferenceDate`), so a restored backup can legitimately contain a
+    // future-dated shot — and without this, opening it to fix a typo in the
+    // notes hit "You can log a shot after taking it", blaming the user for a
+    // date they had not touched and offering no way forward but to change it.
+    // Refusing what is being ENTERED is the rule; refusing what is already
+    // there is a dead end. Creating a new future date stays blocked, and the
+    // anchor guard covers the schedule either way.
+    const unchanged = !!editingShot && date === editingShot.date;
+    const parsedDate =
+      toTakenDate(date) ?? (unchanged ? toShotDate(date) : null);
     const parsedDose = doseMg === "" ? undefined : Number(doseMg);
 
     // Blank and malformed are different mistakes and get different words. A
@@ -605,14 +675,28 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // 2027-12-01 was refused by a message listing the very year that had just
     // been typed — nothing left to work out. Read fresh here rather than at
     // module load, so it cannot name last year's bound in a session left open.
-    const range = shotDateRange();
+    const range = takenDateRange();
+    // A FOURTH mistake, and it needs its own words for the reason the other
+    // three do. "Check the year" is wrong here: the year is usually fine and the
+    // date is a real one — the person has dated a dose to a day that has not
+    // happened. Naming the rule ("after it") is what makes it fixable, and it
+    // says today's date rather than a bound they would have to work out.
+    //
+    // Order matters here, and the obvious order is wrong. A mistyped year is
+    // ALSO in the future — `9999-01-01` satisfies both tests — so checking
+    // "after today" first swallows the year typo and answers it with a bound
+    // the person never typed. `isShotDateInRange` is what separates them: fail
+    // it and the year is implausible on any reading, so name the year; pass it
+    // and the date is an ordinary near-future day, so name the rule.
     const nextDateError = parsedDate
       ? null
       : date.trim() === ""
         ? "Add the date this shot was taken."
-        : isRealDate(date)
-          ? `Check the year — dates run from ${range.min} to ${range.max}.`
-          : "Please enter a real calendar date (YYYY-MM-DD).";
+        : !isRealDate(date)
+          ? "Please enter a real calendar date (YYYY-MM-DD)."
+          : !isShotDateInRange(date)
+            ? `Check the year — dates run from ${range.min} to ${range.max}.`
+            : `You can log a shot after taking it — nothing later than ${range.max}.`;
     // Mirrors the storage schema: a finite, non-negative number. Fractional doses
     // are fine (62.5mg while titrating is ordinary).
     const nextDoseError =
@@ -644,11 +728,19 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // could raise an error for an input that is not on screen. That is exactly
     // the dead Save button the noValidate comment above exists to prevent: the
     // submit blocked, and #planned-error never rendered to say why.
+    // `plannedBound`, NOT `range`. `range` is the date-TAKEN bound and stops at
+    // today; a planned date is allowed to be ahead, and `parsedPlanned` above
+    // uses `toShotDate` accordingly. Naming `range` here told the user a planned
+    // date cannot be after today, which is false — 2027-01-01 saves — while the
+    // picker beside it offered exactly those dates. That is the same defect the
+    // comment above records ("1900 to 2027 while the real bound was
+    // 2027-08-13"), pointing the other way. Read fresh, for the same reason.
+    const plannedBound = shotDateRange();
     const nextPlannedError =
       !showsPlannedField || plannedDraft.trim() === "" || parsedPlanned
         ? null
         : isRealDate(plannedDraft)
-          ? `Check the year — dates run from ${range.min} to ${range.max}.`
+          ? `Check the year — dates run from ${plannedBound.min} to ${plannedBound.max}.`
           : "That isn’t a real calendar date.";
 
     setPlannedError(nextPlannedError);
@@ -672,7 +764,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       testosteroneEster: testosteroneEster || undefined,
       carrierOil: carrierOil || undefined,
       pain: pain === "" ? undefined : pain,
-      mood: mood || undefined,
+      offDays: offDays || undefined,
       notes: notes || undefined,
       // Frozen here and never recomputed. An emptied field means "no planned
       // date", which is a real answer rather than a prompt to guess one.
@@ -761,7 +853,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     testosteroneEster,
     carrierOil,
     pain,
-    mood,
+    offDays,
     notes,
   };
 
@@ -900,9 +992,9 @@ export const ShotForm: React.FC<ShotFormProps> = ({
               // Keeps the native picker inside the range the form will accept,
               // so a mistyped year is harder to produce in the first place.
               // These are a hint, not the check — the form carries `noValidate`
-              // and `toShotDate` is what actually decides. See shotDateRange.
-              min={dateRange.min}
-              max={dateRange.max}
+              // and `toTakenDate` is what actually decides. See takenDateRange.
+              min={takenRange.min}
+              max={takenRange.max}
               aria-invalid={dateError ? true : undefined}
               aria-describedby={dateError ? "date-error" : undefined}
             />
@@ -985,8 +1077,8 @@ export const ShotForm: React.FC<ShotFormProps> = ({
                 // (`suggestionsFor` already dedupes case-insensitively, so
                 // capitalisation would not split the chip list — this is about
                 // the letters, not the case.)
-                // Notes and Mood are left alone: those are prose, where the
-                // phone's help is help.
+                // Notes is left alone: that is prose, where the phone's
+                // help is help.
                 autoCapitalize="none"
                 autoCorrect="off"
                 spellCheck={false}
@@ -1109,7 +1201,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             {pain !== "" && (
               <button
                 type="button"
-                className="link-button pain-clear"
+                className="link-button field-clear"
                 // Named for what it clears. It sits OUTSIDE the fieldset, so the
                 // group's name is not in its accessible context — a screen
                 // reader browsing by button hears only "Clear", beside a
@@ -1139,15 +1231,131 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             )}
           </div>
 
-          <label>
-            Mood
-            <input
-              type="text"
-              value={mood}
-              onChange={(e) => setMood(e.target.value)}
-              placeholder="e.g. low, okay, good"
-            />
-          </label>
+          {/* The `.field-cell` wrapper is NOT decoration — this shipped without
+              one and crushed the pain group beside it. `.form-row` is a flex row
+              above 560px where every member is a `.field-cell` (`flex: 1 1 0`);
+              a bare fieldset gets `flex: 0 1 auto` with a ~509px max-content
+              basis instead, so it took the row and left pain with 1px at 600px
+              and 8px above that. Measured: the four pain chips stacked
+              vertically inside an 8px box and painted over this column, with
+              "Injection pain" overprinting "Any days you felt off?".
+
+              It also repaired itself the moment a chip was tapped — Clear
+              becomes a third flex item and the row wraps — so the broken state
+              was the one every sheet opens in. On main this row's second member
+              was a text input, whose small content basis hid the difference.
+              The phone widths I swept were all below the breakpoint, so none of
+              them could see it.
+
+              Inside it, the same shape as the pain group: native radios in a
+              fieldset, so arrow keys roam the group for free and it is one tab
+              stop, which `useFocusTrap` already handles for an unchecked
+              group. */}
+          <div className="field-cell">
+            <fieldset className="off-days-field">
+              {/* The window lives INSIDE the legend, so it is part of the
+                  group's accessible NAME rather than a description of it.
+                  `aria-describedby` on a fieldset was the first attempt and it
+                  was a prediction, not a measurement: group-level descriptions
+                  are announced inconsistently, and iOS VoiceOver — this app's
+                  primary platform — does not reliably surface fieldset
+                  semantics at all. A name is announced on entering the group by
+                  every AT there is, so this shape does not depend on support we
+                  cannot check from here. It reads the same on screen. */}
+              <legend>
+                {/* The explicit space is load-bearing. JSX strips the newline
+                    between this text and the expression below, so the group's
+                    accessible name computed as "...felt off?The 13 days..." —
+                    measured. The span is `display: block`, so nothing shows the
+                    join on screen and only the NAME is wrong. */}
+                Any days you felt off?{" "}
+                {/* The recall window, named rather than assumed. Never "this week":
+                cadence here runs from 3 to 14 days, so a fixed word would be
+                wrong for most people. It says which shot you are answering
+                about, which is also what lets the four answers keep one meaning
+                each at any interval length — the chips do not change, the span
+                does. */}
+                {/* Unconditional. It used to render only when the length was
+                    known, which hid the anchor on a first entry — the one shot
+                    where nothing else on screen says what window is being asked
+                    about. `offDaysWindowLabel` now always names the window and
+                    adds the length only when it has one. */}
+                <span className="off-days-field__span">{offDaysSpan}</span>
+              </legend>
+              {/* Rows, not chips. Choice chips are specified for "one to two
+                  short words", which the pain group fits and this one never
+                  did — "Right before this one" measured 158.6px against
+                  Moderate's 77, so four wrapped to two or three lines and a
+                  wrapped grid has no reading order left to follow. A radio LIST
+                  is the control for single-select with longer labels. */}
+              <div className="off-days-rows">
+                {OFF_DAYS_PATTERNS.map((pattern) => (
+                  <label
+                    key={pattern}
+                    className={`off-days-row${
+                      offDays === pattern ? " off-days-row--on" : ""
+                    }`}
+                  >
+                    <input
+                      ref={
+                        pattern === OFF_DAYS_PATTERNS[0]
+                          ? firstOffDaysChipRef
+                          : undefined
+                      }
+                      type="radio"
+                      name="offDays"
+                      value={pattern}
+                      checked={offDays === pattern}
+                      onChange={() => setOffDays(pattern)}
+                      // The visible text is short because the strip draws the
+                      // position; this is where that position stays available to
+                      // anyone who cannot see the strip. It always begins with
+                      // the visible label, which is what WCAG 2.5.3 asks for and
+                      // what keeps "tap Early on" working in voice control.
+                      aria-label={offDaysSpokenLabel(pattern)}
+                    />
+                    <span className="off-days-row__mark" aria-hidden="true" />
+                    <span className="off-days-row__label">
+                      {offDaysShortLabel(pattern)}
+                    </span>
+                    {/* Decorative, and safely so: `offDaysSpokenLabel` above
+                        carries the same fact in words. Three of the five light
+                        the same NUMBER of slots in different places, which is
+                        the whole reason to draw it — a count cannot tell them
+                        apart and the position can. */}
+                    <span className="off-days-row__strip" aria-hidden="true">
+                      {offDaysStrip(pattern).map((on, i) => (
+                        <i key={i} className={on ? "is-off" : undefined} />
+                      ))}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            {/* Only once something is set, and the only way back to "not
+              recorded" — a different fact from "not really". Same control, same
+              reasoning and same focus hand-off as the pain group's. */}
+            {offDays !== "" && (
+              <button
+                type="button"
+                className="link-button field-clear"
+                // Named for what it clears: outside the fieldset, a screen reader
+                // browsing by button hears only "Clear", beside a separate "Clear
+                // form" in the same dialog.
+                aria-label="Clear off days"
+                onClick={() => {
+                  setOffDays("");
+                  // Removes ITSELF — the condition rendering it is the value it
+                  // just cleared — so it hands focus on first, back to the group
+                  // it belongs to. Without this, focus lands on <body> inside a
+                  // dialog whose #root is inert, where the trap cannot re-engage.
+                  handOffFocus(firstOffDaysChipRef, headingRef);
+                }}
+              >
+                Clear
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Only when the settings answer the question. With no cadence there is
@@ -1169,8 +1377,8 @@ export const ShotForm: React.FC<ShotFormProps> = ({
               <input
                 type="date"
                 value={plannedDraft}
-                min={dateRange.min}
-                max={dateRange.max}
+                min={plannedRange.min}
+                max={plannedRange.max}
                 onChange={(e) => {
                   setPlannedDraft(e.target.value);
                   if (plannedError) setPlannedError(null);

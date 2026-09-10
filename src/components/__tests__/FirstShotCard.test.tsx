@@ -4,6 +4,7 @@ import { FirstShotCard } from "../FirstShotCard";
 import { ProfileProvider } from "../../context/ProfileContext";
 import { STORAGE_KEYS } from "../../storageKeys";
 import { expectVisibleFocusRing } from "../../test/focusRing";
+import { expectFocusSomewhereUseful } from "../../test/focus";
 import { CONFIRM_MS } from "../../utils/timing";
 import { SHEET_EXIT_MS } from "../Modal";
 
@@ -26,23 +27,21 @@ const startField = () =>
   screen.getByLabelText("When did you start T?") as HTMLInputElement;
 
 describe("FirstShotCard — the start date", () => {
-  it("does not delete a stored start date when the field is left empty", () => {
-    // An empty date input cannot separate "I cleared this" from "I am retyping
-    // and the segments are incomplete" — both report "". Blur does not
-    // distinguish them, it picks one, and this card picked the destructive one:
-    // the milestone base gone, with no undo and no "Remove start date" control
-    // here to have meant it with. The identical field in Settings already
-    // refused exactly this, in a comment, and the two disagreed.
+  it("clears a stored start date when the field is emptied", () => {
+    // It used to restore instead, so the native picker's own "Reset" emptied
+    // the field and blur put the value straight back — a platform control that
+    // visibly did nothing. And this card has no "Remove start date", so an
+    // answer given here could not be taken back AT ALL, while name and interval
+    // both cleared. `commitDateDraft` carries the reasoning and the measured
+    // `badInput` behaviour that makes it safe.
     seedProfile({ startDate: "2024-03-15" });
     renderCard();
 
     fireEvent.change(startField(), { target: { value: "" } });
     fireEvent.blur(startField());
 
-    expect(storedProfile().startDate).toBe("2024-03-15");
-    // And the field shows what is actually stored, rather than a blank the
-    // profile does not agree with.
-    expect(startField().value).toBe("2024-03-15");
+    expect(storedProfile().startDate).toBeUndefined();
+    expect(startField().value).toBe("");
   });
 
   it("still saves a real date typed into the field", () => {
@@ -54,19 +53,283 @@ describe("FirstShotCard — the start date", () => {
     expect(storedProfile().startDate).toBe("2025-06-01");
   });
 
-  it("restores the stored value when the field holds a non-date", () => {
-    // Note it is 30 February and not year 0202: a start date is deliberately
-    // UNBOUNDED — it is a fact about someone's life and the app has no standing
-    // to call it too long ago — so `0202-03-15` is accepted here on purpose,
-    // unlike a shot date. Only something the calendar rejects is restored.
+  it("offers Remove start date, which does not depend on the platform", () => {
+    // The guaranteed path. iOS's picker has its own Reset and WebKit either
+    // fires no change event for it or one carrying the previous value, so the
+    // blur handler is a best effort that cannot be verified from here. This
+    // control needs none of that — and without it, an answer given on this card
+    // could not be taken back at all, on the one screen someone meets before
+    // they know Settings exists.
     seedProfile({ startDate: "2024-03-15" });
     renderCard();
 
-    fireEvent.change(startField(), { target: { value: "2024-02-30" } });
-    fireEvent.blur(startField());
+    fireEvent.click(screen.getByRole("button", { name: "Remove start date" }));
 
-    expect(storedProfile().startDate).toBe("2024-03-15");
-    expect(startField().value).toBe("2024-03-15");
+    expect(storedProfile().startDate).toBeUndefined();
+    expect(startField().value).toBe("");
+  });
+
+  it("offers Remove as soon as the date is entered, not after blur", () => {
+    // It used to render on the committed profile, which only updates on blur —
+    // so entering a date and looking at it showed nothing until you tapped
+    // away. The pain and off-days Clears key to their drafts and appear on the
+    // tap; this matches them.
+    renderCard();
+    fireEvent.change(startField(), { target: { value: "2025-06-01" } });
+    // No blur.
+    expect(
+      screen.getByRole("button", { name: "Remove start date" }),
+    ).toBeInTheDocument();
+  });
+
+  // The condition is `isRealDate(draft)` rather than `draft !== ""`, so the
+  // control cannot flash on and off between segments as someone types. That is
+  // NOT tested here, and a test that looked like it was has been removed: a
+  // date input's value sanitization turns "2025-06" into "" (measured in jsdom
+  // and in Chromium), so the assertion passed under either condition and a
+  // mutation to `!== ""` broke nothing. Partial input needs a real browser —
+  // see the browser pass, which types segment by segment.
+
+  it("does not let the press blur the field out from under itself", () => {
+    // The control renders while the date field still has focus, so pressing it
+    // used to blur the field first — which committed, re-rendered, and left the
+    // mouseup on a different node, so the click never fired. Measured in a
+    // browser: the event sequence was ["blur"] alone and the date survived.
+    // `preventDefault` on mousedown stops focus moving, so there is no blur to
+    // race. Asserting the DEFAULT is prevented, since jsdom will happily
+    // dispatch a click either way and would pass without it.
+    renderCard();
+    fireEvent.change(startField(), { target: { value: "2025-06-01" } });
+    const remove = screen.getByRole("button", { name: "Remove start date" });
+
+    const prevented = !fireEvent.mouseDown(remove);
+    expect(prevented).toBe(true);
+  });
+
+  it("removes a date that was entered but never committed", () => {
+    // The case keying to the draft creates. The profile never got this value,
+    // so clearing it changes nothing there and no sync fires — without the
+    // draft being cleared explicitly, the date would sit in the field with no
+    // way left to remove it.
+    renderCard();
+    fireEvent.change(startField(), { target: { value: "2025-06-01" } });
+    fireEvent.click(screen.getByRole("button", { name: "Remove start date" }));
+
+    expect(startField().value).toBe("");
+    expect(storedProfile().startDate).toBeUndefined();
+    expect(
+      screen.queryByRole("button", { name: "Remove start date" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers no Remove control when there is no date to remove", () => {
+    renderCard();
+    expect(
+      screen.queryByRole("button", { name: "Remove start date" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("hands focus on when Remove takes itself away", () => {
+    // It renders only while a start date is set, so pressing it deletes the
+    // control under the user's finger. And NOT back to the date field: focusing
+    // an `input[type=date]` from a click handler is what throws the iOS picker
+    // up again, immediately after an action whose point was to have no date.
+    seedProfile({ startDate: "2024-03-15" });
+    renderCard();
+
+    const remove = screen.getByRole("button", { name: "Remove start date" });
+    remove.focus();
+    fireEvent.click(remove);
+
+    expectFocusSomewhereUseful("removing the start date");
+    expect(document.activeElement).not.toBe(document.body);
+    // And a ring on whatever it landed on — a hand-off target with none is a
+    // keyboard user losing their place silently.
+    expectVisibleFocusRing("after removing the start date");
+  });
+
+  // There is no "the field holds a non-date" case to test here, and there used
+  // to be one that passed for the wrong reason. A date input's value
+  // sanitization rejects anything that is not a valid date string, so
+  // "2024-02-30" never reaches the handler — measured on the real control and
+  // in jsdom, both turn it into "". That test was exercising the EMPTY path
+  // while claiming to exercise the non-date one, which is why inverting the
+  // empty behaviour broke it. The mid-edit path it was reaching for is a
+  // `badInput` case, unreachable through `fireEvent`, and is covered where the
+  // decision actually lives — see `dateDraft.test.ts`.
+});
+
+describe("FirstShotCard — leaving without blurring", () => {
+  /*
+   * The card is removed while the PROVIDER stays mounted — the shape
+   * `renderRemovablePanel` already uses for the Settings copy. Unmounting the
+   * whole tree instead looks equivalent and is not: the provider is what writes
+   * to storage, so tearing it down in the same commit means the hatch's write
+   * has nowhere to land, and the test fails for a reason that has nothing to do
+   * with the hatch. Measured, both ways.
+   */
+  const renderRemovableCard = () => {
+    const Harness = ({ shown }: { shown: boolean }) => (
+      <ProfileProvider>
+        {shown && <FirstShotCard onGoToSettings={vi.fn()} onDone={vi.fn()} />}
+      </ProfileProvider>
+    );
+    const view = render(<Harness shown />);
+    return { removeCard: () => view.rerender(<Harness shown={false} />) };
+  };
+
+  it("carries a cleared start date out with it", () => {
+    // Same gap as the Settings copy, and the two are explicitly meant to agree
+    // on this question: they agreed on blur and diverged on backgrounding,
+    // because this hatch could only express "set".
+    seedProfile({ startDate: "2024-03-15" });
+    const { removeCard } = renderRemovableCard();
+    fireEvent.change(startField(), { target: { value: "" } });
+    removeCard();
+
+    expect(storedProfile().startDate).toBeUndefined();
+  });
+
+  it("does NOT wipe the cadence when the interval box holds garbage", () => {
+    // The sibling of the date defect, on the field beside it. A number input
+    // reports value "" for unparseable text too -- "-", "1e", "1.2.3" all
+    // sanitize to "" -- so the hatch's default of `badInput: false` read a
+    // fumbled keystroke as "deliberately emptied" and cleared the cadence. That
+    // also clears `scheduleAnchor`, so the grid every later shot is measured
+    // against goes with it, silently, on a background with no blur.
+    seedProfile({ intervalDays: 14 });
+    const { removeCard } = renderRemovableCard();
+    const box = screen.getByLabelText(
+      "How many days between your shots?",
+    ) as HTMLInputElement;
+    Object.defineProperty(box, "validity", {
+      configurable: true,
+      value: { badInput: true },
+    });
+    fireEvent.change(box, { target: { value: "" } });
+    removeCard();
+
+    expect(storedProfile().intervalDays).toBe(14);
+  });
+
+  it("does NOT carry out a HALF-TYPED date as a deletion", () => {
+    // The mirror of the test above, and the one that matters more, because it
+    // fails the other way: an empty `<input type="date">` reports `""` for both
+    // "I cleared this" and "I am mid-retype", so the hatch cannot tell them
+    // apart from the draft alone. It used to assert `badInput: false` when the
+    // element was already detached -- not a check, a guess -- and the guess
+    // chose the destructive branch. Measured before the fix: a stored start
+    // date was gone after a tab change, while the SAME state on blur restored
+    // it correctly.
+    seedProfile({ startDate: "2020-01-01" });
+    const { removeCard } = renderRemovableCard();
+    // Ordering is load-bearing: the fact has to be true AT the change, which is
+    // the only moment it is observable. Stubbing it afterwards measures a field
+    // that was well-formed while the handler ran, and passes vacuously.
+    Object.defineProperty(startField(), "validity", {
+      configurable: true,
+      value: { badInput: true },
+    });
+    fireEvent.change(startField(), { target: { value: "" } });
+    removeCard();
+
+    expect(storedProfile().startDate).toBe("2020-01-01");
+  });
+
+  /** Set what the control reports without firing an event — see the twin in
+   *  JourneySettings.test.tsx for why that is the realistic case. */
+  const setBadInput = (el: HTMLInputElement, badInput: boolean) =>
+    Object.defineProperty(el, "validity", {
+      configurable: true,
+      value: { badInput },
+    });
+
+  it("clears when the last segments go, though no event announced it", () => {
+    seedProfile({ startDate: "2020-01-01" });
+    const { removeCard } = renderRemovableCard();
+    setBadInput(startField(), true);
+    fireEvent.change(startField(), { target: { value: "" } });
+    setBadInput(startField(), false); // emptied outright; value never moved
+    removeCard();
+
+    expect(storedProfile().startDate).toBeUndefined();
+  });
+
+  it("restores when retyping starts after a clear, though no event announced it", () => {
+    // The losing direction: a sampled answer deletes a date being re-entered.
+    seedProfile({ startDate: "2020-01-01" });
+    const { removeCard } = renderRemovableCard();
+    setBadInput(startField(), false);
+    fireEvent.change(startField(), { target: { value: "" } });
+    setBadInput(startField(), true); // retyping began; value never moved
+    removeCard();
+
+    expect(storedProfile().startDate).toBe("2020-01-01");
+  });
+
+  it("still carries an entered date out with it", () => {
+    // The behaviour the hatch exists for, which the clear must not cost.
+    const { removeCard } = renderRemovableCard();
+    fireEvent.change(startField(), { target: { value: "2025-06-01" } });
+    removeCard();
+
+    expect(storedProfile().startDate).toBe("2025-06-01");
+  });
+
+  it("writes nothing when there was nothing to change", () => {
+    // It runs from an effect cleanup, so an unconditional write hit the profile
+    // on every navigation away — and on a full device that raised the storage
+    // banner for an edit nobody made.
+    const { removeCard } = renderRemovableCard();
+    removeCard();
+    expect(localStorage.getItem(STORAGE_KEYS.profile)).toBeNull();
+  });
+});
+
+describe("FirstShotCard — the interval's unit", () => {
+  const box = () =>
+    screen.getByLabelText("How many days between your shots?") as HTMLInputElement;
+
+  it("shows the unit beside the box, where it cannot disappear", () => {
+    // It lived only in the placeholder, which goes the moment a chip or a
+    // keystroke fills the box — screenshotted on a phone showing a bare "2".
+    renderCard();
+    expect(document.querySelector(".interval-field__unit")!.textContent).toBe(
+      "days",
+    );
+    expect(box().placeholder).toBe("");
+  });
+
+  it("still shows it once a quick pick has filled the box", () => {
+    renderCard();
+    fireEvent.click(screen.getByRole("button", { name: "2 weeks" }));
+    expect(box().value).toBe("14");
+    expect(document.querySelector(".interval-field__unit")!.textContent).toBe(
+      "days",
+    );
+  });
+
+  it("keeps the unit out of the accessible name", () => {
+    // The unit is NOT inside a wrapping <label>, deliberately. When it was, the
+    // name computed as "Or every how many days? days" — the duplication that
+    // `aria-hidden` is meant to prevent, except the name comes from the label's
+    // contents and tools disagree about honouring it there. Associating the
+    // label by id puts the unit outside it however that is computed.
+    renderCard();
+    expect(box()).toHaveAccessibleName("How many days between your shots?");
+    expect(
+      document.querySelector(".interval-field__unit")!.getAttribute("aria-hidden"),
+    ).toBe("true");
+  });
+
+  it("leaves the group heading unit-neutral, because it covers the chips too", () => {
+    // Unlike the Settings copy, where the label is tied to the input alone. Here
+    // the heading sits above chips in WEEKS and a box in DAYS, so naming either
+    // unit in it would be wrong for the other.
+    renderCard();
+    expect(
+      screen.getByText("How often do you take it?"),
+    ).toBeInTheDocument();
   });
 });
 
@@ -97,8 +360,8 @@ describe("FirstShotCard — the disabled shot day", () => {
     seedProfile({ shotDay: "wednesday", intervalDays: 7 });
     renderCard();
 
-    const interval = screen.getByPlaceholderText(
-      "Every ___ days",
+    const interval = screen.getByLabelText(
+      "How many days between your shots?",
     ) as HTMLInputElement;
     fireEvent.change(interval, { target: { value: "10" } });
     fireEvent.blur(interval);
@@ -150,8 +413,8 @@ describe("FirstShotCard — drafts follow the profile", () => {
     // interval draft would call setIntervalDays(undefined) and delete both the
     // cadence and the schedule anchor another tab had just set.
     renderCard(); // mounts with an empty interval draft
-    const box = screen.getByPlaceholderText(
-      "Every ___ days",
+    const box = screen.getByLabelText(
+      "How many days between your shots?",
     ) as HTMLInputElement;
     expect(box.value).toBe("");
 
@@ -187,8 +450,8 @@ describe("FirstShotCard — drafts follow the profile", () => {
     // explicitly here the way the real blur handler passes it.
     seedProfile({ intervalDays: 14 });
     renderCard();
-    const box = screen.getByPlaceholderText(
-      "Every ___ days",
+    const box = screen.getByLabelText(
+      "How many days between your shots?",
     ) as HTMLInputElement;
     expect(box.value).toBe("14");
 

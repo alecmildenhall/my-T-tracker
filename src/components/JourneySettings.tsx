@@ -2,10 +2,11 @@
 // Settings → "Your journey": the optional T start date and preferred name that
 // power milestone messages. Both are opt-in, local-only, and clearing a field
 // removes it entirely.
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useProfileContext } from "../context/ProfileContext";
 import { WEEKDAYS, isWeekday, weekdayLabel } from "../utils/weekday";
 import { isRealDate } from "../utils/civilDate";
+import { commitDateDraft } from "../utils/dateDraft";
 import { isWeeklyMultiple } from "../utils/schedule";
 import {
   isValidIntervalDays,
@@ -171,24 +172,98 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
   // refuses.
   const draftRef = useRef(dateDraft);
   const commitRef = useRef(setStartDate);
+  /** What is actually stored, so the hatch can skip a write that changes nothing. */
+  const savedRef = useRef(profile.startDate);
   useEffect(() => {
     draftRef.current = dateDraft;
     commitRef.current = setStartDate;
+    savedRef.current = profile.startDate;
   });
 
-  useEffect(() => {
-    const commitIfReal = () => {
-      if (isRealDate(draftRef.current)) commitRef.current(draftRef.current);
+  // A LAYOUT effect, so its cleanup runs while the input is still attached and
+  // can be asked directly. Measured: on unmount a passive cleanup sees a null
+  // ref and a layout cleanup sees the element.
+  useLayoutEffect(() => {
+    // The same decision blur makes, from the same source: the LIVE element.
+    //
+    // This used to be `if (isRealDate(draftRef.current)) commit(...)`, which
+    // could only express SET. Once an emptied field started meaning "clear",
+    // that made the hatch disagree with blur — measured: emptying the field and
+    // backgrounding (or switching tab, which unmounts this panel) put the old
+    // date straight back, and the field showed it again on return.
+    //
+    // Reading the element rather than the draft matters twice over here. On iOS
+    // the picker's Reset fires no change event, so the draft still holds the
+    // date the user just removed — committing THAT on backgrounding is the
+    // deletion silently undoing itself, which is the failure class this app
+    // treats as severe.
+    //
+    // "restore" does nothing: it only ever affected what the field displays,
+    // and there is nothing to display on the way out.
+    const commitFromField = () => {
+      // The element on BOTH exits, which is the point of the layout effect
+      // above. This comment used to say the opposite — that unmount detaches the
+      // ref first, so the draft carries that path — and it was true of the
+      // PASSIVE effect this used to be. Converting it made the claim stale, and
+      // a stale comment here is dangerous rather than untidy: believing it, you
+      // would conclude the layout effect is pointless and revert it, which
+      // silently turns "an emptied field clears on tab change" back into
+      // "restores". Measured, and guarded — swapping `useLayoutEffect` back to
+      // `useEffect` turns two tests red.
+      //
+      // Reading the control matters most on BACKGROUNDING, where it is the only
+      // source that survives iOS's picker Reset firing no change event and
+      // leaving the draft holding the date the user just removed.
+      //
+      // The draft fallback is now unreachable defence rather than a path: kept
+      // because `focus()`-style assumptions about refs are exactly what this
+      // file keeps getting wrong, and it fails toward "restore".
+      const el = dateFieldRef.current;
+      const value = el ? el.value : draftRef.current;
+      // Read from the control itself, never from a remembered answer. A
+      // `<input type="date">` fires `input` ONLY when its `value` changes, and
+      // once the value is `""` it stays `""` while further segments are typed
+      // or deleted -- so `badInput` flips with no event, no render, and any
+      // sampled copy goes stale in BOTH directions: stale `true` resurrects a
+      // date the user removed, stale `false` deletes one they were retyping.
+      // This cleanup is a LAYOUT one precisely so the node is still attached
+      // here; measured, a passive cleanup sees `null` and a layout cleanup sees
+      // the element.
+      //
+      // If it is ever null anyway, "cleared on purpose" is not something we can
+      // claim, so say mid-edit and let it restore -- the recoverable failure.
+      const badInput = el ? el.validity.badInput : true;
+      const commit = commitDateDraft(value, badInput);
+      // Guarded like the clear branch below, and like FirstShotCard's copy: this
+      // runs from an effect cleanup, so an unconditional write re-wrote the
+      // profile on every exit from Settings. `updateProfile` always returns a
+      // fresh object, so every ProfileContext consumer re-rendered for an edit
+      // nobody made -- masked by useLocalStorage's serialized-equal skip, which
+      // is the reasoning the comment below already rejects as insufficient.
+      if (commit.action === "set" && commit.date !== savedRef.current) {
+        commitRef.current(commit.date);
+      }
+      // Only on a real change, which is the guard `FirstShotCard` and
+      // `commitInterval` both already carry and this one was missing. It runs
+      // from an effect cleanup, and with no start date set the field is empty
+      // and well-formed -- so "clear" fired on EVERY exit from Settings. That
+      // is invisible while storage works, because `useLocalStorage` skips a
+      // serialized-equal write, and stops being invisible on a full device,
+      // where touching storage at all can raise the banner for an edit nobody
+      // made.
+      else if (commit.action === "clear" && savedRef.current !== undefined) {
+        commitRef.current(undefined);
+      }
     };
     const onHide = () => {
-      if (document.visibilityState === "hidden") commitIfReal();
+      if (document.visibilityState === "hidden") commitFromField();
     };
     document.addEventListener("visibilitychange", onHide);
     return () => {
       document.removeEventListener("visibilitychange", onHide);
       // Unmount too: changing tab destroys this panel, and on a phone that is a
       // likelier exit than blurring the field.
-      commitIfReal();
+      commitFromField();
     };
   }, []);
 
@@ -201,12 +276,20 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
   // because its `commitIfReal` reads the raw string; `commitInterval` closes
   // over its own draft, so a second ref here was written every render, read by
   // nothing, and looked like protection it was not providing.
-  const commitIntervalRef = useRef(() => {});
+  const commitIntervalRef = useRef<(badInput?: boolean) => void>(() => {});
   useEffect(() => {
     commitIntervalRef.current = commitInterval;
   });
-  useEffect(() => {
-    const commitIfUsable = () => commitIntervalRef.current();
+  // Layout, so the cleanup can still read the input -- the same reason the date
+  // hatch above is one. A passive cleanup sees a detached ref.
+  useLayoutEffect(() => {
+    // Ask the control, never a default. `badInput` false meant "deliberately
+    // emptied", and a number input reports "" for garbage as well, so a fumbled
+    // keystroke plus a background cleared the cadence and its anchor.
+    const commitIfUsable = () =>
+      commitIntervalRef.current(
+        intervalFieldRef.current?.validity.badInput ?? true,
+      );
     const onHide = () => {
       if (document.visibilityState === "hidden") commitIfUsable();
     };
@@ -292,30 +375,62 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
           // It was in front of me in a browser trace (`stored="0202-03-15"`) and
           // I read past it because the final value was right.
           onChange={(e) => setDateDraft(e.target.value)}
-          // Leaving the field is the commit.
+          // Leaving the field is the commit, and an emptied field now CLEARS.
           //
-          // What it deliberately does NOT do is treat an empty field as "delete
-          // this". An empty date input carries two meanings it cannot separate —
-          // "I cleared this" and "I am retyping and the segments are incomplete"
-          // — and both report "". An earlier version resolved that by waiting for
-          // blur, which does not separate the meanings at all; it picks one, and
-          // picks destructively. Measured in Chromium the ambiguity happens to
-          // resolve itself, but that is a reason it does not happen rather than a
-          // reason it cannot — Firefox leaves the value empty — and the cost of
-          // being wrong is a silently deleted start date with no undo. So
-          // removing is its own action, with its own control, below.
-          onBlur={() => {
-            if (isRealDate(dateDraft)) setStartDate(dateDraft);
-            // Half-typed and abandoned: put back what is actually stored, rather
-            // than leaving the field showing a value nothing holds.
-            else setDateDraft(profile.startDate ?? "");
+          // It used to restore instead, on the reasoning that an empty date
+          // input cannot separate "I cleared this" from "I am retyping and the
+          // segments are incomplete" — both report "". The ambiguity is real;
+          // the conclusion that nothing could resolve it was not. `badInput` is
+          // false for a field emptied outright and true for one mid-edit, which
+          // `commitDateDraft` measures and this field now trusts, exactly as the
+          // interval box beside it already trusts it for a number.
+          //
+          // What that fixes is a native control appearing to do nothing: the
+          // iOS picker's own "Reset" empties the field, and blur used to put the
+          // value straight back.
+          // The LIVE element value, not the draft. On iOS the picker's own
+          // Reset either fires NO change event (WebKit, time inputs) or fires
+          // one carrying the PREVIOUS value (WebKit, date inputs) — both
+          // documented React issues — so the draft is stale by exactly the
+          // amount that matters and the old value round-trips straight back.
+          // By blur the picker has closed and the element itself is correct,
+          // which is the workaround those reports land on: read the input, not
+          // the event.
+          onBlur={(e) => {
+            const live = e.target.value;
+            const commit = commitDateDraft(live, e.target.validity.badInput);
+            if (commit.action === "set") {
+              setDateDraft(commit.date);
+              setStartDate(commit.date);
+            } else if (commit.action === "clear") {
+              setDateDraft("");
+              setStartDate(undefined);
+            } else setDateDraft(profile.startDate ?? "");
           }}
         />
       </div>
-      {profile.startDate && (
+      {/* On the DRAFT, not the committed profile. Keyed to the profile it only
+          appeared after blur, so entering a date and looking at it showed
+          nothing until you tapped away — a visible lag on the one control that
+          undoes what you just did. The pain and off-days Clears next door
+          already key to their drafts and appear on the tap; this now matches
+          them. `isRealDate`, not `!== ""`, so a half-typed date does not flash
+          it on and off between segments. */}
+      {isRealDate(dateDraft) && (
         <button
           type="button"
-          className="link-button"
+          className="link-button field-clear"
+          // Keep the press from destroying its own target. This control
+          // now renders while the date field still has focus, so tapping it
+          // blurs the field first — that commits, re-renders, and the mouseup
+          // lands on a different node, so the click never fires. Measured: the
+          // event sequence was ["blur"] alone and the date survived.
+          //
+          // `preventDefault` on mousedown stops focus moving at all, so there
+          // is no blur, no re-render, and the click lands. Keyboard is
+          // untouched — Enter and Space fire click without a mousedown — and
+          // the handler moves focus deliberately anyway.
+          onMouseDown={(e) => e.preventDefault()}
           // This control removes ITSELF — it only renders while a start date is
           // set — so it has to hand focus on before it goes, or a keyboard or
           // screen-reader user is dropped to <body> with nothing announced and
@@ -334,10 +449,14 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
           // <body>, and handOffFocus verifies each candidate rather than assuming.
           onClick={() => {
             handOffFocus(headingRef, dateFieldRef);
-            // The field empties itself: the profile changes, so the sync above
-            // pulls the draft to "". Setting it here as well was redundant, and
-            // a mutation check caught that no test could tell the difference.
             setStartDate(undefined);
+            // And the draft explicitly. This USED to be redundant — the profile
+            // changed, and the sync above pulled the draft to "" — but the
+            // control now renders on the draft, and the draft can hold a date
+            // the profile never got (typed, not yet blurred). In that case the
+            // profile does not change, so nothing syncs, and without this the
+            // date would sit in the field with no way left to remove it.
+            setDateDraft("");
           }}
         >
           Remove start date
@@ -353,25 +472,49 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
           shot-day select and times from the previous shot instead, and the hint
           was telling that user to do the thing the app had just stopped them
           doing. Stating only the payoff is true in both modes. */}
-      <label htmlFor="journey-interval">How often do you take your shot?</label>
+      {/* The unit is in the LABEL, not only beside the box. A suffix is
+          `aria-hidden` by convention and this one is too, so the label is the
+          only place a screen reader can learn the unit — the guidance that
+          recommends unit adornments says so explicitly ("Height, in inches"
+          beside an "in." suffix). */}
+      <label htmlFor="journey-interval">
+        How many days between your shots?
+      </label>
       <p className="field-hint" id="interval-hint">
         Track how on time your shots are.
       </p>
+      {/* The unit sat only in the PLACEHOLDER, which disappears the moment
+          there is a value — and the most common action here, tapping "2 weeks",
+          is exactly what puts one there. So the last unit you read said WEEKS
+          while the box quietly held 14. Placeholders are the documented wrong
+          home for essential information for precisely this reason.
+
+          The box is sized to its content rather than the column, and "days"
+          sits immediately after it. A full-width field with the unit pinned
+          right — which is how this was first drawn — puts them 580px apart on
+          desktop, where they stop reading as one phrase, and drops the unit
+          straight onto the number spinner Chromium paints there on hover.
+          Measured both. */}
       <div className="form-column">
-        <input
-          id="journey-interval"
-          ref={intervalFieldRef}
-          type="number"
-          min={MIN_INTERVAL_DAYS}
-          max={MAX_INTERVAL_DAYS}
-          step={1}
-          inputMode="numeric"
-          value={intervalDraft}
-          onChange={(e) => setIntervalDraft(e.target.value)}
-          onBlur={(e) => commitInterval(e.target.validity.badInput)}
-          placeholder="Every ___ days"
-          aria-describedby="interval-hint"
-        />
+        <div className="interval-field">
+          <input
+            id="journey-interval"
+            className="interval-field__input"
+            ref={intervalFieldRef}
+            type="number"
+            min={MIN_INTERVAL_DAYS}
+            max={MAX_INTERVAL_DAYS}
+            step={1}
+            inputMode="numeric"
+            value={intervalDraft}
+            onChange={(e) => setIntervalDraft(e.target.value)}
+            onBlur={(e) => commitInterval(e.target.validity.badInput)}
+            aria-describedby="interval-hint"
+          />
+          <span className="interval-field__unit" aria-hidden="true">
+            days
+          </span>
+        </div>
       </div>
       {/* The two cadences almost everyone is on, so most people never type a
           number. Same chip pattern as the log form's reuse values. */}

@@ -29,6 +29,7 @@ import { handOffFocus } from "../utils/focus";
 import { CONFIRM_MS } from "../utils/timing";
 import { SHEET_EXIT_MS } from "./Modal";
 import { isRealDate } from "../utils/civilDate";
+import { commitDateDraft } from "../utils/dateDraft";
 import {
   isValidIntervalDays,
   MIN_INTERVAL_DAYS,
@@ -181,23 +182,56 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
   const commitAllRef = useRef(() => {});
   useEffect(() => {
     commitAllRef.current = () => {
-      commitInterval();
+      // Ask the live control, exactly like the date field below. Defaulting
+      // `badInput` to false here was a guess that an empty box was a deliberate
+      // clear -- and a number input reports "" for garbage too ("-", "1e"), so
+      // one fumbled keystroke plus a background wiped the cadence AND the frozen
+      // schedule anchor with it. The blur path already asks; the hatch is the
+      // path that exists precisely for when blur never happens.
+      commitInterval(intervalRef.current?.validity.badInput ?? true);
       // Only on a real change, for the reason `commitInterval` above documents:
       // this runs from an effect cleanup, so every navigation away wrote the
       // profile — and `updateProfile` always returns a fresh object, so the
       // write is real. The card unmounts the moment the first shot is logged,
       // which on a quota-exhausted device raised the storage-failure banner on
       // top of "Logged for you." for an edit nobody made.
-      if (
-        startDraft.trim() !== "" &&
-        isRealDate(startDraft) &&
-        startDraft !== profile.startDate
-      ) {
-        setStartDate(startDraft);
+      // `commitDateDraft`, not an `isRealDate` guard, so this hatch can express
+      // a CLEAR. It could only ever say "set" — so once an emptied field started
+      // meaning "clear", emptying one and then backgrounding put the old date
+      // straight back, and the two fields that are meant to agree on this
+      // question agreed on blur and diverged here.
+      //
+      // The element on both exits — the cleanup is a LAYOUT one, so the input is
+      // still attached when it runs. This said the reverse until the effect was
+      // converted, and the reverse is what a passive cleanup sees; left as it
+      // was, the next reader would revert the layout effect and quietly restore
+      // a date the user had cleared. Reading the control matters most on
+      // backgrounding, where it is the only source that survives iOS's picker
+      // Reset firing no change event. The draft fallback is unreachable defence.
+      const el = startFieldRef.current;
+      const value = el ? el.value : startDraft;
+      // Always the control, never a remembered answer: a date input fires no
+      // event while `value` stays `""`, so `badInput` flips unobserved and a
+      // sampled copy goes stale both ways. The cleanup below is a LAYOUT one so
+      // the node is still attached to be asked. Mirrors `JourneySettings`
+      // exactly -- these two diverging on this question is the whole reason
+      // `commitDateDraft` is shared.
+      const badInput = el ? el.validity.badInput : true;
+      const commit = commitDateDraft(value, badInput);
+      // Still only on a real CHANGE, for the reason `commitInterval` documents:
+      // this runs from an effect cleanup, so writing unconditionally wrote the
+      // profile on every navigation away.
+      if (commit.action === "set" && commit.date !== profile.startDate) {
+        setStartDate(commit.date);
+      } else if (commit.action === "clear" && profile.startDate !== undefined) {
+        setStartDate(undefined);
       }
     };
   });
-  useEffect(() => {
+  // A LAYOUT effect, so the cleanup runs while the date input is still attached
+  // and can be asked for its own `validity`. Measured: on unmount a passive
+  // cleanup sees a null ref, a layout cleanup sees the element.
+  useLayoutEffect(() => {
     const onHide = () => {
       if (document.visibilityState === "hidden") commitAllRef.current();
     };
@@ -222,6 +256,10 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
   const intervalRef = useRef<HTMLInputElement>(null);
   const shotDaySelectRef = useRef<HTMLSelectElement>(null);
   const noticeRef = useRef<HTMLParagraphElement>(null);
+  /** The start-date input, read by the escape hatch while it is still mounted. */
+  const startFieldRef = useRef<HTMLInputElement>(null);
+  /** Where "Remove start date" hands focus when it removes itself. */
+  const titleRef = useRef<HTMLHeadingElement>(null);
 
   /**
    * Done's three beats: idle, the ✓, then the card leaving.
@@ -291,8 +329,7 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
    * question is asked at the last moment it is still itself, and stored.
    */
   const rootRef = useRef<HTMLElement>(null);
-  const heldFocus = () =>
-    !!rootRef.current?.contains(document.activeElement);
+  const heldFocus = () => !!rootRef.current?.contains(document.activeElement);
   const heldFocusAtUnmount = useRef(false);
   useLayoutEffect(
     () => () => {
@@ -389,7 +426,11 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
         dismissal === "leaving" ? " first-shot-card--leaving" : ""
       }`}
     >
-      <h2 className="first-shot-card__title">Before your first shot</h2>
+      {/* `tabIndex={-1}` so "Remove start date" can hand focus here when it
+          takes itself away. It never joins the tab order. */}
+      <h2 className="first-shot-card__title" ref={titleRef} tabIndex={-1}>
+        Before your first shot
+      </h2>
       {/* The "it's all optional" line leads, rather than closing the card.
           Marking every field individually is what you do when SOME are
           required — here none are, so one sentence at the top says it once for
@@ -447,29 +488,85 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
               reverted in this card and accepted in Settings. */}
           <input
             id="first-shot-start"
+            ref={startFieldRef}
             type="date"
             value={startDraft}
             aria-describedby="first-shot-start-hint"
             onChange={(e) => setStartDraft(e.target.value)}
-            // An empty field is NOT taken as "delete this", and the same
-            // field in Settings carries the full reasoning: an empty date input
-            // cannot separate "I cleared this" from "I am retyping and the
-            // segments are incomplete", and both report "". Blur does not
-            // distinguish them — it picks one, and picking the destructive one
-            // silently deletes the milestone base with no undo and, on this
-            // card, no "Remove start date" control to have meant it with.
+            // An emptied field CLEARS, and this card and Settings agree on
+            // that — they have drifted apart on this exact question before,
+            // which is worse than either answer alone. `commitDateDraft` holds
+            // the reasoning and the measurements: `badInput` separates a field
+            // emptied outright from one part-way through being retyped, so
+            // "Reset" in the native picker finally does what it says.
             //
-            // Two identical fields answered this opposite ways, which is worse
-            // than either answer. They agree now: leaving a date field empty
-            // restores what is stored, and removing is its own action in
-            // Settings. This card's own commit-on-unmount path already declined
-            // to clear, so blur and backgrounding no longer disagree either.
-            onBlur={() => {
-              if (isRealDate(startDraft)) setStartDate(startDraft);
-              else setStartDraft(profile.startDate ?? "");
+            // It matters more here than in Settings. This card has no "Remove
+            // start date" control, so before this an answer given on it could
+            // not be taken back at all — name and interval both cleared, and the
+            // date alone was permanent, on the one screen someone meets before
+            // they know Settings exists.
+            // The LIVE element value, not the draft. On iOS the picker's
+            // own Reset either fires NO change event (WebKit, time inputs) or
+            // fires one carrying the PREVIOUS value (WebKit, date inputs) —
+            // both documented React issues — so the draft is stale by exactly
+            // the amount that matters, and the old value round-trips straight
+            // back. By blur the picker has closed and the element itself is
+            // correct, which is the workaround those reports land on: read the
+            // input, not the event.
+            onBlur={(e) => {
+              const live = e.target.value;
+              const commit = commitDateDraft(live, e.target.validity.badInput);
+              if (commit.action === "set") {
+                setStartDraft(commit.date);
+                setStartDate(commit.date);
+              } else if (commit.action === "clear") {
+                setStartDraft("");
+                setStartDate(undefined);
+              } else setStartDraft(profile.startDate ?? "");
             }}
           />
         </div>
+        {/* The control that does NOT depend on the platform reporting a Reset.
+            iOS's picker offers its own Reset, and WebKit either fires no change
+            event for it or fires one carrying the previous value — so the blur
+            handler above is a best effort that cannot be verified from here.
+            This is the guaranteed path, and it is the same control Settings
+            has: without it, an answer given on this card could not be taken
+            back at all, on the one screen someone meets before they know
+            Settings exists. */}
+        {/* The DRAFT, matching Settings and the two chip Clears: keyed to the
+            committed profile this appeared only after blur, a visible lag on
+            the control that undoes what you just entered. */}
+        {isRealDate(startDraft) && (
+          <button
+            type="button"
+            className="link-button field-clear"
+            // Keep the press from destroying its own target. This control
+            // now renders while the date field still has focus, so tapping it
+            // blurs the field first — that commits, re-renders, and the mouseup
+            // lands on a different node, so the click never fires. Measured: the
+            // event sequence was ["blur"] alone and the date survived.
+            //
+            // `preventDefault` on mousedown stops focus moving at all, so there
+            // is no blur, no re-render, and the click lands. Keyboard is
+            // untouched — Enter and Space fire click without a mousedown — and
+            // the handler moves focus deliberately anyway.
+            onMouseDown={(e) => e.preventDefault()}
+            // Removes ITSELF — it renders only while a start date is set — so
+            // it hands focus on first. To the card's HEADING, never back to the
+            // date field: focusing an `input[type=date]` from a click handler
+            // is what makes iOS throw the picker up again, which is absurd
+            // immediately after an action whose whole point was to have no
+            // date. Same reasoning JourneySettings' Remove already records.
+            onClick={() => {
+              handOffFocus(titleRef, noticeRef);
+              setStartDate(undefined);
+              setStartDraft("");
+            }}
+          >
+            Remove start date
+          </button>
+        )}
       </div>
 
       <div className="first-shot-card__field">
@@ -482,10 +579,39 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
         <p className="field-hint" id="first-shot-cadence-hint">
           Track how on time your shots are.
         </p>
+        {/* The box ABOVE the chips, and both drawn exactly as Settings draws
+            them — same classes, so there is one style for one control rather
+            than two that drift. This card used to put the chips first and hang
+            the input inside their flex row as a stretchy pill, which made the
+            same question look like two different questions depending on where
+            you met it. The wording still differs, deliberately: this heading
+            covers the chips too, so it stays unit-neutral. */}
+        <div className="interval-field">
+          <label className="visually-hidden" htmlFor="first-shot-interval">
+            How many days between your shots?
+          </label>
+          <input
+            id="first-shot-interval"
+            className="interval-field__input"
+            type="number"
+            min={MIN_INTERVAL_DAYS}
+            max={MAX_INTERVAL_DAYS}
+            step={1}
+            inputMode="numeric"
+            ref={intervalRef}
+            value={intervalDraft}
+            onChange={(e) => setIntervalDraft(e.target.value)}
+            onBlur={(e) => commitInterval(e.target.validity.badInput)}
+            aria-describedby="first-shot-cadence-hint"
+          />
+          <span className="interval-field__unit" aria-hidden="true">
+            days
+          </span>
+        </div>
         <div
           className="suggestion-chips suggestion-chips--tight"
           role="group"
-          aria-label="How often you take your shot"
+          aria-label="Common intervals"
         >
           {QUICK_PICKS.map(({ label, days }) => (
             <button
@@ -501,22 +627,6 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
               {label}
             </button>
           ))}
-          <label className="first-shot-card__other">
-            <span className="visually-hidden">Or every how many days?</span>
-            <input
-              type="number"
-              min={MIN_INTERVAL_DAYS}
-              max={MAX_INTERVAL_DAYS}
-              step={1}
-              inputMode="numeric"
-              placeholder="Every ___ days"
-              ref={intervalRef}
-              value={intervalDraft}
-              onChange={(e) => setIntervalDraft(e.target.value)}
-              onBlur={(e) => commitInterval(e.target.validity.badInput)}
-              aria-describedby="first-shot-cadence-hint"
-            />
-          </label>
         </div>
       </div>
 

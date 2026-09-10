@@ -345,6 +345,29 @@ describe("a state rule has to come after the rule it overrides", () => {
     expect(confirmed).toBeGreaterThan(base);
   });
 
+  it("lets the field-clear rule beat the link-button it overrides", () => {
+    /*
+     * Fourth instance on this branch, and it shipped half-dead: `.field-clear`
+     * sat 700 lines ABOVE `.link-button`, both single classes, so at equal
+     * specificity source order decided and it lost `padding-inline` and
+     * `font-size` silently. Measured before the fix — the text rendered 2px off
+     * the field's axis at 0.82rem, which is exactly the "almost aligned" that
+     * reads as sloppy without looking like a bug.
+     *
+     * The outcome, not the arrangement: which value actually wins.
+     */
+    const btn = document.createElement("button");
+    btn.className = "link-button field-clear";
+    document.body.append(btn);
+    try {
+      expect(winningValue(btn, "padding-inline")).toBe("0");
+      expect(winningValue(btn, "font-size")).toBe("0.78rem");
+      expect(winningValue(btn, "text-align")).toBe("left");
+    } finally {
+      btn.remove();
+    }
+  });
+
   it("keeps the Done button green under every pointer state", () => {
     /*
      * A pseudo-class ADDS SPECIFICITY, so `:hover` outranks the confirmed

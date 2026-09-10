@@ -132,7 +132,7 @@ describe('useShots', () => {
         testosteroneEster: 'cypionate',
         carrierOil: 'cottonseed',
         pain: "mild",
-        mood: 'good',
+        offDays: 'here-and-there',
         notes: 'Felt great after this one'
       }
       
@@ -253,7 +253,7 @@ describe('useShots', () => {
         id: 'shot-2',
         date: '2024-01-22',
         doseMg: 100,
-        mood: 'great'
+        offDays: 'none'
       }
       
       act(() => {
@@ -312,7 +312,7 @@ describe('useShots', () => {
         id: 'shot-1',
         date: '2024-01-15',
         doseMg: 75,
-        mood: 'good'
+        offDays: 'none'
       }
       
       act(() => {
@@ -357,7 +357,7 @@ describe('useShots', () => {
         testosteroneEster: 'enanthate',
         carrierOil: 'sesame',
         pain: "mild",
-        mood: 'good',
+        offDays: 'here-and-there',
         notes: 'Updated with full details'
       }
       
@@ -571,7 +571,7 @@ describe('useShots', () => {
         doseMg: 50,
         injectionSite: 'thigh',
         pain: "severe",
-        mood: 'nervous but hopeful',
+        offDays: 'right-before',
         notes: 'First shot of the year. Felt a bit anxious beforehand but everything went smoothly.'
       }
       
@@ -690,7 +690,6 @@ describe('useShots', () => {
         id: 'shot-special',
         date: '2024-01-15',
         injectionSite: 'left thigh (outer)',
-        mood: '😊 happy & relieved!',
         notes: 'Quote: "This is fine" - everything went well. Cost: $50'
       }
       

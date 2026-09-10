@@ -121,16 +121,15 @@ describe('ShotEntry type', () => {
       expect(typeof shot.pain).toBe('string')
     })
 
-    // Tests that optional mood field accepts string values
-    it('should accept ShotEntry with mood field', () => {
+    // Tests that the optional off-days pattern is accepted
+    it('should accept ShotEntry with offDays field', () => {
       const shot: ShotEntry = {
         id: 'abc123',
         date: '2025-12-11',
-        mood: 'happy',
+        offDays: 'right-before',
       }
-      
-      expect(shot.mood).toBe('happy')
-      expect(typeof shot.mood).toBe('string')
+
+      expect(shot.offDays).toBe('right-before')
     })
 
     // Tests that optional notes field accepts string values
@@ -157,7 +156,7 @@ describe('ShotEntry type', () => {
         testosteroneEster: 'cypionate',
         carrierOil: 'cottonseed',
         pain: "mild",
-        mood: 'energetic',
+        offDays: 'right-before',
         notes: 'Everything went smoothly',
       }
       
@@ -171,7 +170,7 @@ describe('ShotEntry type', () => {
         testosteroneEster: 'cypionate',
         carrierOil: 'cottonseed',
         pain: "mild",
-        mood: 'energetic',
+        offDays: 'right-before',
         notes: 'Everything went smoothly',
       })
     })
@@ -188,7 +187,7 @@ describe('ShotEntry type', () => {
         testosteroneEster: undefined,
         carrierOil: undefined,
         pain: undefined,
-        mood: undefined,
+        offDays: undefined,
         notes: undefined,
       }
       
@@ -201,7 +200,7 @@ describe('ShotEntry type', () => {
       expect(shot.testosteroneEster).toBeUndefined()
       expect(shot.carrierOil).toBeUndefined()
       expect(shot.pain).toBeUndefined()
-      expect(shot.mood).toBeUndefined()
+      expect(shot.offDays).toBeUndefined()
       expect(shot.notes).toBeUndefined()
     })
   })
@@ -233,7 +232,7 @@ describe('ShotEntry type', () => {
           testosteroneEster: 'cypionate',
           carrierOil: 'sesame',
           pain: "none",
-          mood: 'great',
+          offDays: 'none',
           notes: 'Best injection yet!',
         },
       ]

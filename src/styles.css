@@ -202,6 +202,32 @@ body {
   flex-direction: column;
 }
 
+/* The interval box and its unit, as one phrase.
+   The field is sized to a three-digit number rather than filling the column:
+   full width put "days" 580px from the value on desktop, where the two stop
+   reading together, and dropped it onto the spin buttons Chromium paints at
+   the right edge on hover. Both measured.
+   No `font-size` here — the coarse-pointer rule owns that for every control,
+   and a class selector would out-specify it (the trap CLAUDE.md names). */
+.interval-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.interval-field__input {
+  /* Three digits, plus room for the spinner so it never crowds the value. */
+  width: 6.5rem;
+  flex: none;
+}
+
+/* `aria-hidden` in the markup, so this is decoration and the LABEL carries the
+   unit for anyone who cannot see it. */
+.interval-field__unit {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
 label {
   font-size: 0.8rem;
   /* The question outranks the note under it, and CONTRAST is what says so.
@@ -550,6 +576,9 @@ select {
    that control, because a hand-off target with no ring is a keyboard user
    losing their place silently (WCAG 2.4.7). */
 .settings-section__title:focus-visible,
+/* Same control, same reason, on the first-run card — which had no way to remove
+   a start date at all until one was added there too. */
+.first-shot-card__title:focus-visible,
 /* Where the shot-day select hands focus when a non-weekly interval disables it,
    in both the first-run card and Settings. Added in a browser pass: focus
    landed correctly and the element fell back to the UA's own ring, which is
@@ -648,20 +677,6 @@ select {
   font-size: 0.8rem;
   color: var(--text);
   font-weight: 600;
-}
-
-/* Sits in the chip row, so it reads as one more way to answer the same
-   question rather than a separate field. */
-.first-shot-card__other {
-  display: inline-flex;
-  flex: 1 1 9rem;
-  min-width: 9rem;
-}
-
-.first-shot-card__other input {
-  width: 100%;
-  border-radius: 999px;
-  padding-inline: 0.85rem;
 }
 
 /* The History pain facet, tinted to match the log sheet's chips so a level reads
@@ -1105,10 +1120,186 @@ select {
   }
 }
 
-.pain-clear {
-  align-self: flex-start;
-  margin-top: 0.4rem;
-  font-size: 0.78rem;
+
+/* ---- "Any days you felt off?" ------------------------------------------
+   Structurally the pain group, and deliberately NOT its colour ramp. Pain rises
+   none → severe, so colour rising with it says something true. These four are a
+   PATTERN, not an amount: "here and there" is neither more nor less than "right
+   before this one", so a ramp would assert an order the values do not have, and
+   a red-ish "most of the time" would grade an answer the app has no business
+   grading. Neutral chips, accent only for the one you chose. */
+.off-days-field {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0; /* a fieldset defaults to min-content, which breaks flex rows */
+}
+
+.off-days-field legend {
+  padding: 0;
+  font-size: 0.8rem;
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* The recall window. Sits between the question and the answers because that is
+   the order you read them in — you need to know what you are answering about
+   before the options mean anything. */
+.off-days-field__span {
+  /* `block` because it now lives inside the <legend>, where it is part of the
+     group's accessible NAME rather than a description hung off it — see the
+     note in ShotForm. Inline it would run on after the question. */
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+/* A margin rather than the container's gap, because a <legend> is not a flex
+   item — the same reason the pain row needs one. */
+.off-days-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-top: 0.45rem;
+}
+
+/* One option per line: full-width target, and a column has a reading order
+   where the wrapped chip grid had none. */
+.off-days-row {
+  position: relative;
+  display: flex;
+  /* BOTH declared, and neither is redundant. `.off-days-row` is a <label>, and
+     the base `label` rule sets `flex-direction: column` and `flex: 1 1 0` for
+     the label-above-input pattern the rest of this form uses. Declaring only
+     `display: flex` left those two in force — measured heights and wrap checks
+     all passed because the row was still 48px tall, and only a SCREENSHOT
+     showed the mark, the words and the strip stacked in a centred column.
+     (`.pain-chip` has the same gap and gets away with it by having one child.) */
+  flex-direction: row;
+  flex: none;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 48px;
+  padding: 0.4rem 0.65rem;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-subtle);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  /* Stated, because the global `label` rule sets 600 — without it the selected
+     state's 600 would be no change at all, which is what the pain chips were
+     measured doing. */
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+/* Invisible rather than `display: none`: a hidden input is not focusable, and
+   the native radio is here for its keyboard and arrow-key behaviour. */
+.off-days-row input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+/* The radio's stand-in. Drawn rather than shown, because the real input has to
+   cover the whole row to make it one target. */
+.off-days-row__mark {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--border-subtle);
+  display: grid;
+  place-items: center;
+}
+.off-days-row__mark::after {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--accent);
+  transform: scale(0);
+  transition: transform 0.12s ease;
+}
+
+.off-days-row__label {
+  flex: 1;
+}
+
+/* Eight slots across the interval. Small on purpose — it is an index for the
+   row, not a chart. */
+.off-days-row__strip {
+  flex: none;
+  display: flex;
+  gap: 2px;
+}
+.off-days-row__strip i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border-subtle);
+}
+.off-days-row__strip i.is-off {
+  background: var(--accent);
+}
+
+/* AFTER the base rule: both are a single class, so at equal specificity source
+   order decides, and this branch has already shipped that bug. Fill, border,
+   weight AND the mark together — never one signal, never hue alone. */
+.off-days-row--on {
+  border-color: var(--accent);
+  background: rgba(56, 189, 248, 0.16);
+  color: var(--text);
+  font-weight: 600;
+}
+.off-days-row--on .off-days-row__mark {
+  border-color: var(--accent);
+}
+.off-days-row--on .off-days-row__mark::after {
+  transform: scale(1);
+}
+.off-days-row--on .off-days-row__strip i {
+  background: rgba(148, 163, 184, 0.35);
+}
+.off-days-row--on .off-days-row__strip i.is-off {
+  background: var(--accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .off-days-row,
+  .off-days-row__mark::after {
+    transition: none;
+  }
+}
+
+/* The ring goes on the LABEL: the input is transparent and stretched over the
+   whole row, so an outline on it would trace the same box invisibly. */
+.off-days-row:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Without `:has()` (Firefox before 121) the rule above never matches and these
+   rows have NO visible focus indicator, since the real radio is `opacity: 0` —
+   a WCAG 2.4.7 failure. `:focus-within` is the only selector that reaches a
+   parent without `:has()`, and it is fenced so a browser that HAS `:has()`
+   never sees it: it has no modality-aware form, so unfenced it would bring back
+   the ring-on-tap this stylesheet took care to avoid. */
+@supports not selector(:has(*)) {
+  .off-days-row:focus-within {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
 }
 
 .field-error {
@@ -1641,6 +1832,50 @@ select {
   font-weight: 550;
   cursor: pointer;
   border-radius: var(--radius-md);
+}
+
+/* AFTER `.link-button`, and that is load-bearing rather than tidy. Both are a
+   single class, so at equal specificity source order decides — and sitting 700
+   lines earlier this rule lost `padding-inline` AND `font-size` to it silently.
+   Measured: the text stayed 2px off the field's axis and rendered at 0.82rem,
+   so half of this rule had never applied at all. Fourth time on this branch
+   that a rule reading like an override has lost to source order, which is why
+   there is a test pinning it now.
+*/
+/* Every "take this back" text action: the pain and off-days Clears, and the
+   Remove-start-date on both the first-run card and Settings.
+   Named for the job rather than the first caller — as `.pain-clear` it was
+   sizing a control it was not named for, and a change for one group would have
+   silently moved another.
+
+   LEFT-ALIGNED, on the field's own edge. `.link-button` centres its text, which
+   is right for a button filling a dialog and wrong here: the Settings copy
+   stretched to the full column and centred, the card's shrank and read left, so
+   the same action sat in two different places. Form guidance is explicit that
+   actions align to the input's leading edge — "a strong vertical axis" is what
+   tells you where the form's spine is.
+
+   `width: fit-content` rather than `align-self`, because these sit in both flex
+   and block parents and `align-self` silently does nothing in the second. */
+.field-clear {
+  display: block;
+  width: fit-content;
+  text-align: left;
+  /* Flush with the field's edge. `.link-button` carries 0.15rem of inline
+     padding, which put the text 2px off the axis it is supposed to sit on —
+     invisible alone and exactly the sort of thing that makes a column look
+     almost-aligned. The vertical padding stays: it is what keeps the 36px
+     target. */
+  padding-inline: 0;
+  font-size: 0.78rem;
+}
+
+/* The first-run card's field container is a flex column with its own 0.3rem
+   gap, where the Settings field has none — so the same class landed 5px below
+   one field and 6px below the other. The difference is one pixel and it is
+   still worth closing: this is the row someone sees twice and compares. */
+.first-shot-card__field .field-clear {
+  margin-top: 0.1rem;
 }
 
 @media (hover: hover) {

@@ -3,12 +3,17 @@ import { readFileSync } from "node:fs";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ShotForm, type ShotDraft } from "../ShotForm";
-import type { ShotEntry } from "../../types/shot";
+import { OFF_DAYS_PATTERNS, type ShotEntry } from "../../types/shot";
 import type { SaveOutcome } from "../ShotForm";
 import { todayLocalISO } from "../../utils/datetime";
 import { expectFocusSomewhereUseful } from "../../test/focus";
 import { expectVisibleFocusRing } from "../../test/focusRing";
-import { isShotDateInRange, shotDateRange } from "../../utils/civilDate";
+import {
+  isShotDateInRange,
+  shotDateRange,
+  takenDateRange,
+} from "../../utils/civilDate";
+import { addDaysCivil } from "../../utils/schedule";
 
 beforeEach(() => {
   localStorage.clear();
@@ -91,7 +96,7 @@ describe("ShotForm suggestion chips", () => {
     ).toBe("");
   });
 
-  it("starts the next shot with per-shot fields empty (site, position, pain, mood, notes)", () => {
+  it("starts the next shot with per-shot fields empty (site, position, pain, off days, notes)", () => {
     const onAddShot = vi.fn();
     const first = render(<ShotForm onAddShot={onAddShot} shots={history} />);
 
@@ -102,9 +107,7 @@ describe("ShotForm suggestion chips", () => {
       target: { value: "left" },
     });
     fireEvent.click(screen.getByRole("radio", { name: "Moderate" }));
-    fireEvent.change(screen.getByPlaceholderText(/low, okay, good/i), {
-      target: { value: "good" },
-    });
+    fireEvent.click(screen.getByRole("radio", { name: /^Here and there/ }));
     fireEvent.change(screen.getByPlaceholderText(/remember for later/i), {
       target: { value: "felt fine" },
     });
@@ -138,15 +141,13 @@ describe("ShotForm suggestion chips", () => {
         ) as HTMLInputElement
       ).value,
     ).toBe("");
-    // Pain resets to nothing selected, not to "None" — which would put an
-    // answer on a shot nobody answered for.
+    // BOTH chip groups reset to nothing selected, not to their first option —
+    // which would put an answer on a shot nobody answered for. `getAllByRole`
+    // covers pain and off days together, so a new group added to this sheet is
+    // held to the same rule without anyone remembering to add it here.
     screen
       .getAllByRole("radio")
       .forEach((chip) => expect(chip).not.toBeChecked());
-    expect(
-      (screen.getByPlaceholderText(/low, okay, good/i) as HTMLInputElement)
-        .value,
-    ).toBe("");
     expect(
       (
         screen.getByPlaceholderText(
@@ -240,7 +241,7 @@ describe("ShotForm field mapping", () => {
     fireEvent.change(byLabel("Type of T"), { target: { value: "enanthate" } });
     fireEvent.change(byLabel("Carrier oil"), { target: { value: "sesame" } });
     fireEvent.click(screen.getByRole("radio", { name: "Moderate" }));
-    fireEvent.change(byLabel("Mood"), { target: { value: "good" } });
+    fireEvent.click(screen.getByRole("radio", { name: /^Right before/ }));
     fireEvent.change(byLabel("Notes"), { target: { value: "smooth one" } });
 
     fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
@@ -256,7 +257,7 @@ describe("ShotForm field mapping", () => {
       testosteroneEster: "enanthate",
       carrierOil: "sesame",
       pain: "moderate",
-      mood: "good",
+      offDays: "right-before",
       notes: "smooth one",
     });
     expect(saved.id).toBeTruthy();
@@ -291,6 +292,56 @@ describe("ShotForm field mapping", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
+  it("refuses a shot dated tomorrow, in its own words", () => {
+    // A different mistake from a mistyped year, and it must not borrow that
+    // message: the year is fine, the date is real, and the person has dated a
+    // dose to a day that has not happened. Ordering is the trap — 9999 is ALSO
+    // in the future, so checking "after today" first would swallow the year
+    // typo and answer it with a bound nobody typed.
+    const onAddShot = vi.fn();
+    render(<ShotForm onAddShot={onAddShot} />);
+    const tomorrow = addDaysCivil(takenDateRange().max, 1);
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: tomorrow },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+
+    expect(onAddShot).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent(/after taking it/);
+    expect(screen.getByRole("alert")).toHaveTextContent(takenDateRange().max);
+    expect(screen.getByLabelText("Date")).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
+  });
+
+  it("calls a FUTURE mistyped year a year problem, not a future-date one", () => {
+    // The case that pins the ordering, and the one the 0999 test cannot reach:
+    // 9999 satisfies BOTH rules, so whichever branch runs first wins. Answering
+    // it with "nothing later than <today>" would name a bound the person never
+    // typed and say nothing about the year, which is the actual slip.
+    const onAddShot = vi.fn();
+    render(<ShotForm onAddShot={onAddShot} />);
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: "9999-01-01" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+
+    expect(onAddShot).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent(/Check the year/);
+  });
+
+  it("still accepts TODAY, which is what logging just before injecting is", () => {
+    const onAddShot = vi.fn();
+    render(<ShotForm onAddShot={onAddShot} />);
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: takenDateRange().max },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+
+    expect(onAddShot).toHaveBeenCalledTimes(1);
+  });
+
   it("refuses a mistyped year, and says it is the year", () => {
     // The failure this exists for: browsers auto-fill the segments you have not
     // typed, so `08` into a cleared field yields `0008-08-05` — the year read as
@@ -319,7 +370,10 @@ describe("ShotForm field mapping", () => {
     // "1900 to 2027" while the real bound was 2027-08-13 — so a date late in
     // the final year was refused by a message listing the very year that had
     // just been typed, leaving nothing to work out.
-    const { min, max } = shotDateRange();
+    // `takenDateRange`, not `shotDateRange`: the date-taken field stops at
+    // today, and naming the wider planned-date bound would recreate the very
+    // bug this comment describes — a message listing a date the form refuses.
+    const { min, max } = takenDateRange();
     expect(screen.getByRole("alert")).toHaveTextContent(min);
     expect(screen.getByRole("alert")).toHaveTextContent(max);
 
@@ -364,7 +418,19 @@ describe("ShotForm field mapping", () => {
     const sized = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
       .filter(
         ([, sel, body]) =>
-          /\b(input|textarea|select)\b/.test(sel) && /font-size:/.test(body),
+          // SUBSTRING, not a word boundary. `_` is a word character, so
+          // `\b(input)\b` does not match `.interval-field__input` — a class on a
+          // real <input> that this branch added. Giving it a `font-size` later
+          // would out-specify the coarse-pointer rule (0,1,0 beats 0,0,1; a
+          // media query adds no specificity), zoom the Settings cadence field on
+          // iOS, and leave `sized` at length 2 so this stayed green. Measured
+          // both ways: with the old pattern the hazard passes, with this one it
+          // fails on length 3.
+          //
+          // Matching too widely is the safe direction. A false positive trips
+          // the length assertion and asks a human to look; a false negative is
+          // the silent pass this test exists to prevent.
+          /(input|textarea|select)/i.test(sel) && /font-size:/.test(body),
       )
       .map(([, sel, body]) => ({
         selector: sel.replace(/\s+/g, " ").trim(),
@@ -489,7 +555,7 @@ describe("ShotForm field mapping", () => {
       "testosteroneEster",
       "carrierOil",
       "pain",
-      "mood",
+      "offDays",
       "notes",
     ] as const) {
       expect(saved[key]).toBeUndefined();
@@ -578,7 +644,7 @@ describe("ShotForm draft publishing", () => {
     testosteroneEster: "",
     carrierOil: "",
     pain: "",
-    mood: "",
+    offDays: "",
     notes,
   });
 
@@ -858,6 +924,53 @@ describe("ShotForm draft publishing", () => {
 
     expect(ref.current).not.toBeNull();
     expect(ref.current!.date).toBe(todayLocalISO());
+  });
+
+  it("lets a restored future-dated shot be edited without touching its date", () => {
+    // Import is deliberately NOT held to the taken-date bound, so a backup can
+    // legitimately restore an entry dated ahead. Blocking Save on a date the
+    // user never typed is a dead end: the message blames them for the one field
+    // they did not change and offers no way out but to alter their own record.
+    const onUpdateShot = vi.fn();
+    const future = addDaysCivil(takenDateRange().max, 30);
+    const editing: ShotEntry = { id: "e1", date: future, notes: "orig" };
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        onUpdateShot={onUpdateShot}
+        editingShot={editing}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Notes"), {
+      target: { value: "fixed the typo" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Update shot/i }));
+
+    expect(onUpdateShot).toHaveBeenCalledTimes(1);
+    expect(onUpdateShot.mock.calls[0][0].date).toBe(future);
+  });
+
+  it("still refuses a future date the user TYPES into an edit", () => {
+    // The other half, and what stops the escape hatch becoming a way in: only
+    // an UNCHANGED stored date is allowed through.
+    const onUpdateShot = vi.fn();
+    const editing: ShotEntry = { id: "e1", date: "2026-05-01", notes: "orig" };
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        onUpdateShot={onUpdateShot}
+        editingShot={editing}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: addDaysCivil(takenDateRange().max, 1) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Update shot/i }));
+
+    expect(onUpdateShot).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent(/after taking it/);
   });
 
   it("lets an edit's date be put back without leaving the form dirty", () => {
@@ -1149,6 +1262,17 @@ describe("ShotForm — the planned date", () => {
 
     expect(onUpdateShot).not.toHaveBeenCalled();
     expect(screen.getByRole("alert")).toHaveTextContent(/Check the year/i);
+    // And it must name the PLANNED bound, which runs a year ahead -- not the
+    // date-taken bound, which stops at today. Asserting only "Check the year"
+    // passed happily while the message claimed a planned date could not be
+    // after today, contradicting the picker beside it and refusing a value that
+    // in fact saves. A message naming the wrong boundary is the defect this
+    // whole family of messages exists to avoid.
+    const plannedMax = shotDateRange().max;
+    expect(screen.getByRole("alert")).toHaveTextContent(plannedMax);
+    expect(screen.getByRole("alert")).not.toHaveTextContent(
+      takenDateRange().max,
+    );
   });
 
   it("does not freeze the grid when the write was refused", () => {
@@ -1302,7 +1426,7 @@ describe("ShotForm — the planned date", () => {
       testosteroneEster: "",
       carrierOil: "",
       pain: "",
-      mood: "",
+      offDays: "",
       notes: "",
     };
     const onAddShot = vi.fn((): SaveOutcome => "saved");
@@ -1420,7 +1544,7 @@ describe("ShotForm — the planned date", () => {
           testosteroneEster: "",
           carrierOil: "",
           pain: "",
-          mood: "",
+          offDays: "",
           notes: "",
         }}
       />,
@@ -1498,7 +1622,7 @@ describe("ShotForm — the planned date", () => {
       testosteroneEster: "",
       carrierOil: "",
       pain: "",
-      mood: "",
+      offDays: "",
       notes: "",
     };
     render(
@@ -1600,7 +1724,7 @@ describe("ShotForm required/optional marking", () => {
 });
 
 describe("ShotForm — injection pain", () => {
-  const chip = (name: string) => screen.getByRole("radio", { name });
+  const chip = (name: string | RegExp) => screen.getByRole("radio", { name });
 
   it("names the field so you can tell what is being asked", () => {
     // "How the injection felt" was the roadmap's wording and never says pain,
@@ -1796,5 +1920,356 @@ describe("ShotForm — the pain group is one tab stop", () => {
     fireEvent.click(screen.getByRole("radio", { name: "Moderate" }));
     const form = document.querySelector("form")!;
     expect(form.querySelectorAll('input[name="pain"]:checked')).toHaveLength(1);
+  });
+});
+
+describe("every member of a field row is a field-cell", () => {
+  it("holds for every row in the sheet", () => {
+    /*
+     * `.form-row` is a flex row above 560px and `.field-cell` is `flex: 1 1 0`.
+     * A bare child gets `flex: 0 1 auto` with a max-content basis instead, takes
+     * the row, and starves its neighbours. The off-days fieldset shipped without
+     * the wrapper and did exactly that: measured in a browser, the pain cell was
+     * 1px at 600px and 8px above it, its four chips stacked vertically and
+     * painted over the next column, with "Injection pain" overprinting "Any days
+     * you felt off?".
+     *
+     * STATED HONESTLY: this is a structural check, and it cannot see the crush —
+     * jsdom computes no layout, so the widths above are browser-only. It guards
+     * the invariant that produces them, which is the most this environment can
+     * do; the real check is the browser pass, and the reason THIS one exists is
+     * that the browser pass swept 320–430px only, all below the breakpoint, so
+     * nothing it measured could have caught it.
+     */
+    render(<ShotForm onAddShot={vi.fn()} />);
+    const rows = [...document.querySelectorAll(".form-row")];
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      const strays = [...row.children].filter(
+        (child) => !child.classList.contains("field-cell"),
+      );
+      expect(
+        strays.map((el) => `${el.tagName.toLowerCase()}.${el.className}`),
+      ).toEqual([]);
+    }
+  });
+});
+
+describe("ShotForm — off days", () => {
+  const chip = (name: string | RegExp) => screen.getByRole("radio", { name });
+
+  it("saves the pattern the chip stands for, not its label", () => {
+    const onAddShot = vi.fn((shot: ShotEntry): SaveOutcome =>
+      shot ? "saved" : "ignored",
+    );
+    render(<ShotForm onAddShot={onAddShot} />);
+    fireEvent.click(chip(/^Right before/));
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+    expect(onAddShot.mock.calls[0][0].offDays).toBe("right-before");
+  });
+
+  it("offers the peak side as well as the trough", () => {
+    // The four-value version could only express the trough — the last 1–2 days
+    // before the next dose. Testosterone peaks 24–48h AFTER the injection, with
+    // estradiol rising alongside it, so anyone whose off days land there had to
+    // answer "here and there" and lose the pattern. Both windows are documented,
+    // and the cyclic one is what the guidance says to investigate.
+    const onAddShot = vi.fn((shot: ShotEntry): SaveOutcome =>
+      shot ? "saved" : "ignored",
+    );
+    render(<ShotForm onAddShot={onAddShot} />);
+    fireEvent.click(chip(/^Early on/));
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+    expect(onAddShot.mock.calls[0][0].offDays).toBe("right-after");
+  });
+
+  it("keeps the position in the accessible name, not only in the dots", () => {
+    // Short visible labels move the position into the strip, and the strip is
+    // aria-hidden — so the name is where that fact has to survive, or it exists
+    // only in something assistive tech cannot see (WCAG 1.3.1). And the name
+    // starts with the visible text, so voice control still matches (2.5.3).
+    render(<ShotForm onAddShot={vi.fn()} />);
+    const early = chip(/^Early on/);
+    expect(early).toHaveAccessibleName(
+      "Early on — the days right after your previous shot",
+    );
+
+    const row = early.closest(".off-days-row")!;
+    expect(row.querySelector(".off-days-row__label")!.textContent).toBe(
+      "Early on",
+    );
+    expect(
+      row.querySelector(".off-days-row__strip")!.getAttribute("aria-hidden"),
+    ).toBe("true");
+  });
+
+  it("draws all five rows, each with an eight-slot strip", () => {
+    render(<ShotForm onAddShot={vi.fn()} />);
+    const rows = document.querySelectorAll(".off-days-row");
+    expect(rows).toHaveLength(5);
+    rows.forEach((r) =>
+      expect(r.querySelectorAll(".off-days-row__strip i")).toHaveLength(8),
+    );
+  });
+
+  it("offers Clear only once something is set, and it returns to unrecorded", () => {
+    // `undefined` is not `"none"`: nobody answered, versus there weren't any.
+    // Clear is the ONLY way back to the first, so without it a mis-tap on an
+    // optional field would be permanent.
+    const onAddShot = vi.fn((shot: ShotEntry): SaveOutcome =>
+      shot ? "saved" : "ignored",
+    );
+    render(<ShotForm onAddShot={onAddShot} />);
+
+    expect(screen.queryByRole("button", { name: "Clear off days" })).toBeNull();
+
+    fireEvent.click(chip(/^Here and there/));
+    expect(chip(/^Here and there/)).toBeChecked();
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear off days" }));
+    expect(chip(/^Here and there/)).not.toBeChecked();
+    expect(screen.queryByRole("button", { name: "Clear off days" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+    expect(onAddShot.mock.calls[0][0].offDays).toBeUndefined();
+  });
+
+  it("hands focus on when Clear removes itself", () => {
+    // Clear's rendering condition IS the value it clears, so it deletes itself
+    // on activation. Without a hand-off, focus lands on <body> inside a dialog
+    // whose #root is inert, where the trap cannot re-engage — the nine-defect
+    // class from slice B.
+    render(<ShotForm onAddShot={vi.fn()} />);
+    fireEvent.click(chip(/^Most days/));
+    const clear = screen.getByRole("button", { name: "Clear off days" });
+    clear.focus();
+    fireEvent.click(clear);
+    // Synchronous, not `expectFocusSettled`: no dialog unmounts here. The form
+    // stays mounted and only the button goes, so React has already re-rendered
+    // by the time `fireEvent` returns — the same helper the pain group's Clear
+    // uses, for the same reason.
+    expectFocusSomewhereUseful("clearing off days");
+    // `expectVisibleFocusRing` alone is VACUOUS here, exactly as the pain
+    // group's test records: the focused element is the `opacity: 0` radio,
+    // which matches the stylesheet's generic `input:focus` rule, so the guard
+    // passes whether or not the row's own ring exists. Assert the relationship
+    // the ring actually depends on — focus is inside the ROW, which is what
+    // `.off-days-row:has(input:focus-visible)` paints — and which row it is.
+    const active = document.activeElement as HTMLInputElement;
+    expect(active.closest(".off-days-row")).not.toBeNull();
+    expect(active.value).toBe(OFF_DAYS_PATTERNS[0]);
+    expectVisibleFocusRing("after clearing off days");
+  });
+
+  it("keeps its own Clear separate from the pain group's", () => {
+    // Two Clear controls can be on screen at once, and both are named "Clear".
+    // Only the accessible name tells them apart, so clearing one must not
+    // disturb the other.
+    render(<ShotForm onAddShot={vi.fn()} />);
+    fireEvent.click(chip("Moderate"));
+    fireEvent.click(chip(/^Here and there/));
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear off days" }));
+    expect(chip("Moderate")).toBeChecked();
+    expect(chip(/^Here and there/)).not.toBeChecked();
+  });
+
+  it("restores a stored pattern, and ignores one the enum does not know", () => {
+    // Storage is lenient — `sanitizeShots` vets only id and date — so a value
+    // predating the enum reaches the seed. Cast unchecked it would put a
+    // phantom into a group where no chip matches and Clear is the only way out.
+    const { unmount } = render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        onUpdateShot={vi.fn()}
+        editingShot={{ id: "a", date: "2026-08-05", offDays: "right-before" }}
+        shots={[]}
+      />,
+    );
+    expect(chip(/^Right before/)).toBeChecked();
+    unmount();
+
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        onUpdateShot={vi.fn()}
+        editingShot={
+          {
+            id: "b",
+            date: "2026-08-05",
+            offDays: "a bit rough",
+          } as unknown as ShotEntry
+        }
+        shots={[]}
+      />,
+    );
+    screen.getAllByRole("radio").forEach((c) => expect(c).not.toBeChecked());
+    expect(screen.queryByRole("button", { name: "Clear off days" })).toBeNull();
+  });
+
+  it("is one tab stop while nothing is chosen", () => {
+    // `tabbable` reports EVERY radio as tabbable while none is checked — right
+    // about focusability, wrong about tab order. The trap owns Tab, so without
+    // its unchecked-group hatch the four chips become four stops in the state
+    // every new shot starts in.
+    render(<ShotForm onAddShot={vi.fn()} />);
+    const form = document.querySelector("form")!;
+    expect(form.querySelectorAll('input[name="offDays"]')).toHaveLength(5);
+    expect(form.querySelectorAll('input[name="offDays"]:checked')).toHaveLength(
+      0,
+    );
+    fireEvent.click(chip("Not really"));
+    expect(form.querySelectorAll('input[name="offDays"]:checked')).toHaveLength(
+      1,
+    );
+  });
+
+  describe("the recall window", () => {
+    it("names the real span rather than saying 'this week'", () => {
+      // Cadence here runs 3–14 days, so a fixed word would be wrong for most
+      // people. Naming the span is also what lets the four answers keep one
+      // meaning each at any interval length.
+      render(
+        <ShotForm
+          onAddShot={vi.fn()}
+          shots={[{ id: "prev", date: "2026-08-12" }]}
+        />,
+      );
+      fireEvent.change(screen.getByLabelText("Date"), {
+        target: { value: "2026-08-25" },
+      });
+      expect(
+        screen.getByText("Since your previous shot · 13 days"),
+      ).toBeInTheDocument();
+    });
+
+    it("re-measures when the date is changed", () => {
+      render(
+        <ShotForm
+          onAddShot={vi.fn()}
+          shots={[{ id: "prev", date: "2026-08-12" }]}
+        />,
+      );
+      fireEvent.change(screen.getByLabelText("Date"), {
+        target: { value: "2026-08-19" },
+      });
+      expect(
+        screen.getByText("Since your previous shot · 7 days"),
+      ).toBeInTheDocument();
+      fireEvent.change(screen.getByLabelText("Date"), {
+        target: { value: "2026-08-13" },
+      });
+      expect(
+        screen.getByText("Since your previous shot · 1 day"),
+      ).toBeInTheDocument();
+    });
+
+    it("names the window of the shot being EDITED, not of the latest one", () => {
+      // The screen where the first wording ("since your last shot") was false.
+      // Editing a shot from months back measures the gap before IT — correctly
+      // — while "your last shot" means the recent one, so the number and the
+      // words described different things.
+      render(
+        <ShotForm
+          onAddShot={vi.fn()}
+          onUpdateShot={vi.fn()}
+          editingShot={{ id: "old", date: "2026-05-20" }}
+          shots={[
+            { id: "older", date: "2026-05-13" },
+            { id: "old", date: "2026-05-20" },
+            { id: "recent", date: "2026-08-25" },
+          ]}
+        />,
+      );
+      expect(
+        screen.getByText("Since your previous shot · 7 days"),
+      ).toBeInTheDocument();
+    });
+
+    it("puts the window in the group's NAME, not a description of it", () => {
+      // A description on a fieldset was the first attempt and it was a
+      // prediction: group-level descriptions are announced inconsistently, and
+      // iOS VoiceOver — this app's primary platform — does not reliably surface
+      // fieldset semantics at all. A NAME is announced on entering the group
+      // everywhere, so this shape does not rest on support we cannot check.
+      render(
+        <ShotForm
+          onAddShot={vi.fn()}
+          shots={[{ id: "prev", date: "2026-08-12" }]}
+        />,
+      );
+      fireEvent.change(screen.getByLabelText("Date"), {
+        target: { value: "2026-08-25" },
+      });
+      // EXACT, not `\s*`. The loose form was the first version and it would
+      // have passed either way — JSX strips the newline between the question
+      // and the span, so the name really did compute as "...off?The 13...".
+      // Verified against the browser's own accname computation, which is what
+      // this string is a stand-in for.
+      const group = screen.getByRole("group", {
+        name: "Any days you felt off? Since your previous shot · 13 days",
+      });
+      expect(group).toBeInTheDocument();
+      // And nothing hangs off a description that may never be read.
+      expect(group.getAttribute("aria-describedby")).toBeNull();
+    });
+
+    it("holds still under the ✓ instead of blinking out", () => {
+      // The sheet must not change under its own confirmation — the rule the
+      // post-save field reset was deleted for. This broke it by a different
+      // route: saving a NEW shot puts it into `shots` with the date on screen,
+      // and a same-day shot counts as the one before, so the shot became its
+      // own predecessor, the gap read 0, and the window vanished. It blinked
+      // out under "✓ Saved" while the sheet sat there for ~440ms.
+      const saved = { id: "new", date: "2026-08-25" };
+      const { rerender } = render(
+        <ShotForm
+          onAddShot={vi.fn()}
+          shots={[{ id: "prev", date: "2026-08-12" }]}
+          confirming={false}
+        />,
+      );
+      fireEvent.change(screen.getByLabelText("Date"), {
+        target: { value: "2026-08-25" },
+      });
+      expect(
+        screen.getByText("Since your previous shot · 13 days"),
+      ).toBeInTheDocument();
+
+      // What App does at save: the new shot lands in `shots` and the ✓ starts.
+      rerender(
+        <ShotForm
+          onAddShot={vi.fn()}
+          shots={[{ id: "prev", date: "2026-08-12" }, saved]}
+          confirming
+        />,
+      );
+      expect(
+        screen.getByText("Since your previous shot · 13 days"),
+      ).toBeInTheDocument();
+    });
+
+    it("carries the anchor in the group's name even with no length", () => {
+      render(<ShotForm onAddShot={vi.fn()} shots={[]} />);
+      expect(
+        screen.getByRole("group", {
+          name: "Any days you felt off? Since your previous shot",
+        }),
+      ).toBeInTheDocument();
+    });
+
+    it("still names the window when it cannot measure it", () => {
+      // The first entry has no predecessor, so there is no length — and this is
+      // exactly where the anchor used to disappear, leaving the shot with the
+      // least context saying nothing about what window was being asked about.
+      // "Since your previous shot" is true even when the app cannot compute it.
+      render(<ShotForm onAddShot={vi.fn()} shots={[]} />);
+      expect(
+        screen.getByRole("radio", { name: "Not really" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Since your previous shot")).toBeInTheDocument();
+      // ...and no invented length beside it.
+      expect(screen.queryByText(/·/)).toBeNull();
+    });
   });
 });

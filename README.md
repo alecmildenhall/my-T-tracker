@@ -404,6 +404,7 @@ Worth knowing what this rule is suspending, since it stops being free the day so
     - Tab *within* the date and time inputs and confirm the segments still step (this broke once already).
     - Confirm no new field lands a segmented input first or last in the sheet's tab order, which is the ordering the escape hatch is silently relying on.
     - Confirm the focus ring is actually painted on every new hand-off target, at 390px — the ring guard proves a rule exists, not that it is on screen.
+    - **Sweep a DESKTOP width too, not only phone widths.** Added after the off-days field shipped a broken layout that every phone width was structurally unable to see: `.form-row` is a flex row only above 560px, and the whole sweep was 320–430px. A field added without its `.field-cell` wrapper took the row and left the pain group 8px wide, its chips stacked and overprinting the next column — the state every sheet opened in, which repaired itself the moment a chip was tapped. 390 and 1200 at minimum; the breakpoint is where this class of bug lives, so a checklist that never crosses one cannot find it.
 
   **Added by the cadence PR — done, and it found one thing.** Each was structurally invisible to jsdom, so the suite being green said nothing about any of them:
     - ✅ **The disabled shot-day select, in both the first-run card and Settings.** Tab out of the interval box on the card, and *tap* the select directly in Settings — the pointer path, which fires the box's blur first and disables the select before the tap can land. Focus went to the notice both times, never `<body>`.
@@ -437,6 +438,12 @@ Worth knowing what this rule is suspending, since it stops being free the day so
 
 - [x] Slow the sheet exit from **200ms to 240ms** (`SHEET_EXIT_MS` in `Modal.tsx`, plus the two matching `200ms` values in `styles.css` — they are a set and must move together, or the sheet unmounts mid-slide). The easing is already right: emphasized accelerate is correct for something leaving. The problem is that 200ms across a full-screen surface means it is travelling fastest at the instant it vanishes, which reads as dropped rather than dismissed. 240 keeps exits quick — Material's reasoning is that they are "less of a priority for the user's attention than the next task" — while giving the surface enough time to look like it left on purpose.
 
+  **A commit gets the ✓ beat; a cancel goes straight out. The axis is reversibility, not which surface it is** — written down because it has now been derived twice from scratch, once for the sheet and once for the first-run card, and step 6 adds two more surfaces that will need a dismiss control. Measured on the real build: card **Done 460ms**, sheet **Save 449ms**, sheet **✕ 244ms**. The two commits match each other; the cancel is deliberately the odd one out.
+
+  Dismissing the sheet is fully reversible — the draft is preserved and reopening restores it — so there is nothing to acknowledge and the beat would only be a delay. `Done` is irreversible: the card never returns and no Settings control brings it back. Acknowledging an act you cannot undo is exactly when a confirm beat earns its place.
+
+  Both numbers sit where the guidance wants them (244ms inside the 200–300ms standard band, 449/460 inside the 300–500ms band for larger transitions), and Material is explicit that timing should match the complexity of the change rather than be uniform — so the difference is the point, not an inconsistency. **460ms is the app's longest anything and sits near the 500ms line where motion starts reading as sluggish**; it was checked on a phone and does not, so it stays. If that ever changes, the fix is a separate exit constant for the card at ~150ms, keeping `CONFIRM_MS` shared — and the guard that pins every CSS copy of `SHEET_EXIT_MS` has to grow a second value rather than lose the card.
+
   **Not confetti.** It is seen ~52 times a year and has to survive every one of them, including the weeks when the shot hurt. Confetti is also the wrong register for a routine act of self-care, and spends the good feeling that belongs to the milestones.
 
   Sound and haptic wait for the Capacitor build (iOS Safari has no Vibration API), and plenty of people will keep both off — in public, a T tracker making a noise is an outing risk rather than a preference — so the visual and the words must carry it alone. Under `prefers-reduced-motion` the movement goes and the message stays: still green, still ✓, the row still tinted.
@@ -447,6 +454,8 @@ Worth knowing what this rule is suspending, since it stops being free the day so
 - [x] Ensure greetings and milestones are **name-optional** end to end: with only a shot day set, still show "Happy shot day!"; with only a start date set, still show "Congrats on 1 year on T!" — the preferred name only personalizes the message, it's never required to receive one.
 - [x] Add saved custom injection site/position options for faster repeated logging — _reuse chips on the log form plus a Settings → Manage saved values panel to rename/remove them_
 - [ ] Redesign the UI around a phone-first, warm, readable, non-corporate visual direction
+
+  **Pick the app icon here.** It is currently a placeholder (`public/icon.svg`, the History tab's chart mark, standing in for Vite's logo), and it is the visual identity's most public surface, so it belongs with this work rather than with the PWA bullet that consumes it. Two constraints come from elsewhere and are not stylistic: it must **not announce what the app tracks** (the disguise-mode threat model — a home screen is visible to whoever is nearby), and it must **survive Android's adaptive-icon crop**, which cuts to a centred circle at 80% of the width. Deciding both while drawing is one judgement; discovering the crop afterwards is two. Everything raster follows from this choice in one mechanical pass — see **PWA support** in Mid-Term.
 
   **Do the sheet's close path here, not before.** `closeSheet` ends the exit on a `setTimeout(SHEET_EXIT_MS)`, and that timer is a *proxy* for "the transition ended" — the shape CLAUDE.md warns about, which has cost this project two defect classes already. Deferred rather than fixed on its own, deliberately, and the reasoning is worth keeping because the obvious framing of it is wrong:
 
@@ -545,15 +554,25 @@ Worth knowing what this rule is suspending, since it stops being free the day so
 
     **The question is "Any days you felt off?"**, asked once a shot, answered with one tap:
 
-    > `Not really` · `Here and there` · `Right before this one` · `Most of the time`
+    > `Not really` · `Early on` · `Here and there` · `Right before` · `Most days`
 
     **Why "off" rather than "how was it".** More answerable, because it is more memorable — you notice feeling off, you don't notice feeling normal, so counting good days is counting non-events. It is also vague in the useful direction: it covers flat, irritable, tearful, foggy and dysphoric without making anyone pick which, and without the app deciding any of them is a symptom. This overrides the obvious precedent — WHO-5 is deliberately worded toward wellbeing rather than symptoms — because that instrument is answered under supervision and this one is tapped one-handed next to a sharps bin.
 
     **Why the answers name a pattern, not an amount.** The pre-shot trough is the one insight this app can produce and a daily mood tracker structurally cannot, because only this app knows where in the interval you were when you felt it. A pure count cannot see it: three off days scattered and three stacked before your shot answer identically. Naming the pattern gets both in a single tap, and produces the sentence that leads somewhere — *"the days right before my shot were the off ones, four cycles running"* is a conversation about a shorter interval or a split dose, where *"I feel rough sometimes"* is not.
 
-    **Accepted costs, both real.** It is **not a clean ordinal** — "Here and there" is not more or less than "Right before this one", so there is no line to plot and no average to take; charts count how often each pattern appears. And someone whose off days land *after* the shot (the peak-side pattern, reported for spikes rather than troughs) has nowhere true to put them and will pick "Here and there". Miscategorised is worse than missing, so that is a genuine loss — accepted because the pre-shot trough is far more commonly reported, and a fifth value is additive and free to add while pre-GA.
+    **The peak side is one of the five, and that was not the original plan.** This bullet used to list four answers and record the after-the-shot pattern as an accepted loss — "has nowhere true to put them and will pick 'Here and there'" — with a fifth value noted as free to add later. It was added, because the loss turned out to be bigger than the note implied. Testosterone peaks **24–48h after** the injection with estradiol rising alongside it (reported as weepy, emotional, irritable); the trough is the mirror, the last 1–2 days before the next dose on a swing that reaches 2.5–3:1. Both are documented, and the trans-specific guidance makes **cyclic symptoms the trigger** for measuring peak and trough levels and, if the swing is wide, shortening the interval or moving to a transdermal. A four-answer version could not produce the sentence that starts that conversation.
 
-    **Wording rules that outlast the options.** Never *"this week"* — cadence may be 3 days or 14, so the card names the real span ("Since your last shot · 13 days, 12–25 Aug"). Every chip anchors to a shot rather than to a position in the span, so they read as one set: an earlier draft mixed "Early on" (a place in the interval) with "Before this shot" (a distance from an event). And "before this shot" alone is ambiguous — the *entire* window is before this shot — so only **"right before"** says near it.
+    **Accepted costs, still real.** It is **not a clean ordinal** — "Here and there" is not more or less than "Right before", so there is no line to plot and no average to take; charts count how often each pattern appears. And "off days both early *and* late" still has no home, so it stays a **best-fit** question. Multi-select is not the fix: two answers lit is a tally again, and the tally is what this design exists to beat.
+
+    **Wording rules that outlast the options.** Never *"this week"* — cadence may be 3 days or 14, so the span line names the real window ("Since your previous shot · 13 days"). And "before this shot" alone is ambiguous, since the *entire* window is before this shot, so only **"right before"** says near it.
+
+    **The anchor is always shown; only the length is conditional.** It used to vanish when the length was unknown, which is the one shot where it was needed most — a first entry has no predecessor to measure from, so the only surface naming the window disappeared for the person with least context, and the question itself never says "since when". "Since your previous shot" is true even when the app cannot compute it, because someone logging their first shot here may have been injecting for years.
+
+    **"Previous", never "last", in every label set.** "Your last shot" means the most recent one, so on an entry from months ago it names a different shot from the one actually measured. The rule was once applied to two of the three sets and missed on the spoken labels, where only a screen-reader user would have met the contradiction — so it is stated here as covering all of them, and a test holds every set to it.
+
+    **The anchor-on-a-shot rule was relaxed, deliberately, and only where a picture replaced it.** It used to say every answer must name a shot rather than a position, and it rejected "Early on" by name for mixing the two frames. That rule existed because the WORDS alone had to carry the anchor. In the log sheet they no longer do — each row draws where the days sat — so the short labels are "Early on" and "Right before" and the strip supplies the frame. It still holds everywhere the answer stands **alone**: the History facet and the row pill use the long forms, which is why `offDaysLabel` and `offDaysShortLabel` are two functions and not one.
+
+    **Short labels moved the meaning into a picture, so it had to be put back in words for anyone who cannot see it.** The strip is `aria-hidden`, so each row's accessible name carries the full phrasing — "Early on — the days right after your last shot" — starting with the visible text, which is what WCAG 2.5.3 asks and what keeps voice control matching. Without that the position would exist only where assistive tech cannot reach it (1.3.1).
 
     **Deferred out of the B½ spine, deliberately** — see the slice B½ item below for why.
   - **Bleeding & cramps — optional, opt-in, neutrally named** (see the safety model below).
@@ -651,7 +670,45 @@ Worth knowing what this rule is suspending, since it stops being free the day so
     4. **The cadence UI: weekday sets, asked rhythm-first** — `shotDay` becomes `shotDays`, and the two fields become the three named choices settled above. Its own PR, deliberately, and the reasoning generalises: it rewrites `plannedDateFor` from one slot per cycle to several, which means the adherence sweep is under construction at the same time as the thing it guards. Doing that on top of a branch whose last three reviews each found a HIGH *in that same seam* is how slice B happened. Nothing waits on it either — charts are slice D — and pre-GA means there is no migration cost to doing it later. That standing rule removes the urgency rather than creating it.
 
        It also deletes an open question rather than answering it: **do not write an error message for a `3.5` interval in the meantime.** Today an invalid interval is silently discarded, which is the failure class this codebase treats as severe — but the twice-weekly user stops needing a number the model cannot hold the moment this lands, so any copy written now is copy written to be deleted. Accept one PR of silence.
-    5. **"Any days you felt off?"** — deferred out of the spine on purpose. Every open question about it was a guess at vocabulary for an interval whose length the app does not yet track, and step 2 is what makes that length real. The same reasoning the soreness card already uses for its buckets ("settle it when cadence lands rather than guessing now"). The four options are settled; what is not settled is whether they read right against a 3-day interval, and only shipping cadence answers that.
+    5. ~~**"Any days you felt off?"**~~ — **done.** `mood?: string` became
+       `offDays?: OffDaysPattern`, renamed rather than retyped for the reason
+       `painScore` became `pain`: the stored value is a distribution across an
+       interval, not a mood rating. Search narrowed to notes and the field
+       joined pain as a facet, `mood` left `TextField` (where ManageValues had
+       never surfaced it), and the chips get no colour ramp — pain rises
+       none → severe so colour rising with it says something true, while these
+       four are a pattern and a ramp would assert an order they do not have.
+
+       **The deferral paid off, which is worth recording because deferring
+       looked like drift at the time.** This was pulled out of the spine because
+       every open question about it was a guess at vocabulary for an interval
+       whose length the app did not yet track — the same reasoning the soreness
+       card uses for its own buckets. Cadence made that length real, and the
+       question it was waiting on had a real answer: the options blur at short
+       intervals. Over three days "Most days" and "Right before" converge.
+       The fix is NOT to vary the answers by interval, which would make one stored
+       value mean different things for different users — the overloaded-value
+       bug spread across a population instead of a field. One vocabulary, and
+       the span line carries it: "Since your previous shot · 13 days",
+       named rather than assumed because cadence runs 3–14 days and "this week"
+       would be wrong for most people. The dates are deliberately not spelled
+       out; every date this app shows is the stored ISO string.
+
+       **Two limits accepted, both real and both found by checking the research
+       rather than by reasoning.** The answers are neither mutually
+       exclusive (off days both scattered *and* clustered fit two chips) nor
+       collectively exhaustive. The second was closed by **adding the fifth
+       answer** (`right-after`) rather than accepting it — see the bullet above
+       for the evidence. The first remains: "off both early and late" fits two
+       answers, so it stays a best-fit question. Multi-select is **not** the fix:
+       two lit is a tally again, and the tally is what this design exists to beat.
+
+       Retrospective recall is the standing trade, taken knowingly: the
+       literature says people overestimate symptom **intensity and duration**,
+       and this question asks for neither — only where the bad days sat. EMA
+       would fix the bias and is rejected by design, since nothing here may
+       create a pull toward daily logging.
+
     6. **Soreness and bleeding** — the two remaining product surfaces, each with its own safety model, each large enough to deserve its own review.
 
     Decided before implementation:
@@ -717,6 +774,22 @@ Local-only storage is a privacy guarantee, not a persistence one, and the browse
 ### Mid-Term (v0.3 → v0.5)
 
 - Add **PWA support** (installable, offline-first) — _also the durability fix for iOS: see **Data Durability** above. Pair it with an install prompt and `navigator.storage.persist()`, and treat install as the point at which the data becomes reasonably safe._
+
+  **The install icons are listed here, but the PWA is not what gates them — the icon choice is.** Worth separating, because an earlier draft of this item filed them all under "PWA work" and that would send someone looking for a blocker that isn't there:
+
+  - **`apple-touch-icon` needs no manifest and no service worker** — one `<link>` and one PNG. It could ship the day the artwork exists.
+  - **The manifest's `icons` genuinely wait for the manifest**, since nothing reads them until one exists.
+
+  Both are **deliberately deferred to a single pass after the icon is chosen** (see below). `public/icon.svg` is enough for a browser tab and nothing else, and each target fails *silently* without a raster — the app looks fine right up until someone installs it:
+
+  - **iOS ignores SVG favicons and needs `<link rel="apple-touch-icon">` as a PNG (180×180).** With none, adding to the home screen has historically used **a screenshot of the page** as the icon — which here means a thumbnail of Home, greeting and recent shots included, sitting on the springboard. That is a discretion bug rather than a cosmetic one, and it would land on exactly the install this project otherwise pushes people toward for durability. _Verify the current behaviour against WebKit's documentation before relying on the screenshot detail — the fallback has changed before, and the fix (ship the PNG) is the same either way._
+  - **Android/Chrome read the manifest's `icons`** — 192 and 512 PNGs — and apply an **adaptive-icon mask**, so a `purpose: "maskable"` variant is needed as well, with its content inside the safe zone (a centred circle of 80% diameter). The current mark runs close to its own edges and would be clipped, so the maskable copy needs **more padding**, not the same drawing at another size.
+  - **`theme_color` / `background_color` in the manifest duplicate `<meta name="theme-color">` in `index.html`** (`#020617`, also the canvas gradient's first stop in `styles.css`). That is a set that must move together — the same trap as `SHEET_EXIT_MS` and its two stylesheet copies — so pin them with a test rather than hand-syncing three files.
+  - **`name` / `short_name` are a discretion decision, not branding.** They are what the OS suggests when someone adds the app, and on iOS the user can edit that name as they add it — the one place the name half of disguise mode already works today. Decide the default deliberately, alongside that feature rather than apart from it.
+
+  **What is settled here is the constraint, not the artwork — an earlier draft of this item said the icon was "already decided", and that was wrong.** The mark shipped today (`public/icon.svg`, the History tab's chart) is a **placeholder chosen to be safe rather than final**; the actual icon has not been picked. What holds regardless of what replaces it: the icon must not announce what the app tracks. Install is the moment that starts mattering — a tab is glanced at by its owner, a home screen is visible to whoever is nearby — so it belongs with the app-lock and disguise-mode items rather than with visual design.
+
+  **Do the raster work in one pass, after the icon is chosen, not before.** The padding a maskable icon needs inside Android's safe circle is a property of the drawing, so exporting sizes from a placeholder means making that judgement twice. Nothing is lost by waiting: the icon has **no bearing on durability**, which comes from being installed, not from being pretty. Keeping a single source SVG until then is what makes the eventual export one mechanical step.
 - Add the **storage-at-risk defences**: an install offer that explains *why*, a `storage.persist()` request, a dismissible banner while `storage.persisted()` is false, and a backup nudge when the last export is stale — _eviction is silent and undetectable after the fact, so these are the only protection there is (see **Data Durability**)_
 - Add **encrypted backup files** with clear restore instructions — _the durability answer, not a convenience: manual export is the stopgap. Worth a gentle periodic reminder to export, since eviction is silent. Design the key-loss path up front (see **Data Durability**) — a key nobody can reset trades one kind of permanent loss for another._
 - Add **app disguise mode**: change app icon and name for discretion (presets: clock, calculator, football, weather). This is a _cover_ (hides that the app is a T tracker), not encryption — it does not make the stored data unreadable. _Platform limit: iOS supports alternate app icons but not renaming an installed app, so the name half of this only works on Android and on a home-screen PWA (where the user names the shortcut themselves)._
@@ -732,7 +805,7 @@ Local-only storage is a privacy guarantee, not a persistence one, and the browse
   - **Focus is handed on only when the card was holding it.** The same commit path runs the hand-off, so an unconditional one pulled focus off the tab the user had just tapped. `firstRunDone` is not derivable from anything else, which is what separates it from the soreness card's open/closed state — that one really does follow from whether a later shot exists.
 - ~~Add optional **symptom tagging** (fatigue, anxiety, headache)~~ — _pulled earlier into **slice B½ (Logging model)**; charts need the model first_
 - Add a local-only **“shot due soon”** reminder — _builds on the interval/cadence concept introduced in slice B½_
-- ~~Add improved **mood encoding** (emoji scale or fixed categories)~~ — _pulled earlier into **slice B½**, and it landed as neither: one question ("Any days you felt off?") whose four answers name a **pattern** rather than rating an intensity, so a single tap can still surface the pre-shot trough_
+- ~~Add improved **mood encoding** (emoji scale or fixed categories)~~ — _pulled earlier into **slice B½**, and it landed as neither: one question ("Any days you felt off?") whose five answers name a **pattern** rather than rating an intensity, so a single tap surfaces the pre-shot trough — or the peak-side one, which a rating could not distinguish from it at all_
 - ~~Replace the raw 0–10 pain number with a friendlier **pain scale**: tappable None / Mild / Moderate / Severe chips~~ — _pulled earlier into **slice B½**; pain also demotes to a filter facet rather than a headline chart_
 - Add PDF export with charts and summary information for healthcare conversations
 - Improve desktop web layout for charts, review, exporting, and printing

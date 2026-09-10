@@ -5,7 +5,8 @@ import { WASH_ANIMATION } from "../utils/wash";
 import { formatTimeForDisplay } from "../utils/datetime";
 import { daysFromPlanned } from "../utils/schedule";
 import { painLabel } from "../utils/painLabel";
-import { isPainLevel } from "../types/shot";
+import { offDaysLabel } from "../utils/offDaysLabel";
+import { isOffDaysPattern, isPainLevel } from "../types/shot";
 
 /** Name of the wash keyframes, shared with styles.css. */
 
@@ -68,6 +69,38 @@ export const ShotListItem: React.FC<ShotListItemProps> = ({
   // Shown the way this device writes times; stored as 24-hour HH:MM either way.
   const timeLabel = shot.time ? formatTimeForDisplay(shot.time) : "—";
 
+  /**
+   * The optional details, as a list joined by a separator — NOT as fragments
+   * that each carry their own leading " • ".
+   *
+   * They did, and the separator then had nothing to separate from whenever the
+   * first field was absent: a shot logged with an off-days answer and no dose
+   * rendered "• Off days: Right after the previous shot", bullet first. Found by
+   * using the app rather than reading it, and the fast path makes it the common
+   * case rather than a rare one — off days is a single tap where dose and site
+   * are typing.
+   *
+   * The bug predates this field (`mood` had the identical shape), which is the
+   * argument for fixing the structure rather than this one call site: a
+   * separator belongs BETWEEN items, so the next optional field added here
+   * cannot reintroduce it.
+   *
+   * `isOffDaysPattern` is a guard, not a presence check — storage is lenient, so
+   * an unrecognised value reaches here and an unchecked lookup would render
+   * "Off days: " with nothing after it, exactly as pain once did.
+   */
+  const details: string[] = [];
+  if (shot.doseMg !== undefined) details.push(`Dose: ${shot.doseMg} mg`);
+  if (shot.injectionSite) details.push(`Site: ${shot.injectionSite}`);
+  if (shot.injectionSitePosition) {
+    details.push(`Position: ${shot.injectionSitePosition}`);
+  }
+  if (shot.testosteroneEster) details.push(`Type: ${shot.testosteroneEster}`);
+  if (shot.carrierOil) details.push(`Oil: ${shot.carrierOil}`);
+  if (isOffDaysPattern(shot.offDays)) {
+    details.push(`Off days: ${offDaysLabel(shot.offDays)}`);
+  }
+
   // The row is NOT itself a control, deliberately. Making the whole card
   // activate put a card-sized tap target a thumb's width from the button you
   // press most, and what it opened was a modal editor rather than a detail
@@ -96,18 +129,9 @@ export const ShotListItem: React.FC<ShotListItemProps> = ({
         )}
       </header>
 
-      <div className="shot-list-item__meta">
-        {shot.doseMg !== undefined && <span> Dose: {shot.doseMg} mg</span>}
-        {shot.injectionSite && <span> • Site: {shot.injectionSite}</span>}
-        {shot.injectionSitePosition && (
-          <span> • Position: {shot.injectionSitePosition}</span>
-        )}
-        {shot.testosteroneEster && (
-          <span> • Type: {shot.testosteroneEster}</span>
-        )}
-        {shot.carrierOil && <span> • Oil: {shot.carrierOil}</span>}
-        {shot.mood && <span> • Mood: {shot.mood}</span>}
-      </div>
+      {details.length > 0 && (
+        <div className="shot-list-item__meta">{details.join(" • ")}</div>
+      )}
 
       {plannedLabel && (
         <p className="shot-list-item__planned">{plannedLabel}</p>

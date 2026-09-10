@@ -20,11 +20,81 @@ const wrap = (shots: unknown) =>
     shots,
   });
 
+describe("a backup from the build before mood was retired", () => {
+  // The shape that made this worth fixing: `shotEntrySchema` is a strictObject,
+  // so a retired key is an unknown key and the whole ENTRY is skipped. Measured
+  // before the fix — a real export fed straight back lost the shot's notes,
+  // dose, site, pain and planned date because it still carried `mood`.
+  const legacy = (over: Record<string, unknown> = {}) => {
+    const real = JSON.parse(
+      toJson([
+        { id: "a", date: "2026-07-01", notes: "keep me", doseMg: 50 },
+        { id: "b", date: "2026-07-08" },
+      ]),
+    );
+    Object.assign(real.shots[0], { mood: "good", ...over });
+    return JSON.stringify(real);
+  };
+
+  it("keeps the rest of the entry and drops only the retired field", () => {
+    const r = parseBackup(legacy());
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.skipped).toEqual([]);
+    expect(r.shots).toHaveLength(2);
+    const restored = r.shots.find((s) => s.id === "a")!;
+    expect(restored.notes).toBe("keep me");
+    expect(restored.doseMg).toBe(50);
+    expect("mood" in restored).toBe(false);
+  });
+
+  it("also survives a backup carrying the retired painScore", () => {
+    // Retired by the pain-chips slice, one PR before mood — so a backup old
+    // enough to hold `mood` usually holds `painScore` too, and listing only
+    // one of them closes half the door.
+    const r = parseBackup(legacy({ painScore: 5 }));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.skipped).toEqual([]);
+    const restored = r.shots.find((s) => s.id === "a")!;
+    expect(restored.notes).toBe("keep me");
+    expect("painScore" in restored).toBe(false);
+  });
+
+  it("names off days as the reason, rather than shrugging", () => {
+    // `pain` is listed because an unrecognised enum value is a NAMEABLE
+    // failure; `offDays` is now the same class. Without an entry the user is
+    // told an entry was skipped but not which field to go and fix.
+    const real = JSON.parse(
+      toJson([
+        { id: "a", date: "2026-07-01" },
+        { id: "b", date: "2026-07-08" },
+      ]),
+    );
+    real.shots[0].offDays = "a bit rough";
+    const r = parseBackup(JSON.stringify(real));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.skipped[0].reason).toContain("off-days");
+    expect(r.skipped[0].reason).not.toBe("some of it couldn’t be read");
+  });
+
+  it("still refuses a key it has never heard of", () => {
+    // Retiring a field must not loosen the strict check into "ignore anything
+    // unexpected" — that guard is what keeps a hand-edited file out of storage.
+    const r = parseBackup(legacy({ evil: "surprise" }));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.skipped).toHaveLength(1);
+    expect(r.shots).toHaveLength(1);
+  });
+});
+
 describe("parseBackup — happy path", () => {
   it("round-trips a real export", () => {
     const shots = [
       shot({ doseMg: 50, injectionSite: "thigh", pain: "mild" }),
-      shot({ date: "2026-07-05", mood: "good", notes: "fine" }),
+      shot({ date: "2026-07-05", offDays: "none", notes: "fine" }),
     ];
     const result = parseBackup(toJson(shots));
     expect(result.ok).toBe(true);
@@ -46,7 +116,7 @@ describe("parseBackup — happy path", () => {
       testosteroneEster: "cypionate",
       carrierOil: "sesame",
       pain: "moderate",
-      mood: "okay",
+      offDays: "here-and-there",
       notes: "n",
     });
     const result = parseBackup(toJson([full]));
@@ -236,7 +306,11 @@ describe("parseBackup — a bad entry is skipped, not the file", () => {
     ["an out-of-range time", { id: "x", date: "2026-07-12", time: "24:99" }],
     ["an unknown pain level", { id: "x", date: "2026-07-12", pain: "excruciating" }],
     ["an unexpected extra key", { id: "x", date: "2026-07-12", evil: "surprise" }],
-    ["an empty-string optional field", { id: "x", date: "2026-07-12", mood: "" }],
+    ["an empty-string optional field", { id: "x", date: "2026-07-12", notes: "" }],
+    [
+      "an unknown off-days pattern",
+      { id: "x", date: "2026-07-12", offDays: "a bit rough" },
+    ],
   ])("restores the good entry and skips one with %s", (_label, bad) => {
     const result = skipOne(bad);
     expect(result.ok).toBe(true);
@@ -351,7 +425,7 @@ describe("parseBackup — size cap", () => {
           testosteroneEster: "cypionate",
           carrierOil: "sesame",
           pain: "mild",
-          mood: "okay",
+          offDays: "here-and-there",
           notes: "a fairly typical note about how the shot felt today",
         })
       );

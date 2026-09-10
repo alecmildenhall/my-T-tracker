@@ -13,7 +13,7 @@ beforeEach(() => localStorage.clear());
 const shots: ShotEntry[] = [
   { id: "a", date: "2026-06-01", injectionSite: "thigh", pain: "mild", notes: "felt fine" },
   { id: "b", date: "2026-06-15", injectionSite: "glute", pain: "severe", notes: "quite sore" },
-  { id: "c", date: "2026-07-01", injectionSite: "thigh", pain: "moderate", mood: "anxious" },
+  { id: "c", date: "2026-07-01", injectionSite: "thigh", pain: "moderate", offDays: "right-before" },
 ];
 
 /** HistoryView is controlled — the real query state lives in App — so wrap it in
@@ -139,6 +139,46 @@ describe("HistoryView", () => {
     fireEvent.change(screen.getByLabelText("Pain"), { target: { value: "severe" } });
     expect(screen.getByText("Showing 1 of 1 shot")).toBeInTheDocument();
     expect(screen.getByText("quite sore")).toBeInTheDocument();
+  });
+
+  it("filters by the off-days pattern", () => {
+    render(<Harness />);
+    openFilters();
+    fireEvent.change(screen.getByLabelText("Off days"), {
+      target: { value: "right-before" },
+    });
+    expect(screen.getByText("Showing 1 of 1 shot")).toBeInTheDocument();
+  });
+
+  it("counts off days as its own active facet", () => {
+    // A hidden filter must never be silent — the badge is what stops a narrowed
+    // list looking like an inexplicably short one.
+    render(<Harness />);
+    openFilters();
+    fireEvent.change(screen.getByLabelText("Pain"), { target: { value: "mild" } });
+    fireEvent.change(screen.getByLabelText("Off days"), {
+      target: { value: "here-and-there" },
+    });
+    expect(
+      screen.getByRole("button", { name: "Filters, 2 active" }),
+    ).toBeInTheDocument();
+  });
+
+  it("does not search the off-days pattern, because it is a facet", async () => {
+    // Search used to cover mood when mood was free text. Typing a pattern's own
+    // words must find nothing — the select is what answers this now. Shot "c"
+    // is `right-before`, so a match here would be the old behaviour surviving.
+    vi.useFakeTimers();
+    try {
+      render(<Harness />);
+      fireEvent.change(screen.getByPlaceholderText(/Search notes/), {
+        target: { value: "right before" },
+      });
+      await settleSearch();
+      expect(screen.getByText("No matching shots")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps the pain select showing what you picked, and tinted", () => {

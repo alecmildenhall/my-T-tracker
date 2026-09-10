@@ -7,7 +7,7 @@ import {
   pickProfileFields,
   hasProfileData,
 } from "../backupDto";
-import { PAIN_LEVELS, type ShotEntry } from "../../types/shot";
+import { OFF_DAYS_PATTERNS, PAIN_LEVELS, type ShotEntry } from "../../types/shot";
 import type { Profile } from "../../types/profile";
 
 describe("pickShotFields", () => {
@@ -22,7 +22,7 @@ describe("pickShotFields", () => {
       testosteroneEster: "cypionate",
       carrierOil: "sesame",
       pain: "moderate",
-      mood: "okay",
+      offDays: "here-and-there",
       notes: "n",
     };
     expect(pickShotFields(full)).toEqual(full);
@@ -37,12 +37,33 @@ describe("pickShotFields", () => {
     expect(pickShotFields(dirty)).toEqual({ id: "s1", date: "2026-07-12" });
   });
 
+  it("keeps a known off-days pattern and drops an unknown one", () => {
+    // The DTO is an allowlist on BOTH the export and the import path, so a
+    // field missing here does not fail — it silently does not survive a backup.
+    // And storage is lenient, so a value predating the enum reaches this
+    // function; writing it verbatim would put it back into a restored shot.
+    expect(
+      pickShotFields({
+        id: "s1",
+        date: "2026-07-12",
+        offDays: "right-before",
+      }),
+    ).toEqual({ id: "s1", date: "2026-07-12", offDays: "right-before" });
+
+    expect(
+      pickShotFields({
+        id: "s1",
+        date: "2026-07-12",
+        offDays: "a bit rough",
+      } as unknown as ShotEntry),
+    ).toEqual({ id: "s1", date: "2026-07-12" });
+  });
+
   it("drops blank / whitespace-only string fields", () => {
     const dirty = {
       id: "s1",
       date: "2026-07-12",
       injectionSite: "",
-      mood: "   ",
       notes: "\t",
     } as unknown as ShotEntry;
     expect(pickShotFields(dirty)).toEqual({ id: "s1", date: "2026-07-12" });
@@ -253,6 +274,89 @@ describe("pain survives a backup round-trip", () => {
       shotEntrySchema.safeParse({ id: "a", date: "2026-08-05", pain: 7 })
         .success,
     ).toBe(false);
+  });
+});
+
+describe("off days survives a backup round-trip", () => {
+  // The same guarantee as pain above, stated for the new field rather than
+  // assumed to come along with it — which is exactly what an allowlist does not
+  // do. Every pattern, because a picker can be written to carry some values and
+  // drop others.
+  it("carries every pattern out and back, unchanged", () => {
+    for (const pattern of OFF_DAYS_PATTERNS) {
+      const shot: ShotEntry = { id: "a", date: "2026-08-05", offDays: pattern };
+      const exported = pickShotFields(shot);
+      expect(exported.offDays).toBe(pattern);
+
+      const reimported = shotEntrySchema.safeParse(exported);
+      expect(reimported.success).toBe(true);
+      expect(reimported.success && reimported.data.offDays).toBe(pattern);
+    }
+  });
+
+  it("carries 'nobody answered' as absence, not as 'none'", () => {
+    // `undefined` and `"none"` are different facts, and a round-trip that
+    // quietly turned the first into the second would put an answer on every
+    // shot nobody answered for.
+    const exported = pickShotFields({ id: "a", date: "2026-08-05" });
+    expect("offDays" in exported).toBe(false);
+    expect(shotEntrySchema.safeParse(exported).success).toBe(true);
+  });
+
+  it("refuses a pattern the app could never have produced", () => {
+    // Import is the other way into storage, so the enum is enforced there too —
+    // a bound at the form alone is a bound with a door beside it. The old
+    // free-text shape is refused with it, which is the accepted pre-GA cost.
+    for (const bad of ["a bit rough", "", 3, "anxious"]) {
+      expect(
+        shotEntrySchema.safeParse({
+          id: "a",
+          date: "2026-08-05",
+          offDays: bad,
+        }).success,
+      ).toBe(false);
+    }
+  });
+
+  it("is blanked in the CSV rather than shown to a provider", () => {
+    // The two exports must agree: a value the backup drops must not appear
+    // verbatim in the file someone prints for a clinician. Caught by mutation —
+    // removing `usable` from the column broke no test until this one existed,
+    // which is exactly how a guard ends up decorative.
+    const junk = {
+      id: "a",
+      date: "2026-08-05",
+      offDays: "nervous but hopeful",
+    } as unknown as ShotEntry;
+    const row = toCsv([junk]).split("\n")[1];
+    expect(row).not.toContain("nervous");
+  });
+
+  it("writes the pattern out in words, because the slug is a fragment", () => {
+    // The one column that does NOT write the value as stored, and the reason is
+    // the rule rather than an exception to it: a cell has to be readable on its
+    // own. `mild` is. `right-before` is not — right before WHAT is answerable
+    // only from the label. A provider reads the CSV without the app beside it.
+    const row = toCsv([
+      { id: "a", date: "2026-08-05", offDays: "right-before" },
+    ]).split("\n")[1];
+    expect(row).toContain("Right before this shot");
+    expect(row).not.toContain("right-before,");
+  });
+
+  it("drops a stored value the enum does not contain, rather than exporting it", () => {
+    // `sanitizeShots` vets a non-blank id and date and nothing else, so a
+    // free-text mood left over from before this field reaches the picker. It
+    // must not be written into a file the app's own importer would then refuse
+    // — backup export is the only recovery path this product has.
+    const junk = {
+      id: "a",
+      date: "2026-08-05",
+      offDays: "nervous but hopeful",
+    } as unknown as ShotEntry;
+    const exported = pickShotFields(junk);
+    expect("offDays" in exported).toBe(false);
+    expect(shotEntrySchema.safeParse(exported).success).toBe(true);
   });
 });
 

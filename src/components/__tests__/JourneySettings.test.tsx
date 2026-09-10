@@ -164,29 +164,66 @@ describe("JourneySettings", () => {
     expect(stored()).toEqual({ startDate: "1998-07-04" });
   });
 
-  it("removes the start date only through its own control", () => {
-    // An empty date input means two things it cannot separate — "I cleared this"
-    // and "I am retyping, the segments are incomplete" — and both report "".
-    // Blur does not separate them either; it just picks one, destructively. So
-    // emptiness never deletes, and removing has its own carrier: a control the
-    // user presses on purpose.
+  it("removes the start date two ways: emptying the field, and Remove", () => {
+    // Emptying used to restore, on the reasoning that an empty date input
+    // cannot separate "I cleared this" from "I am mid-retype" — both report "".
+    // The ambiguity is real and `badInput` resolves it, which `commitDateDraft`
+    // measures; the visible consequence of the old behaviour was that the iOS
+    // picker's "Reset" appeared to do nothing at all.
     localStorage.setItem(
       STORAGE_KEYS.profile,
       JSON.stringify({ startDate: "2020-01-01" }),
     );
     renderPanel();
 
-    // Emptying the field and leaving it does NOT delete the saved date...
+    // Emptying the field and leaving it now clears...
     fireEvent.change(dateInput(), { target: { value: "" } });
     fireEvent.blur(dateInput());
-    expect(stored().startDate).toBe("2020-01-01");
-    expect(dateInput().value).toBe("2020-01-01"); // and the field says so
+    expect(stored().startDate).toBeUndefined();
+    expect(dateInput().value).toBe("");
 
-    // ...pressing Remove does.
+    // ...and so does Remove, which stays because it is the explicit path and
+    // the one a keyboard user can find without guessing.
+    fireEvent.change(dateInput(), { target: { value: "2020-01-01" } });
+    fireEvent.blur(dateInput());
+    expect(stored().startDate).toBe("2020-01-01");
     fireEvent.click(screen.getByRole("button", { name: "Remove start date" }));
     expect(stored().startDate).toBeUndefined();
     expect(dateInput().value).toBe("");
     // And it retires with the value, so there is nothing to press twice.
+    expect(
+      screen.queryByRole("button", { name: "Remove start date" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers Remove as soon as the date is entered, not after blur", () => {
+    // Keyed to the committed profile it appeared only after blur — a visible
+    // lag on the control that undoes what you just typed.
+    renderPanel();
+    fireEvent.change(dateInput(), { target: { value: "1998-07-04" } });
+    expect(
+      screen.getByRole("button", { name: "Remove start date" }),
+    ).toBeInTheDocument();
+  });
+
+  it("does not let the press blur the field out from under itself", () => {
+    // Same race as the card's copy, same guard — see the note there.
+    renderPanel();
+    fireEvent.change(dateInput(), { target: { value: "1998-07-04" } });
+    const remove = screen.getByRole("button", { name: "Remove start date" });
+    expect(!fireEvent.mouseDown(remove)).toBe(true);
+  });
+
+  it("removes a date that was entered but never committed", () => {
+    // The profile never got this value, so clearing it changes nothing there
+    // and the draft sync never fires. Without clearing the draft explicitly the
+    // date would sit in the field with no way left to remove it — which is why
+    // a line this test's predecessor called redundant is now load-bearing.
+    renderPanel();
+    fireEvent.change(dateInput(), { target: { value: "1998-07-04" } });
+    fireEvent.click(screen.getByRole("button", { name: "Remove start date" }));
+
+    expect(dateInput().value).toBe("");
     expect(
       screen.queryByRole("button", { name: "Remove start date" }),
     ).not.toBeInTheDocument();
@@ -274,6 +311,108 @@ describe("JourneySettings", () => {
     });
   });
 
+  it("does NOT wipe the cadence when the interval box holds garbage", () => {
+    // Mirrors FirstShotCard. `setIntervalDays(undefined)` also clears the
+    // schedule anchor, so this loses the grid as well as the number.
+    localStorage.setItem(
+      STORAGE_KEYS.profile,
+      JSON.stringify({ intervalDays: 14 }),
+    );
+    const { removePanel } = renderRemovablePanel();
+    const box = screen.getByLabelText(
+      "How many days between your shots?",
+    ) as HTMLInputElement;
+    Object.defineProperty(box, "validity", {
+      configurable: true,
+      value: { badInput: true },
+    });
+    fireEvent.change(box, { target: { value: "" } });
+    removePanel();
+
+    expect(stored().intervalDays).toBe(14);
+  });
+
+  it("does NOT treat a HALF-TYPED date as a deletion on the way out", () => {
+    // An empty `<input type="date">` reports `""` for "I cleared this" AND for
+    // "I am mid-retype", and the hatch used to assert `badInput: false` -- a
+    // guess wearing a check's clothes, which picked the branch that deletes.
+    // Measured before the fix: stored date gone after a tab change, while the
+    // same state on blur restored it.
+    //
+    // This comment used to add "on unmount React has already detached the ref".
+    // That was true of the passive effect the hatch used to be and is false now
+    // that it is a layout one, which is precisely why it reads the live control.
+    // Note this particular case cannot tell the two apart -- `badInput` is
+    // stubbed true, and `commitDateDraft` returns "restore" from either source
+    // -- so the effect type is pinned by its NEIGHBOURS ("clears when the LAST
+    // segments go" and "commits a CLEARED date when the panel goes away"), both
+    // of which fail if it is reverted.
+    localStorage.setItem(
+      STORAGE_KEYS.profile,
+      JSON.stringify({ startDate: "2020-01-01" }),
+    );
+    const { removePanel } = renderRemovablePanel();
+    // Stub BEFORE the change: the fact is only observable at the moment it
+    // happens, and stubbing afterwards passes for the wrong reason.
+    Object.defineProperty(dateInput(), "validity", {
+      configurable: true,
+      value: { badInput: true },
+    });
+    fireEvent.change(dateInput(), { target: { value: "" } });
+    removePanel();
+
+    expect(stored().startDate).toBe("2020-01-01");
+  });
+
+  /**
+   * Set what the control reports WITHOUT firing an event -- which is not a
+   * contrivance, it is what the real control does. A date input fires `input`
+   * only when its `value` changes, and once the value is `""` it stays `""`
+   * while the remaining segments are typed or deleted, so `badInput` flips with
+   * no event and no render. Anything that samples it into a ref is stale from
+   * that moment, in whichever direction the user moved.
+   */
+  const setBadInput = (el: HTMLInputElement, badInput: boolean) =>
+    Object.defineProperty(el, "validity", {
+      configurable: true,
+      value: { badInput },
+    });
+
+  it("clears when the LAST segments go, though no event announced it", () => {
+    // Half-typed (renders, value "" ) and then emptied outright (no event).
+    // A sampled answer is stuck on "mid-edit" and restores, resurrecting a date
+    // the user deliberately removed -- the bug this whole area was fixed for,
+    // one keystroke further along.
+    localStorage.setItem(
+      STORAGE_KEYS.profile,
+      JSON.stringify({ startDate: "2020-01-01" }),
+    );
+    const { removePanel } = renderRemovablePanel();
+    setBadInput(dateInput(), true);
+    fireEvent.change(dateInput(), { target: { value: "" } });
+    setBadInput(dateInput(), false); // segments cleared; value never moved
+    removePanel();
+
+    expect(stored().startDate).toBeUndefined();
+  });
+
+  it("restores when retyping STARTS after a clear, though no event announced it", () => {
+    // The mirror, and the one that loses data: cleared (renders, badInput
+    // false), then a segment typed (no event). A sampled answer is stuck on
+    // "deliberate" and deletes a date the user was part-way through re-entering.
+    localStorage.setItem(
+      STORAGE_KEYS.profile,
+      JSON.stringify({ startDate: "2020-01-01" }),
+    );
+    const { removePanel } = renderRemovablePanel();
+    setBadInput(dateInput(), false);
+    fireEvent.change(dateInput(), { target: { value: "" } });
+    setBadInput(dateInput(), true); // retyping began; value never moved
+    removePanel();
+
+    expect(stored().startDate).toBe("2020-01-01");
+  });
+
   it("commits a picked date when the panel goes away", () => {
     // Changing tab destroys this panel, which on a phone is a likelier exit than
     // blurring the field.
@@ -284,6 +423,23 @@ describe("JourneySettings", () => {
     removePanel();
 
     expect(stored()).toEqual({ startDate: "2001-09-11" });
+  });
+
+  it("commits a CLEARED date when the panel goes away", () => {
+    // The hatch could only ever say "set". Once an emptied field started meaning
+    // "clear", that made it disagree with blur — measured before the fix:
+    // emptying the field and switching tab put the old date straight back, and
+    // the field showed it again on return.
+    localStorage.setItem(
+      STORAGE_KEYS.profile,
+      JSON.stringify({ startDate: "2024-03-15" }),
+    );
+    const { removePanel } = renderRemovablePanel();
+    fireEvent.change(dateInput(), { target: { value: "" } });
+    // No blur — the user changes tab instead.
+    removePanel();
+
+    expect(stored().startDate).toBeUndefined();
   });
 
   it("commits nothing on the way out when the draft is half-typed", () => {
@@ -333,10 +489,62 @@ describe("JourneySettings", () => {
   });
 });
 
+describe("JourneySettings — the interval's unit", () => {
+  /*
+   * The unit used to live ONLY in the placeholder ("Every ___ days"), which
+   * disappears as soon as there is a value — and the commonest action on this
+   * screen, tapping the "2 weeks" chip, is exactly what puts one there. So the
+   * last unit anyone had read said WEEKS while the box quietly held 14. Three
+   * cues, and the only one naming days was the one that vanished.
+   */
+  it("names the unit in the label, where it cannot disappear", () => {
+    renderPanel();
+    // Not a placeholder and not only a suffix: a suffix is aria-hidden, so the
+    // label is the only place a screen reader can learn the unit.
+    expect(
+      screen.getByLabelText("How many days between your shots?"),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the unit beside the value, and hides it from the accessible name", () => {
+    renderPanel();
+    const unit = document.querySelector(".interval-field__unit")!;
+    expect(unit.textContent).toBe("days");
+    // Decoration: the label already says it, so announcing it twice is noise.
+    expect(unit.getAttribute("aria-hidden")).toBe("true");
+    expect(
+      screen.getByLabelText("How many days between your shots?"),
+    ).toHaveAccessibleName("How many days between your shots?");
+  });
+
+  it("keeps no placeholder holding the unit", () => {
+    // The regression that matters: putting it back in the placeholder would
+    // look identical while empty and lose the unit the moment you answer.
+    renderPanel();
+    const box = screen.getByLabelText(
+      "How many days between your shots?",
+    ) as HTMLInputElement;
+    expect(box.placeholder).toBe("");
+  });
+
+  it("still shows the unit once a chip has filled the box", () => {
+    // The exact moment the old design failed.
+    renderPanel();
+    fireEvent.click(screen.getByRole("button", { name: "2 weeks" }));
+    const box = screen.getByLabelText(
+      "How many days between your shots?",
+    ) as HTMLInputElement;
+    expect(box.value).toBe("14");
+    expect(document.querySelector(".interval-field__unit")!.textContent).toBe(
+      "days",
+    );
+  });
+});
+
 describe("JourneySettings — how often", () => {
   const intervalField = () =>
     screen.getByLabelText(
-      "How often do you take your shot?",
+      "How many days between your shots?",
     ) as HTMLInputElement;
   const shotDay = () =>
     screen.getByLabelText(
@@ -422,7 +630,7 @@ describe("JourneySettings — the interval must not discard the schedule anchor"
       }),
     );
     renderPanel();
-    const box = screen.getByLabelText("How often do you take your shot?");
+    const box = screen.getByLabelText("How many days between your shots?");
 
     fireEvent.focus(box);
     fireEvent.blur(box);

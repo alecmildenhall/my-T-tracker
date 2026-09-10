@@ -8,17 +8,17 @@
 //
 // Three distinct operations, deliberately named so each says what it reads:
 //   - filterShots    — structured, field-scoped constraints (date range, site,
-//                       position, pain band, ester). Faceted matching: a shot
-//                       either satisfies a facet or it doesn't.
-//   - searchShotText  — fuzzy free-text over the human-written fields (notes,
-//                       mood). One string, substring match, case-insensitive.
+//                       position, ester, pain, off days). Faceted matching: a
+//                       shot either satisfies a facet or it doesn't.
+//   - searchShotText  — free text over the only free-text field left, `notes`.
+//                       One string, substring match, case-insensitive.
 //   - queryShots      — the composition: filter → search → sort → paginate,
 //                       returning a result envelope ({ items, total, hasMore }).
 //
 // You *filter* by fields, *search* by text, and a *query* wraps both. Each
 // function is pure (no storage, no dates-from-now) so the whole layer is unit-
 // testable; `today`-style ambient state never leaks in here.
-import type { PainLevel, ShotEntry } from "../types/shot";
+import type { OffDaysPattern, PainLevel, ShotEntry } from "../types/shot";
 import type { CivilDate } from "./civilDate";
 import { normalizeValue } from "./suggestions";
 import { isBlank } from "./strings";
@@ -49,6 +49,9 @@ export interface ShotFilter {
   /** Pain level, matched exactly. A shot with no pain recorded never matches —
    *  "not recorded" is not the same answer as "none". */
   pain?: PainLevel;
+  /** Off-days pattern, matched exactly. Same rule as pain: a shot with nothing
+   *  recorded never matches, because "not recorded" is not "not really". */
+  offDays?: OffDaysPattern;
 }
 
 /**
@@ -58,7 +61,7 @@ export interface ShotFilter {
  */
 export interface ShotQuery {
   filter?: ShotFilter;
-  /** Free-text search over notes + mood (see searchShotText). */
+  /** Free-text search over notes (see searchShotText). */
   text?: string;
   /** Result ordering; defaults to "newest". */
   sort?: SortOrder;
@@ -123,23 +126,28 @@ export function filterShots(
     // is false, so the facet silently passed every shot instead of switching
     // off. An enum cannot go NaN, so the whole hazard goes with the numbers.
     if (filter.pain !== undefined && shot.pain !== filter.pain) return false;
+    if (filter.offDays !== undefined && shot.offDays !== filter.offDays)
+      return false;
     return true;
   });
 }
 
 /**
- * Keep the shots whose free-text fields (notes, mood) contain `text` as a
- * case-insensitive substring. A blank or whitespace-only query is a no-op that
- * returns every shot. This is the ONLY place free text is matched — structured
- * facets belong to `filterShots`.
+ * Keep the shots whose notes contain `text` as a case-insensitive substring. A
+ * blank or whitespace-only query is a no-op that returns every shot. This is the
+ * ONLY place free text is matched — structured facets belong to `filterShots`.
+ *
+ * Notes ALONE, where this used to match mood as well. Mood was free text; it is
+ * now one of four fixed patterns, and substring-matching a closed set is not
+ * searching, it is a worse version of the filter that already exists. So it
+ * moved to a facet beside pain, which is where `PAIN_BANDS` established that
+ * ordinals belong. `notes` is now the only free text on a shot.
  */
 export function searchShotText(shots: ShotEntry[], text: string): ShotEntry[] {
   const needle = normalizeValue(text);
   if (needle === "") return shots;
-  return shots.filter(
-    (shot) =>
-      normalizeValue(shot.notes ?? "").includes(needle) ||
-      normalizeValue(shot.mood ?? "").includes(needle),
+  return shots.filter((shot) =>
+    normalizeValue(shot.notes ?? "").includes(needle),
   );
 }
 
