@@ -25,7 +25,14 @@ import { offDaysWindowDays, offDaysWindowLabel } from "../utils/offDaysWindow";
 import type { Profile } from "../types/profile";
 import { suggestionsFor } from "../utils/suggestions";
 import { todayLocalISO, nowHHMM } from "../utils/datetime";
-import { toShotDate, isRealDate, shotDateRange } from "../utils/civilDate";
+import {
+  toShotDate,
+  toTakenDate,
+  isRealDate,
+  isShotDateInRange,
+  shotDateRange,
+  takenDateRange,
+} from "../utils/civilDate";
 import { newId } from "../utils/id";
 import { SuggestionChips } from "./SuggestionChips";
 import { handOffFocus } from "../utils/focus";
@@ -278,7 +285,11 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   // in-component stickiness would silently do nothing.
   // Per render, not per module load: it reads the clock, and a sheet in a session
   // left open across New Year would otherwise bound the picker to last year.
-  const dateRange = shotDateRange();
+  // The date TAKEN stops at today; "Planned for" is allowed to be ahead. Same
+  // control, different questions — one range for both is what let a future shot
+  // become the schedule's anchor.
+  const takenRange = takenDateRange();
+  const plannedRange = shotDateRange();
   const carried = useMemo(() => carryForward(shots), [shots]);
   // Held in a ref so resetForm can stay identity-stable: if it changed whenever
   // `shots` changed, the editing-sync effect below would re-run and wipe fields
@@ -393,10 +404,13 @@ export const ShotForm: React.FC<ShotFormProps> = ({
         // fortnightly grid, a 7-day different schedule, then frozen. The
         // exclusion is right for `previousShotDateBefore`, where a shot must not
         // be its own predecessor, and wrong here.
-        anchorFrom: anchorReferenceDate(date, shots),
+        anchorFrom: anchorReferenceDate(date, shots, takenRange.max),
         profile,
       }),
-    [date, shots, editingShot?.id, profile],
+    // `takenRange.max` is today as a plain string, so this recomputes when the
+    // day rolls over and not otherwise — which is what we want, since it is the
+    // cutoff deciding whether a stored shot counts as "not yet taken".
+    [date, shots, editingShot?.id, profile, takenRange.max],
   );
 
   /**
@@ -630,7 +644,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // constraints, which cancels the submit event outright — the button appeared
     // to do nothing at all, with no message and nothing saved. Whatever we reject
     // now, we say why, next to the field.
-    const parsedDate = toShotDate(date);
+    const parsedDate = toTakenDate(date);
     const parsedDose = doseMg === "" ? undefined : Number(doseMg);
 
     // Blank and malformed are different mistakes and get different words. A
@@ -650,14 +664,28 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // 2027-12-01 was refused by a message listing the very year that had just
     // been typed — nothing left to work out. Read fresh here rather than at
     // module load, so it cannot name last year's bound in a session left open.
-    const range = shotDateRange();
+    const range = takenDateRange();
+    // A FOURTH mistake, and it needs its own words for the reason the other
+    // three do. "Check the year" is wrong here: the year is usually fine and the
+    // date is a real one — the person has dated a dose to a day that has not
+    // happened. Naming the rule ("after it") is what makes it fixable, and it
+    // says today's date rather than a bound they would have to work out.
+    //
+    // Order matters here, and the obvious order is wrong. A mistyped year is
+    // ALSO in the future — `9999-01-01` satisfies both tests — so checking
+    // "after today" first swallows the year typo and answers it with a bound
+    // the person never typed. `isShotDateInRange` is what separates them: fail
+    // it and the year is implausible on any reading, so name the year; pass it
+    // and the date is an ordinary near-future day, so name the rule.
     const nextDateError = parsedDate
       ? null
       : date.trim() === ""
         ? "Add the date this shot was taken."
-        : isRealDate(date)
-          ? `Check the year — dates run from ${range.min} to ${range.max}.`
-          : "Please enter a real calendar date (YYYY-MM-DD).";
+        : !isRealDate(date)
+          ? "Please enter a real calendar date (YYYY-MM-DD)."
+          : !isShotDateInRange(date)
+            ? `Check the year — dates run from ${range.min} to ${range.max}.`
+            : `You can log a shot after taking it — nothing later than ${range.max}.`;
     // Mirrors the storage schema: a finite, non-negative number. Fractional doses
     // are fine (62.5mg while titrating is ordinary).
     const nextDoseError =
@@ -945,9 +973,9 @@ export const ShotForm: React.FC<ShotFormProps> = ({
               // Keeps the native picker inside the range the form will accept,
               // so a mistyped year is harder to produce in the first place.
               // These are a hint, not the check — the form carries `noValidate`
-              // and `toShotDate` is what actually decides. See shotDateRange.
-              min={dateRange.min}
-              max={dateRange.max}
+              // and `toTakenDate` is what actually decides. See takenDateRange.
+              min={takenRange.min}
+              max={takenRange.max}
               aria-invalid={dateError ? true : undefined}
               aria-describedby={dateError ? "date-error" : undefined}
             />
@@ -1330,8 +1358,8 @@ export const ShotForm: React.FC<ShotFormProps> = ({
               <input
                 type="date"
                 value={plannedDraft}
-                min={dateRange.min}
-                max={dateRange.max}
+                min={plannedRange.min}
+                max={plannedRange.max}
                 onChange={(e) => {
                   setPlannedDraft(e.target.value);
                   if (plannedError) setPlannedError(null);

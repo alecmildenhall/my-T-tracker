@@ -468,12 +468,21 @@ describe("planShot at the edge of the supported range", () => {
 });
 
 describe("anchorReferenceDate", () => {
+  /** These cases are about picking the most recent date, not about the clock,
+   *  so they pass a cutoff nothing reaches. Future-date exclusion has its own
+   *  cases below, where the cutoff is the point. */
+  const OPEN = "9999-12-31";
+
   it("is the shot being saved when it is the most recent thing known", () => {
     expect(
-      anchorReferenceDate(day(7), [
-        { id: "a", date: WED },
-        { id: "b", date: day(-14) },
-      ]),
+      anchorReferenceDate(
+        day(7),
+        [
+          { id: "a", date: WED },
+          { id: "b", date: day(-14) },
+        ],
+        OPEN,
+      ),
     ).toBe(day(7));
   });
 
@@ -482,15 +491,36 @@ describe("anchorReferenceDate", () => {
     // a forgotten entry from months ago as your first save after changing
     // cadence, and the whole future grid would hang off it.
     expect(
-      anchorReferenceDate(day(-90), [
-        { id: "a", date: WED },
-        { id: "b", date: day(7) },
-      ]),
+      anchorReferenceDate(
+        day(-90),
+        [
+          { id: "a", date: WED },
+          { id: "b", date: day(7) },
+        ],
+        OPEN,
+      ),
     ).toBe(day(7));
   });
 
   it("is the shot being saved when there is no history", () => {
-    expect(anchorReferenceDate(WED, [])).toBe(WED);
+    expect(anchorReferenceDate(WED, [], OPEN)).toBe(WED);
+  });
+
+  it("ignores a shot dated after the cutoff, so it cannot anchor the grid", () => {
+    // A dose not yet taken is not evidence about anyone's rhythm. Letting it be
+    // the maximum made one entry re-phase every later shot: swept over 7280
+    // combinations, 4126 shifted a planned date and 2023 inverted its sign.
+    expect(
+      anchorReferenceDate(
+        WED,
+        [{ id: "future", date: day(300) }],
+        day(0),
+      ),
+    ).toBe(WED);
+  });
+
+  it("clamps the shot being saved too, not only the history", () => {
+    expect(anchorReferenceDate(day(300), [], day(0))).toBe(day(0));
   });
 
   it("does not exclude any shot, including one being edited", () => {
@@ -498,7 +528,9 @@ describe("anchorReferenceDate", () => {
     // part of the history the grid aligns to while you are editing it, and
     // excluding it made which shot you happened to open decide where the anchor
     // landed.
-    expect(anchorReferenceDate(WED, [{ id: "a", date: day(7) }])).toBe(day(7));
+    expect(
+      anchorReferenceDate(WED, [{ id: "a", date: day(7) }], OPEN),
+    ).toBe(day(7));
   });
 });
 

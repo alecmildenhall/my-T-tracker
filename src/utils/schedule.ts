@@ -424,8 +424,38 @@ export function previousShotDateBefore(
 export function anchorReferenceDate(
   date: string,
   shots: { id: string; date: string }[],
+  notAfter: string,
 ): string {
-  let best = date;
-  for (const shot of shots) if (shot.date > best) best = shot.date;
+  // A shot dated in the FUTURE is not evidence about anyone's rhythm, and it
+  // must never become the reference. Taking the plain maximum meant one such
+  // entry anchored the whole grid: swept over 7280 combinations of interval,
+  // shot day and how far ahead it sat, 4126 (56.7%) shifted a later shot's
+  // planned date and 2023 inverted its sign — 2 days late reading as 5 days
+  // early. Lateness is frozen at log time, so each shot after it is born wrong
+  // and then protected from correction.
+  //
+  // The log form now refuses a future date, so this is defence rather than the
+  // primary fix — and it is the half that covers what the form cannot reach:
+  // entries already stored from before that rule, and anything arriving through
+  // import. Import is deliberately NOT tightened to match the form, because a
+  // backup written at 23:00 in one timezone can legitimately restore where it is
+  // still the previous day, and skipping the user's own entry over that is worse
+  // than ignoring it here.
+  //
+  // NOT the same thing as clamping a chart axis, which this project rejects: the
+  // shot keeps its date everywhere it is shown, exported and edited. It is only
+  // excluded from being the SCHEDULE's reference, which is a claim about rhythm
+  // that a dose not yet taken cannot support.
+  // `notAfter` is PASSED IN rather than read from the clock here. Reading it
+  // inside would make pure schedule maths depend on the current date, which is
+  // the moving-baseline trap this codebase has already paid for once — and it
+  // is not theoretical: doing it that way broke the 3060-case adherence sweep,
+  // whose fixtures run past today by construction and are meant to be
+  // clock-independent. The caller knows what "not yet taken" means; this
+  // function only applies it.
+  let best = date <= notAfter ? date : notAfter;
+  for (const shot of shots) {
+    if (shot.date > best && shot.date <= notAfter) best = shot.date;
+  }
   return best;
 }

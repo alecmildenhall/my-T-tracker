@@ -8,7 +8,8 @@ import type { SaveOutcome } from "../ShotForm";
 import { todayLocalISO } from "../../utils/datetime";
 import { expectFocusSomewhereUseful } from "../../test/focus";
 import { expectVisibleFocusRing } from "../../test/focusRing";
-import { isShotDateInRange, shotDateRange } from "../../utils/civilDate";
+import { isShotDateInRange, takenDateRange } from "../../utils/civilDate";
+import { addDaysCivil } from "../../utils/schedule";
 
 beforeEach(() => {
   localStorage.clear();
@@ -287,6 +288,56 @@ describe("ShotForm field mapping", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
+  it("refuses a shot dated tomorrow, in its own words", () => {
+    // A different mistake from a mistyped year, and it must not borrow that
+    // message: the year is fine, the date is real, and the person has dated a
+    // dose to a day that has not happened. Ordering is the trap — 9999 is ALSO
+    // in the future, so checking "after today" first would swallow the year
+    // typo and answer it with a bound nobody typed.
+    const onAddShot = vi.fn();
+    render(<ShotForm onAddShot={onAddShot} />);
+    const tomorrow = addDaysCivil(takenDateRange().max, 1);
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: tomorrow },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+
+    expect(onAddShot).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent(/after taking it/);
+    expect(screen.getByRole("alert")).toHaveTextContent(takenDateRange().max);
+    expect(screen.getByLabelText("Date")).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
+  });
+
+  it("calls a FUTURE mistyped year a year problem, not a future-date one", () => {
+    // The case that pins the ordering, and the one the 0999 test cannot reach:
+    // 9999 satisfies BOTH rules, so whichever branch runs first wins. Answering
+    // it with "nothing later than <today>" would name a bound the person never
+    // typed and say nothing about the year, which is the actual slip.
+    const onAddShot = vi.fn();
+    render(<ShotForm onAddShot={onAddShot} />);
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: "9999-01-01" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+
+    expect(onAddShot).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent(/Check the year/);
+  });
+
+  it("still accepts TODAY, which is what logging just before injecting is", () => {
+    const onAddShot = vi.fn();
+    render(<ShotForm onAddShot={onAddShot} />);
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: takenDateRange().max },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+
+    expect(onAddShot).toHaveBeenCalledTimes(1);
+  });
+
   it("refuses a mistyped year, and says it is the year", () => {
     // The failure this exists for: browsers auto-fill the segments you have not
     // typed, so `08` into a cleared field yields `0008-08-05` — the year read as
@@ -315,7 +366,10 @@ describe("ShotForm field mapping", () => {
     // "1900 to 2027" while the real bound was 2027-08-13 — so a date late in
     // the final year was refused by a message listing the very year that had
     // just been typed, leaving nothing to work out.
-    const { min, max } = shotDateRange();
+    // `takenDateRange`, not `shotDateRange`: the date-taken field stops at
+    // today, and naming the wider planned-date bound would recreate the very
+    // bug this comment describes — a message listing a date the form refuses.
+    const { min, max } = takenDateRange();
     expect(screen.getByRole("alert")).toHaveTextContent(min);
     expect(screen.getByRole("alert")).toHaveTextContent(max);
 

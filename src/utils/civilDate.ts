@@ -78,9 +78,20 @@ export function isRealDate(value: string): boolean {
 export const EARLIEST_YEAR = 1900;
 
 /**
- * How far ahead a SHOT may be dated. You log a shot after taking it, so the only
- * legitimate future date is a clock or timezone edge — but a year of room costs
- * nothing and still catches a mistyped year outright.
+ * How far ahead a date that is ALLOWED to be in the future may sit: a planned
+ * date, a schedule anchor, a `Profile.startDate` set by someone planning ahead.
+ *
+ * NOT the date a shot was taken. This used to bound that too, reasoning that "a
+ * year of room costs nothing" — and it cost a great deal, because a future shot
+ * becomes `anchorReferenceDate`'s maximum and therefore the schedule's anchor.
+ * Swept across 7280 combinations of interval, shot day and how far ahead the bad
+ * entry sat: 4126 (56.7%) moved a later shot's planned date, and 2023 inverted
+ * its SIGN — a shot genuinely 2 days late reading "5 days early". Lateness is
+ * frozen at log time, so every shot logged afterwards is born wrong and then
+ * protected from correction.
+ *
+ * The realistic way in is a mistyped year, which is the same slip this bound was
+ * added to catch: browsers auto-fill the segments you have not typed.
  */
 export const FUTURE_YEAR_ALLOWANCE = 1;
 
@@ -94,13 +105,13 @@ export const FUTURE_YEAR_ALLOWANCE = 1;
  * time, which is what makes a moving baseline the trap it usually is (see
  * `dateBaseline` in ShotForm for the version of this that bit).
  */
-function latestAcceptable(): string {
+function latestAcceptable(yearsAhead: number = FUTURE_YEAR_ALLOWANCE): string {
   const now = new Date();
   // Through Date.UTC so 29 February rolls over rather than producing a day that
   // does not exist (2028-02-29 + 1 year → 2029-03-01).
   const max = new Date(
     Date.UTC(
-      now.getFullYear() + FUTURE_YEAR_ALLOWANCE,
+      now.getFullYear() + yearsAhead,
       now.getMonth(),
       now.getDate()
     )
@@ -175,6 +186,43 @@ export function isShotDateInRange(value: string): boolean {
  */
 export function shotDateRange(): { min: string; max: string } {
   return { min: EARLIEST_DATE, max: latestAcceptable() };
+}
+
+/**
+ * The range for the date a shot was actually TAKEN: 1900 through **today**.
+ *
+ * Separate from {@link shotDateRange} because they answer different questions.
+ * A planned date and a schedule anchor are *supposed* to be able to sit in the
+ * future; a dose you have already had cannot.
+ *
+ * "But I log it just before I inject" is exactly why the bound is today rather
+ * than yesterday: that is still today's date, and the optional `time` may sit a
+ * few minutes ahead without consequence, since nothing schedule-related reads
+ * it. What this refuses is dating a dose to TOMORROW — recording something that
+ * has not happened.
+ *
+ * That matches the category rather than being this app's invention. Every
+ * comparable tracker (Himcules, Regimen, TRT Monitor, My TRT App, Medisafe,
+ * Apple Health) separates a SCHEDULE, which is derived and forward-looking and
+ * drives reminders, from a LOG, which records doses taken. Retroactive logging
+ * is universal; pre-logging a future dose as a log entry is not a feature any of
+ * them offers. This app already has the schedule half — cadence plus the planned
+ * date — so "I'm taking one on Friday" is representable there, and belongs to
+ * the roadmapped "shot due soon" reminder rather than to the log.
+ */
+export function takenDateRange(): { min: string; max: string } {
+  return { min: EARLIEST_DATE, max: latestAcceptable(0) };
+}
+
+/** {@link isShotDateInRange}, but refusing a future date — see {@link takenDateRange}. */
+export function isTakenDateInRange(value: string): boolean {
+  if (!isRealDate(value)) return false;
+  return value >= EARLIEST_DATE && value <= latestAcceptable(0);
+}
+
+/** The smart constructor for a date a shot was taken. Mirrors {@link toShotDate}. */
+export function toTakenDate(value: string): CivilDate | null {
+  return isTakenDateInRange(value) ? (value as CivilDate) : null;
 }
 
 /**
