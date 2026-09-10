@@ -201,15 +201,23 @@ export const JourneySettings: React.FC<JourneySettingsProps> = ({
     // "restore" does nothing: it only ever affected what the field displays,
     // and there is nothing to display on the way out.
     const commitFromField = () => {
-      // The element when it is still there, the draft when it is not — and both
-      // are needed, for different exits.
+      // The element on BOTH exits, which is the point of the layout effect
+      // above. This comment used to say the opposite — that unmount detaches the
+      // ref first, so the draft carries that path — and it was true of the
+      // PASSIVE effect this used to be. Converting it made the claim stale, and
+      // a stale comment here is dangerous rather than untidy: believing it, you
+      // would conclude the layout effect is pointless and revert it, which
+      // silently turns "an emptied field clears on tab change" back into
+      // "restores". Measured, and guarded — swapping `useLayoutEffect` back to
+      // `useEffect` turns two tests red.
       //
-      // On BACKGROUNDING, `visibilitychange` fires while the panel is mounted,
-      // so the element is readable and is the only source that survives iOS's
-      // picker Reset firing no change event. On UNMOUNT (changing tab), React
-      // has already detached the ref by the time this passive cleanup runs, so
-      // the element is null — measured, it committed nothing at all — and the
-      // draft is correct there anyway, because that exit involves no picker.
+      // Reading the control matters most on BACKGROUNDING, where it is the only
+      // source that survives iOS's picker Reset firing no change event and
+      // leaving the draft holding the date the user just removed.
+      //
+      // The draft fallback is now unreachable defence rather than a path: kept
+      // because `focus()`-style assumptions about refs are exactly what this
+      // file keeps getting wrong, and it fails toward "restore".
       const el = dateFieldRef.current;
       const value = el ? el.value : draftRef.current;
       // Read from the control itself, never from a remembered answer. A

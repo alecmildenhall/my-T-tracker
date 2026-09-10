@@ -418,7 +418,19 @@ describe("ShotForm field mapping", () => {
     const sized = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
       .filter(
         ([, sel, body]) =>
-          /\b(input|textarea|select)\b/.test(sel) && /font-size:/.test(body),
+          // SUBSTRING, not a word boundary. `_` is a word character, so
+          // `\b(input)\b` does not match `.interval-field__input` — a class on a
+          // real <input> that this branch added. Giving it a `font-size` later
+          // would out-specify the coarse-pointer rule (0,1,0 beats 0,0,1; a
+          // media query adds no specificity), zoom the Settings cadence field on
+          // iOS, and leave `sized` at length 2 so this stayed green. Measured
+          // both ways: with the old pattern the hazard passes, with this one it
+          // fails on length 3.
+          //
+          // Matching too widely is the safe direction. A false positive trips
+          // the length assertion and asks a human to look; a false negative is
+          // the silent pass this test exists to prevent.
+          /(input|textarea|select)/i.test(sel) && /font-size:/.test(body),
       )
       .map(([, sel, body]) => ({
         selector: sel.replace(/\s+/g, " ").trim(),

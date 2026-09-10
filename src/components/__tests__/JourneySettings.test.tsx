@@ -334,11 +334,19 @@ describe("JourneySettings", () => {
 
   it("does NOT treat a HALF-TYPED date as a deletion on the way out", () => {
     // An empty `<input type="date">` reports `""` for "I cleared this" AND for
-    // "I am mid-retype". On unmount React has already detached the ref, so the
-    // hatch has no `validity` to read -- and it used to assert `false` there,
-    // which is a guess wearing a check's clothes, and it picked the branch that
-    // deletes. Measured before the fix: stored date gone after a tab change,
-    // while the same state on blur restored it.
+    // "I am mid-retype", and the hatch used to assert `badInput: false` -- a
+    // guess wearing a check's clothes, which picked the branch that deletes.
+    // Measured before the fix: stored date gone after a tab change, while the
+    // same state on blur restored it.
+    //
+    // This comment used to add "on unmount React has already detached the ref".
+    // That was true of the passive effect the hatch used to be and is false now
+    // that it is a layout one, which is precisely why it reads the live control.
+    // Note this particular case cannot tell the two apart -- `badInput` is
+    // stubbed true, and `commitDateDraft` returns "restore" from either source
+    // -- so the effect type is pinned by its NEIGHBOURS ("clears when the LAST
+    // segments go" and "commits a CLEARED date when the panel goes away"), both
+    // of which fail if it is reverted.
     localStorage.setItem(
       STORAGE_KEYS.profile,
       JSON.stringify({ startDate: "2020-01-01" }),

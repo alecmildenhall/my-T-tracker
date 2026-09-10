@@ -201,11 +201,13 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
       // straight back, and the two fields that are meant to agree on this
       // question agreed on blur and diverged here.
       //
-      // The element when it is still there, the draft when it is not: on
-      // backgrounding `visibilitychange` fires while this is mounted, and it is
-      // the only source that survives iOS's picker Reset firing no change
-      // event; on unmount React has already detached the ref, and that exit
-      // involves no picker so the draft is right.
+      // The element on both exits — the cleanup is a LAYOUT one, so the input is
+      // still attached when it runs. This said the reverse until the effect was
+      // converted, and the reverse is what a passive cleanup sees; left as it
+      // was, the next reader would revert the layout effect and quietly restore
+      // a date the user had cleared. Reading the control matters most on
+      // backgrounding, where it is the only source that survives iOS's picker
+      // Reset firing no change event. The draft fallback is unreachable defence.
       const el = startFieldRef.current;
       const value = el ? el.value : startDraft;
       // Always the control, never a remembered answer: a date input fires no
