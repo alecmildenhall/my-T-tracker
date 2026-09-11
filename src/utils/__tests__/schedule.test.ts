@@ -31,9 +31,9 @@ function history(
 ) {
   // The anchor is established ONCE from the first shot and frozen, exactly as
   // the profile now stores it — not recomputed from whatever is earliest.
-  const anchor = establishAnchor(actuals[0], shotDay, interval)!;
+  const anchor = establishAnchor(actuals[0], [shotDay], interval)!;
   return actuals.map((actual) => {
-    const planned = plannedDateFor(actual, anchor, interval)!;
+    const planned = plannedDateFor(actual, anchor, interval, [shotDay])!;
     const delta = daysFromPlanned({ date: actual, plannedFor: planned })!;
     return delta === 0
       ? "on time"
@@ -96,18 +96,18 @@ describe("establishAnchor", () => {
   it("snaps the first shot to the nearest shot day", () => {
     // A first shot taken one day early still anchors the grid to Wednesday —
     // which is the entire reason shot day is required.
-    expect(establishAnchor(day(-1), "wednesday", 7)).toBe(WED);
-    expect(establishAnchor(day(1), "wednesday", 7)).toBe(WED);
-    expect(establishAnchor(WED, "wednesday", 7)).toBe(WED);
+    expect(establishAnchor(day(-1), ["wednesday"], 7)).toBe(WED);
+    expect(establishAnchor(day(1), ["wednesday"], 7)).toBe(WED);
+    expect(establishAnchor(WED, ["wednesday"], 7)).toBe(WED);
   });
 
   it("picks the nearer occurrence when a shot sits between two", () => {
     // Sunday is 4 days after one Wednesday and 3 before the next.
-    expect(establishAnchor(day(4), "wednesday", 7)).toBe(day(7));
+    expect(establishAnchor(day(4), ["wednesday"], 7)).toBe(day(7));
   });
 
   it("is null for a date it cannot read", () => {
-    expect(establishAnchor("nope", "wednesday", 7)).toBeNull();
+    expect(establishAnchor("nope", ["wednesday"], 7)).toBeNull();
   });
 });
 
@@ -119,20 +119,20 @@ describe("establishAnchor — cadences a weekday cannot describe", () => {
     // a user injecting EXACTLY every 10 days read "3 days before" on all of
     // them, forever — the failure this module's header rejects.
     for (const interval of [1, 3, 10, 13, 30]) {
-      expect(establishAnchor("2026-08-09", "wednesday", interval)).toBeNull();
+      expect(establishAnchor("2026-08-09", ["wednesday"], interval)).toBeNull();
     }
   });
 
   it("anchors every whole number of weeks", () => {
     for (const interval of [7, 14, 21, 28]) {
-      expect(establishAnchor(day(-1), "wednesday", interval)).toBe(WED);
+      expect(establishAnchor(day(-1), ["wednesday"], interval)).toBe(WED);
     }
   });
 
   it("refuses an out-of-range interval outright", () => {
-    expect(establishAnchor(WED, "wednesday", 0)).toBeNull();
-    expect(establishAnchor(WED, "wednesday", 7.5)).toBeNull();
-    expect(establishAnchor(WED, "wednesday", 371)).toBeNull(); // > 365
+    expect(establishAnchor(WED, ["wednesday"], 0)).toBeNull();
+    expect(establishAnchor(WED, ["wednesday"], 7.5)).toBeNull();
+    expect(establishAnchor(WED, ["wednesday"], 371)).toBeNull(); // > 365
   });
 });
 
@@ -142,7 +142,7 @@ describe("establishAnchor — refusing to mint what the boundaries drop", () => 
     // every persistence boundary enforces. Each of them would have dropped it
     // silently, leaving the user with no planned dates and nothing explaining
     // why — so the producer refuses instead.
-    expect(establishAnchor("1900-01-01", "sunday", 7)).toBeNull();
+    expect(establishAnchor("1900-01-01", ["sunday"], 7)).toBeNull();
   });
 });
 
@@ -164,9 +164,9 @@ describe("snapToWeekday", () => {
 
 describe("plannedDateFor", () => {
   it("claims the nearest slot", () => {
-    expect(plannedDateFor(WED, WED, 7)).toBe(WED);
-    expect(plannedDateFor(day(8), WED, 7)).toBe(day(7));
-    expect(plannedDateFor(day(13), WED, 7)).toBe(day(14));
+    expect(plannedDateFor(WED, WED, 7, ["wednesday"])).toBe(WED);
+    expect(plannedDateFor(day(8), WED, 7, ["wednesday"])).toBe(day(7));
+    expect(plannedDateFor(day(13), WED, 7, ["wednesday"])).toBe(day(14));
   });
 
   it("gives an exact midpoint to the LATER slot, on both sides of the anchor", () => {
@@ -175,19 +175,19 @@ describe("plannedDateFor", () => {
     // same function. It pins which way a tie falls, which is the part a future
     // edit could change without noticing.
     const interval = 8; // even, so half of it is a whole number of days
-    expect(plannedDateFor(day(4), WED, interval)).toBe(day(8));
-    expect(plannedDateFor(day(-4), WED, interval)).toBe(WED);
+    expect(plannedDateFor(day(4), WED, interval, ["wednesday"])).toBe(day(8));
+    expect(plannedDateFor(day(-4), WED, interval, ["wednesday"])).toBe(WED);
   });
 
   it("works for a shot before the anchor", () => {
-    expect(plannedDateFor(day(-7), WED, 7)).toBe(day(-7));
-    expect(plannedDateFor(day(-6), WED, 7)).toBe(day(-7));
+    expect(plannedDateFor(day(-7), WED, 7, ["wednesday"])).toBe(day(-7));
+    expect(plannedDateFor(day(-6), WED, 7, ["wednesday"])).toBe(day(-7));
   });
 
   it("works for a fortnightly grid", () => {
-    expect(plannedDateFor(day(14), WED, 14)).toBe(day(14));
-    expect(plannedDateFor(day(15), WED, 14)).toBe(day(14));
-    expect(plannedDateFor(day(7), WED, 14)).toBe(day(14)); // nearest, rounding up
+    expect(plannedDateFor(day(14), WED, 14, ["wednesday"])).toBe(day(14));
+    expect(plannedDateFor(day(15), WED, 14, ["wednesday"])).toBe(day(14));
+    expect(plannedDateFor(day(7), WED, 14, ["wednesday"])).toBe(day(14)); // nearest, rounding up
   });
 });
 
@@ -260,19 +260,22 @@ describe("the six user patterns the design was chosen by", () => {
   });
 });
 
+/** The profile shape planShot reads — named so fixtures narrow their weekdays. */
+type PlanProfile = NonNullable<Parameters<typeof planShot>[0]["profile"]>;
+
 describe("scheduleMode", () => {
   it("answers 'did I hit my day' only with a weekly rhythm AND a shot day", () => {
-    expect(scheduleMode("wednesday", 7)).toBe("grid");
-    expect(scheduleMode("wednesday", 14)).toBe("grid");
-    expect(scheduleMode("wednesday", 28)).toBe("grid");
+    expect(scheduleMode(["wednesday"], 7)).toBe("grid");
+    expect(scheduleMode(["wednesday"], 14)).toBe("grid");
+    expect(scheduleMode(["wednesday"], 28)).toBe("grid");
   });
 
   it("answers 'was my gap right' for any cadence a weekday cannot describe", () => {
     // Shot day is irrelevant here, set or not — the grid would walk across the
     // week, so the weekday means nothing. The UI greys the control out to say so.
     expect(scheduleMode(undefined, 10)).toBe("rolling");
-    expect(scheduleMode("wednesday", 10)).toBe("rolling");
-    expect(scheduleMode("wednesday", 3)).toBe("rolling");
+    expect(scheduleMode(["wednesday"], 10)).toBe("rolling");
+    expect(scheduleMode(["wednesday"], 3)).toBe("rolling");
   });
 
   it("answers nothing for a weekly rhythm with no shot day", () => {
@@ -284,10 +287,10 @@ describe("scheduleMode", () => {
   });
 
   it("answers nothing without a usable interval", () => {
-    expect(scheduleMode("wednesday", undefined)).toBe("none");
-    expect(scheduleMode("wednesday", 0)).toBe("none");
-    expect(scheduleMode("wednesday", 7.5)).toBe("none");
-    expect(scheduleMode("wednesday", 400)).toBe("none");
+    expect(scheduleMode(["wednesday"], undefined)).toBe("none");
+    expect(scheduleMode(["wednesday"], 0)).toBe("none");
+    expect(scheduleMode(["wednesday"], 7.5)).toBe("none");
+    expect(scheduleMode(["wednesday"], 400)).toBe("none");
   });
 });
 
@@ -355,7 +358,7 @@ describe("plannedDateRolling", () => {
 });
 
 describe("planShot — the one entry point", () => {
-  const grid = { shotDays: ["wednesday"] as const, intervalDays: 7 };
+  const grid: PlanProfile = { shotDays: ["wednesday"], intervalDays: 7 };
 
   it("answers nothing when the settings answer no question", () => {
     expect(planShot({ date: WED, profile: {} })).toEqual({});
@@ -386,7 +389,7 @@ describe("planShot — the one entry point", () => {
     // guard lived only in establishAnchor, which runs once — so a user who set
     // 7 days, logged shots, then switched to 10 kept a weekday-snapped anchor
     // that described nothing, and every shot read "3 days before" forever.
-    const anchor = establishAnchor("2026-08-09", "wednesday", 7)!;
+    const anchor = establishAnchor("2026-08-09", ["wednesday"], 7)!;
     const rolling = planShot({
       date: "2026-08-19",
       previousShotDate: "2026-08-09",
@@ -452,9 +455,9 @@ describe("planShot at the edge of the supported range", () => {
     // The premise: both dates are storable, and the anchor itself is fine.
     expect(isShotDateInRange(anchor)).toBe(true);
     expect(isShotDateInRange(date)).toBe(true);
-    expect(establishAnchor(anchor, "wednesday", 364)).toBe(anchor);
+    expect(establishAnchor(anchor, ["wednesday"], 364)).toBe(anchor);
     // But the slot it would plan is not.
-    expect(plannedDateFor(date, anchor, 364)).toBeNull();
+    expect(plannedDateFor(date, anchor, 364, ["wednesday"])).toBeNull();
 
     // So nothing is returned — not a planned date, and not an anchor.
     expect(

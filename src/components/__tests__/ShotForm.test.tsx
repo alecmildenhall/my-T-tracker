@@ -5,6 +5,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { ShotForm, type ShotDraft } from "../ShotForm";
 import { OFF_DAYS_PATTERNS, type ShotEntry } from "../../types/shot";
 import type { SaveOutcome } from "../ShotForm";
+import type { Profile } from "../../types/profile";
 import { todayLocalISO } from "../../utils/datetime";
 import { expectFocusSomewhereUseful } from "../../test/focus";
 import { expectVisibleFocusRing } from "../../test/focusRing";
@@ -1211,10 +1212,15 @@ describe("the confirm beat", () => {
 });
 
 describe("ShotForm — the planned date", () => {
-  const grid = {
-    shotDays: ["wednesday"] as const,
+  const grid: Pick<
+    Profile,
+    "shotDays" | "intervalDays" | "scheduleAnchor" | "scheduleMode"
+  > = {
+    shotDays: ["wednesday"],
     intervalDays: 7,
     scheduleAnchor: "2026-08-05",
+    // Explicit now that the rhythm is stored rather than inferred.
+    scheduleMode: "grid",
   };
   const planned = () =>
     screen.getByLabelText(/Planned for/i) as HTMLInputElement;
@@ -1464,7 +1470,8 @@ describe("ShotForm — the planned date", () => {
       { id: "a", date: "2026-07-08" },
       { id: "b", date: "2026-08-19" },
     ];
-    const profile = { shotDays: ["wednesday"] as const, intervalDays: 14 };
+    const profile: Pick<Profile, "shotDays" | "intervalDays" | "scheduleMode"> =
+      { shotDays: ["wednesday"], intervalDays: 14, scheduleMode: "grid" };
 
     const onEdit = vi.fn();
     const edit = render(

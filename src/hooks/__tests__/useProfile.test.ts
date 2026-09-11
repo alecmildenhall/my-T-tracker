@@ -52,10 +52,10 @@ describe("useProfile", () => {
 
   it("sets, persists, and clears the shot day", () => {
     const { result } = renderHook(() => useProfile());
-    act(() => result.current.setShotDay("wednesday"));
-    expect(result.current.profile.shotDays).toBe("wednesday");
+    act(() => result.current.setSchedule({ shotDays: ["wednesday"] }));
+    expect(result.current.profile.shotDays).toEqual(["wednesday"]);
     expect(stored()).toEqual({ shotDays: ["wednesday"] });
-    act(() => result.current.setShotDay(undefined));
+    act(() => result.current.setSchedule({ shotDays: undefined }));
     expect(result.current.profile.shotDays).toBeUndefined();
   });
 
@@ -160,16 +160,16 @@ describe("useProfile — re-declaring the schedule clears its anchor", () => {
     act(() => result.current.setScheduleAnchor("2026-08-05"));
     expect(result.current.profile.scheduleAnchor).toBe("2026-08-05");
 
-    act(() => result.current.setShotDay("friday"));
+    act(() => result.current.setSchedule({ shotDays: ["friday"] }));
     expect(result.current.profile.scheduleAnchor).toBeUndefined();
-    expect(result.current.profile.shotDays).toBe("friday");
+    expect(result.current.profile.shotDays).toEqual(["friday"]);
   });
 
   it("clears it when the interval changes", () => {
     const { result } = renderHook(() => useProfile());
     act(() => result.current.setScheduleAnchor("2026-08-05"));
 
-    act(() => result.current.setIntervalDays(14));
+    act(() => result.current.setSchedule({ intervalDays: 14 }));
     expect(result.current.profile.scheduleAnchor).toBeUndefined();
     expect(result.current.profile.intervalDays).toBe(14);
   });

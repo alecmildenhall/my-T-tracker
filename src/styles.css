@@ -2589,7 +2589,7 @@ select {
   min-height: 0; /* the base input rule sets 44px, which would misalign it */
 }
 
-.cadence__row-label {
+.cadence__row-text {
   display: block;
 }
 

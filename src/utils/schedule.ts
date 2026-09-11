@@ -89,6 +89,29 @@ export function snapToWeekday(iso: string, weekday: Weekday): string | null {
  * imported `["thursday", "monday"]` would otherwise anchor to Thursday while
  * reading as Monday-first everywhere a person looks at it.
  */
+/**
+ * The next occurrence of `weekday` on or after `iso` — FORWARD only, never the
+ * nearest.
+ *
+ * The distinction is the whole correctness of a multi-day grid, and a sweep
+ * caught it rather than review. {@link snapToWeekday} moves to the nearest
+ * match, which is right for establishing an anchor (it minimises how far the
+ * anchor moves from the first shot) and wrong for locating the other days of a
+ * set: anchored on Monday, Friday is 4 days forward, so "nearest" jumps to the
+ * PREVIOUS Friday and puts that day's grid one week out of phase with Monday's.
+ *
+ * Invisible at a one-week interval, where every Friday is a slot. Measured
+ * wrong at two and four: Mon/Wed/Fri read "2 days later" on every single Friday,
+ * forever, frozen at log time.
+ */
+function forwardToWeekday(iso: string, weekday: Weekday): string | null {
+  const current = weekdayOf(iso);
+  if (!current) return null;
+  const forward =
+    (WEEKDAYS.indexOf(weekday) - WEEKDAYS.indexOf(current) + 7) % 7; // 0..6
+  return addDaysCivil(iso, forward);
+}
+
 function sortedDays(days: Weekday[] | undefined): Weekday[] {
   if (!days) return [];
   const present = new Set(days);
@@ -159,9 +182,25 @@ export function shotDaysInEffect(profile: {
   intervalDays?: number;
   scheduleMode?: ScheduleMode;
 }): Weekday[] {
-  return effectiveScheduleMode(profile) === "grid"
-    ? sortedDays(profile.shotDays)
-    : [];
+  const days = sortedDays(profile.shotDays);
+  if (days.length === 0) return [];
+  // The rhythms where a weekday means nothing: counting from your last shot has
+  // no weekday, and not tracking has switched this off.
+  if (profile.scheduleMode === "rolling" || profile.scheduleMode === "none") {
+    return [];
+  }
+  // An interval no weekday can describe makes them inert — the grid would walk
+  // across the week. Deliberately NOT gated on having an interval at all: the
+  // greeting is "today is a day you inject", which is true before anyone sets a
+  // cadence, and gating it on one silently removed the greeting for every user
+  // who had only ever picked a day.
+  if (
+    isValidIntervalDays(profile.intervalDays) &&
+    !isWeeklyMultiple(profile.intervalDays)
+  ) {
+    return [];
+  }
+  return days;
 }
 
 /** A cadence a weekday can describe: a whole number of weeks. */
@@ -204,7 +243,7 @@ export function plannedDateFor(
   let best: string | null = null;
   let bestGap = Infinity;
   for (const day of days) {
-    const dayAnchor = snapToWeekday(anchor, day);
+    const dayAnchor = forwardToWeekday(anchor, day);
     if (!dayAnchor) continue;
     const offset = daysApart(dayAnchor, actual);
     // Null rather than a junk string. This is exported and was reachable with an

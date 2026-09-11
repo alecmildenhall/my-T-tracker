@@ -29,13 +29,21 @@ type Shot = { id: string; date: string; plannedFor?: string };
 class Journal {
   shots: Shot[] = [];
   profile: {
-    shotDay?: Weekday;
+    shotDays?: Weekday[];
     intervalDays?: number;
     scheduleAnchor?: string;
+    scheduleMode?: "grid" | "rolling" | "none";
   };
 
-  constructor(shotDay: Weekday, intervalDays: number) {
-    this.profile = { shotDay, intervalDays };
+  constructor(shotDays: Weekday | Weekday[], intervalDays: number) {
+    this.profile = {
+      shotDays: Array.isArray(shotDays) ? shotDays : [shotDays],
+      intervalDays,
+      // Explicit, because the rhythm is now something the user states rather
+      // than something inferred — and a whole-week interval with days is
+      // exactly the combination inference used to read as "none".
+      scheduleMode: "grid",
+    };
   }
 
   log(date: string) {
@@ -62,8 +70,8 @@ class Journal {
     this.profile.intervalDays = days;
     this.profile.scheduleAnchor = undefined;
   }
-  setShotDay(day: Weekday) {
-    this.profile.shotDays = day;
+  setShotDays(days: Weekday | Weekday[]) {
+    this.profile.shotDays = Array.isArray(days) ? days : [days];
     this.profile.scheduleAnchor = undefined;
   }
 }
@@ -148,7 +156,7 @@ describe("perfect adherence never reads as late", () => {
 
               const j = new Journal(from, interval);
               before.forEach((d) => j.log(d));
-              j.setShotDay(to);
+              j.setShotDays(to);
               // Resume on the NEW weekday, perfectly on cadence from there.
               const resume = addDaysCivil(
                 before[before.length - 1],
@@ -207,5 +215,74 @@ describe("perfect adherence never reads as late", () => {
     expect(j.shots.slice(4).map((s) => daysFromPlanned(s))).toEqual([
       0, 0, 0, 0,
     ]);
+  });
+});
+
+/**
+ * The same question the sweep above asks — does perfect adherence read 0? —
+ * for cadences a single weekday could not express.
+ *
+ * This is the guard for the capability `shotDays` exists to add. Twice-weekly
+ * TRT (Mon & Thu, to flatten peaks and troughs) is every 3.5 days, and
+ * `intervalDays` is a whole number, so it simply could not be said before. The
+ * risk in adding it is that one grid per weekday is one more thing to get out
+ * of phase, and the failure would be silent: lateness is frozen at log time, so
+ * a wrong planned date is born wrong and then protected from correction.
+ */
+describe("perfect adherence on a multi-day rhythm", () => {
+  /** WEEKDAYS is Sunday-first, and this is a Sunday, so the index IS the offset. */
+  const BASE_SUNDAY = "2026-08-02";
+  const offset = (day: Weekday) => WEEKDAYS.indexOf(day);
+
+  /** Exactly the dates the grid describes: each chosen day, every `weeks`. */
+  const onRhythm = (days: Weekday[], weeks: number, cycles: number) =>
+    Array.from({ length: cycles }, (_, c) =>
+      days.map((d) => addDaysCivil(BASE_SUNDAY, c * weeks * 7 + offset(d))),
+    ).flat();
+
+  const SETS: Weekday[][] = [
+    ["monday", "thursday"], // twice weekly — the protocol this unlocks
+    ["monday", "wednesday", "friday"], // MWF
+    ["tuesday", "friday"],
+    ["sunday", "saturday"], // spans the week boundary, so the snap goes backwards
+    ["wednesday"], // one day still behaves
+  ];
+
+  it("reads 0 for every shot, across sets and week multiples", () => {
+    const wrong: string[] = [];
+    for (const days of SETS) {
+      for (const weeks of [1, 2, 4]) {
+        const j = new Journal(days, weeks * 7);
+        const dates = onRhythm(days, weeks, 6);
+        dates.forEach((d) => j.log(d));
+        j.shots.forEach((s, i) => {
+          const delta = daysFromPlanned(s);
+          if (delta !== 0)
+            wrong.push(
+              `${days.join("+")} every ${weeks}w, shot ${i} (${s.date}): ${delta}`,
+            );
+        });
+      }
+    }
+    expect(wrong).toEqual([]);
+  });
+
+  it("still reports real drift on a multi-day rhythm", () => {
+    // The mirror, so the test above cannot pass by zeroing everything: a shot
+    // taken a day late must say so, and must not be quietly reassigned to the
+    // other weekday's grid, which is the failure mode unique to a SET.
+    const j = new Journal(["monday", "thursday"], 7);
+    j.log("2026-08-03"); // Monday, on rhythm
+    j.log("2026-08-07"); // Friday — a day after the Thursday slot
+    expect(j.shots.map((s) => daysFromPlanned(s))).toEqual([0, 1]);
+  });
+
+  it("claims the NEARER day when two are in range", () => {
+    // Mon & Thu, a shot on Tuesday: one day after Monday, two before Thursday.
+    // It belongs to Monday, and saying so is what stops a two-day schedule
+    // reporting everything as early.
+    const j = new Journal(["monday", "thursday"], 7);
+    j.log("2026-08-04"); // Tuesday
+    expect(daysFromPlanned(j.shots[0])).toBe(1);
   });
 });

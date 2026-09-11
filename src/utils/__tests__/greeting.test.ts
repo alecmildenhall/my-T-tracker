@@ -63,7 +63,7 @@ describe("resolveGreeting — shot day", () => {
   it("celebrates the shot day with the name", () => {
     expect(
       resolveGreeting(
-        profile({ shotDay: ORDINARY_WEEKDAY, preferredName: "Lou" }),
+        profile({ shotDays: [ORDINARY_WEEKDAY], preferredName: "Lou" }),
         true,
         ORDINARY_DAY,
       ),
@@ -73,7 +73,7 @@ describe("resolveGreeting — shot day", () => {
   it("celebrates the shot day without a name", () => {
     expect(
       resolveGreeting(
-        profile({ shotDay: ORDINARY_WEEKDAY }),
+        profile({ shotDays: [ORDINARY_WEEKDAY] }),
         true,
         ORDINARY_DAY,
       ),
@@ -82,7 +82,7 @@ describe("resolveGreeting — shot day", () => {
 
   it("says nothing shot-day-ish when today isn't the shot day", () => {
     expect(
-      resolveGreeting(profile({ shotDay: OTHER_WEEKDAY }), true, ORDINARY_DAY),
+      resolveGreeting(profile({ shotDays: [OTHER_WEEKDAY] }), true, ORDINARY_DAY),
     ).toBe("Hi there~");
   });
 
@@ -95,7 +95,7 @@ describe("resolveGreeting — shot day", () => {
       resolveGreeting(
         profile({
           startDate: START,
-          shotDay: ONE_YEAR_WEEKDAY,
+          shotDays: [ONE_YEAR_WEEKDAY],
           preferredName: "Lou",
         }),
         true,
@@ -107,7 +107,7 @@ describe("resolveGreeting — shot day", () => {
   it("outranks the first-time welcome (a set shot day beats a brand-new greeting)", () => {
     expect(
       resolveGreeting(
-        profile({ shotDay: ORDINARY_WEEKDAY }),
+        profile({ shotDays: [ORDINARY_WEEKDAY] }),
         false,
         ORDINARY_DAY,
       ),
@@ -176,12 +176,12 @@ describe("resolveGreeting — name handling", () => {
       resolveGreeting(profile({ preferredName: "Lou" }), true, ORDINARY_DAY),
       resolveGreeting(profile(), true, ORDINARY_DAY),
       resolveGreeting(
-        profile({ shotDay: ORDINARY_WEEKDAY, preferredName: "Lou" }),
+        profile({ shotDays: [ORDINARY_WEEKDAY], preferredName: "Lou" }),
         true,
         ORDINARY_DAY,
       ),
       resolveGreeting(
-        profile({ shotDay: ORDINARY_WEEKDAY }),
+        profile({ shotDays: [ORDINARY_WEEKDAY] }),
         true,
         ORDINARY_DAY,
       ),
@@ -201,7 +201,7 @@ describe("resolveGreeting — shot day against a non-weekly interval", () => {
     // one place it was not actually off.
     expect(
       resolveGreeting(
-        profile({ shotDay: ORDINARY_WEEKDAY, intervalDays: 10 }),
+        profile({ shotDays: [ORDINARY_WEEKDAY], intervalDays: 10 }),
         true,
         ORDINARY_DAY,
       ),
@@ -213,7 +213,7 @@ describe("resolveGreeting — shot day against a non-weekly interval", () => {
     // back rather than making the user remember it.
     expect(
       resolveGreeting(
-        profile({ shotDay: ORDINARY_WEEKDAY, intervalDays: 14 }),
+        profile({ shotDays: [ORDINARY_WEEKDAY], intervalDays: 14 }),
         true,
         ORDINARY_DAY,
       ),
@@ -225,7 +225,7 @@ describe("resolveGreeting — shot day against a non-weekly interval", () => {
     // never sets one.
     expect(
       resolveGreeting(
-        profile({ shotDay: ORDINARY_WEEKDAY }),
+        profile({ shotDays: [ORDINARY_WEEKDAY] }),
         true,
         ORDINARY_DAY,
       ),

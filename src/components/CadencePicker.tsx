@@ -2,13 +2,10 @@
 import React, { useLayoutEffect, useRef, useState } from "react";
 import { WEEKDAYS, weekdayLabel } from "../utils/weekday";
 import type { Weekday } from "../utils/weekday";
-import {
-  MAX_INTERVAL_DAYS,
-  MIN_INTERVAL_DAYS,
-  isValidIntervalDays,
-} from "../types/profile";
+import { MAX_INTERVAL_DAYS, isValidIntervalDays } from "../types/profile";
 import type { Profile, ScheduleMode } from "../types/profile";
 import { describeWeeklySchedule } from "../utils/describeSchedule";
+import { intervalProblem } from "../utils/intervalMessage";
 
 /**
  * "How do you time your shots?" — the whole cadence setting, in one component
@@ -36,33 +33,6 @@ export interface CadencePickerProps {
   idPrefix: string;
   profile: Pick<Profile, "shotDays" | "intervalDays" | "scheduleMode">;
   onChange: (patch: Partial<Profile>) => void;
-}
-
-/** What is wrong with a typed interval, in words, or null when nothing is. */
-export function intervalProblem(
-  raw: string,
-  unit: "day" | "week",
-): string | null {
-  const trimmed = raw.trim();
-  if (trimmed === "")
-    return `Enter how many ${unit}s, or pick a different option above.`;
-  const n = Number(trimmed);
-  if (!Number.isFinite(n)) return "That isn’t a number.";
-  if (n <= 0) return `Shots need to be at least 1 ${unit} apart.`;
-  if (!Number.isInteger(n)) {
-    // The 3.5 case. The roadmap deferred this message until weekday sets
-    // existed, because before them a twice-weekly user had nowhere to be sent —
-    // "any copy written now is copy written to be deleted". They have somewhere
-    // now, so it points there instead of only refusing.
-    return unit === "day"
-      ? "Whole days only. For twice a week, choose “On certain days” and pick two."
-      : "Whole weeks only.";
-  }
-  const days = unit === "day" ? n : n * 7;
-  if (days > MAX_INTERVAL_DAYS) return "That’s longer than a year apart.";
-  if (days < MIN_INTERVAL_DAYS)
-    return `Shots need to be at least 1 ${unit} apart.`;
-  return null;
 }
 
 /** The number the box shows for a stored interval, in the unit of the mode. */
@@ -104,13 +74,18 @@ export function CadencePicker({
   useLayoutEffect(() => {
     commitNumRef.current = () => {
       const el = numRef.current;
-      // Ask the control, never a remembered answer or a default. A number input
-      // reports "" for garbage as well as for empty ("-", "1e", "1.2.3" all
-      // sanitize to ""), so assuming `false` here would read a fumbled keystroke
-      // as a deliberate clear and wipe the cadence.
-      const badInput = el ? el.validity.badInput : true;
       const value = el ? el.value : numDraft;
-      if (badInput || intervalProblem(value, unit)) return;
+      // No `validity.badInput` check, deliberately, and it is worth saying why
+      // since every other field here has one. A number input reports value ""
+      // for unparseable text as well as for empty — "-", "1e" and "1.2.3" all
+      // sanitize to "" — so `intervalProblem` already refuses both, and a
+      // `badInput` branch could never be the deciding factor. Mutation-tested:
+      // removing it turns nothing red, which is the honest reason it is gone
+      // rather than kept as reassurance.
+      //
+      // What DOES matter is that neither is treated as "deliberately cleared".
+      // Committing an empty box wiped the cadence and the frozen anchor with it.
+      if (intervalProblem(value, unit)) return;
       const n = Number(value.trim());
       const intervalDays = unit === "week" ? n * 7 : n;
       if (intervalDays !== profile.intervalDays) onChange({ intervalDays });
@@ -290,17 +265,23 @@ function ModeRow({
 }) {
   return (
     <label
+      htmlFor={`${idPrefix}-cadence-${value}`}
       className={`cadence__row${current === value ? " cadence__row--on" : ""}`}
     >
       <input
+        id={`${idPrefix}-cadence-${value}`}
         type="radio"
         name={`${idPrefix}-cadence-mode`}
         value={value}
         checked={current === value}
         onChange={() => onPick(value)}
       />
-      <span>
-        <span className="cadence__row-label">{label}</span>
+      {/* The visible label is a DIRECT child of the <label>, not wrapped one
+          level deeper for layout. Nesting it put the text out of reach of the
+          accessible-name check, which is a good proxy for putting it out of
+          reach of anything else reading the label. */}
+      <span className="cadence__row-text">
+        {label}
         <span className="cadence__row-sub">{sub}</span>
       </span>
     </label>
