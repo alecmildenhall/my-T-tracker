@@ -79,6 +79,19 @@ describe("CadencePicker — choosing a rhythm", () => {
     expect(monday).not.toHaveAttribute("aria-current");
   });
 
+  it("paints the chip that matches the stored cadence", () => {
+    // `.chip--active` is the only rule that paints a selected chip; there is no
+    // [aria-current] selector. Setting the attribute alone left a weekly user
+    // seeing neither chip lit, and a browser check that read the attribute
+    // rather than the class passed it.
+    setup({ scheduleMode: "grid", shotDays: ["monday"], intervalDays: 7 });
+    const weekly = screen.getByRole("button", { name: "Weekly" });
+    expect(weekly).toHaveClass("chip--active");
+    expect(screen.getByRole("button", { name: "Every 2 weeks" })).not.toHaveClass(
+      "chip--active",
+    );
+  });
+
   it("converts weeks to stored days", () => {
     const { merged } = setup({ scheduleMode: "grid", shotDays: ["monday"] });
     fireEvent.change(numberBox(), { target: { value: "2" } });
@@ -150,6 +163,16 @@ describe("CadencePicker — an unusable number is refused OUT LOUD", () => {
     expect(numberBox()).toHaveAttribute("aria-invalid", "true");
   });
 
+  it("says nothing about a field nobody has touched", () => {
+    // Selecting a rhythm reveals an empty box. Announcing "Enter how many..."
+    // on it instantly puts role="alert" and aria-invalid on a pristine field —
+    // reporting a failure for not having answered yet. The empty branch is a
+    // prompt, not a validation result.
+    setup({ scheduleMode: "rolling" });
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(numberBox()).not.toHaveAttribute("aria-invalid", "true");
+  });
+
   it("points a 3.5 at the rhythm that can express it", () => {
     // The reason the copy is writable now and was not before.
     setup({ scheduleMode: "rolling", intervalDays: 10 });
@@ -163,6 +186,54 @@ describe("CadencePicker — an unusable number is refused OUT LOUD", () => {
     fireEvent.change(numberBox(), { target: { value: "0" } });
     fireEvent.blur(numberBox());
     expect(onChange).not.toHaveBeenCalled();
+  });
+});
+
+describe("CadencePicker — following the profile from elsewhere", () => {
+  const Host = ({ profile, onChange }: { profile: Partial<Profile>; onChange: () => void }) => (
+    <CadencePicker idPrefix="t" profile={profile} onChange={onChange} />
+  );
+
+  it("shows a cadence that arrived from outside", () => {
+    // `useLocalStorage` subscribes to cross-tab storage events, and restoring a
+    // backup replaces the whole profile — from a panel on this very screen.
+    const view = render(
+      <Host profile={{ scheduleMode: "rolling", intervalDays: 14 }} onChange={vi.fn()} />,
+    );
+    view.rerender(
+      <Host profile={{ scheduleMode: "rolling", intervalDays: 10 }} onChange={vi.fn()} />,
+    );
+    expect(numberBox().value).toBe("10");
+  });
+
+  it("does not write the stale value back over it on the way out", () => {
+    // The half that loses data: the unmount commit compared its own stale draft
+    // against the restored profile, wrote the old number back, and cleared the
+    // anchor that had just been restored with it.
+    const onChange = vi.fn();
+    const view = render(
+      <Host profile={{ scheduleMode: "rolling", intervalDays: 14 }} onChange={onChange} />,
+    );
+    view.rerender(
+      <Host profile={{ scheduleMode: "rolling", intervalDays: 10 }} onChange={onChange} />,
+    );
+    onChange.mockClear();
+    view.unmount();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("follows a changed rhythm and day set too", () => {
+    const view = render(
+      <Host profile={{ scheduleMode: "rolling", intervalDays: 10 }} onChange={vi.fn()} />,
+    );
+    view.rerender(
+      <Host
+        profile={{ scheduleMode: "grid", shotDays: ["monday", "thursday"], intervalDays: 7 }}
+        onChange={vi.fn()}
+      />,
+    );
+    expect((mode(/On certain days/) as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByText("Mon & Thu, every week.")).toBeInTheDocument();
   });
 });
 

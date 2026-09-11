@@ -58,10 +58,46 @@ export function CadencePicker({
   );
   const numRef = useRef<HTMLInputElement>(null);
 
+  /**
+   * Follow the profile when it changes from OUTSIDE this control, which both
+   * implementations this replaced did and I dropped.
+   *
+   * Not cosmetic. `useLocalStorage` subscribes to cross-tab `storage` events,
+   * and DataManagement — which restores a backup over the whole profile —
+   * renders on this very screen. Without this the control kept showing the old
+   * cadence, and worse, the unmount commit then wrote it BACK over the restored
+   * one and cleared the freshly restored anchor with it. The start date beside
+   * it already follows, so the panel disagreed with itself too.
+   *
+   * Adjusted during render, React's documented pattern for state that follows
+   * changing props, and the same shape ShotForm and the old cards use.
+   */
+  const [lastSeen, setLastSeen] = useState(profile);
+  if (
+    profile.scheduleMode !== lastSeen.scheduleMode ||
+    profile.intervalDays !== lastSeen.intervalDays ||
+    profile.shotDays !== lastSeen.shotDays
+  ) {
+    setLastSeen(profile);
+    setMode(profile.scheduleMode);
+    setDays(profile.shotDays ?? []);
+    setNumDraft(draftFor(profile.scheduleMode, profile.intervalDays));
+  }
+
   const unit: "day" | "week" = mode === "grid" ? "week" : "day";
-  const problem = mode === "none" || mode === undefined
-    ? null
-    : intervalProblem(numDraft, unit);
+  /**
+   * An error only once the field has been TOUCHED.
+   *
+   * Selecting a rhythm reveals an empty box, and reporting "Enter how many
+   * weeks" on it instantly puts `role="alert"` and `aria-invalid` on a field
+   * nobody has typed in — announcing a failure for not having answered yet. The
+   * empty branch of `intervalProblem` is a prompt, not a validation result.
+   */
+  const [touched, setTouched] = useState(false);
+  const problem =
+    mode === "none" || mode === undefined || !touched
+      ? null
+      : intervalProblem(numDraft, unit);
 
   /**
    * Commit the number. Kept in a ref and run from a LAYOUT cleanup as well as
@@ -180,7 +216,7 @@ export function CadencePicker({
               unit="week(s)"
               max={52}
               problem={problem}
-              onChange={setNumDraft}
+              onChange={(v) => { setTouched(true); setNumDraft(v); }}
               onCommit={() => commitNumRef.current()}
             />
             <div className="suggestion-chips suggestion-chips--tight" role="group" aria-label="Common intervals">
@@ -188,8 +224,14 @@ export function CadencePicker({
                 <button
                   key={w}
                   type="button"
-                  className="chip"
-                  aria-current={numDraft.trim() === String(w)}
+                  // `.chip--active` is the ONLY rule that paints a selected
+                  // chip; there is no `[aria-current]` selector. Setting just
+                  // the attribute left a user on a weekly cadence seeing
+                  // neither chip lit, and tapping one changing nothing visible.
+                  // My browser pass read `aria-current` and called it done —
+                  // measuring the attribute rather than the paint.
+                  className={`chip${numDraft.trim() === String(w) ? " chip--active" : ""}`}
+                  aria-current={numDraft.trim() === String(w) ? true : undefined}
                   onClick={() => {
                     setNumDraft(String(w));
                     if (w * 7 !== profile.intervalDays)
@@ -229,7 +271,7 @@ export function CadencePicker({
               unit="days"
               max={MAX_INTERVAL_DAYS}
               problem={problem}
-              onChange={setNumDraft}
+              onChange={(v) => { setTouched(true); setNumDraft(v); }}
               onCommit={() => commitNumRef.current()}
             />
           </div>

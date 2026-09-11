@@ -157,9 +157,38 @@ export function establishAnchor(
   // weekday in the set, and `plannedDateFor` re-snaps it to each of the others
   // when it needs them — snapping moves at most 3 days, so every day's grid
   // sits inside the same week and they cannot drift apart.
-  const first = sortedDays(shotDays)[0];
+  // Two steps, and doing it in one was a real bug. Snapping the reference
+  // straight to `days[0]` moves to the NEAREST occurrence, which can be
+  // forward — and when it moved forward past the reference shot, that shot's
+  // own weekday then sat in the PREVIOUS grid week, so at any interval above 7
+  // the grid was permanently one cycle out. Measured: shot days Sun+Thu,
+  // fortnightly, first shot on a Thursday — every perfectly adhered shot read
+  // "3 days before", forever, frozen at log time.
+  //
+  // So: find the nearest day OF THE SET to the reference, which is the slot the
+  // first shot is really closest to, then step BACK inside that same week to
+  // `days[0]`, since `plannedDateFor` only ever walks FORWARD from the anchor.
+  // For a single-day set both steps collapse to the old behaviour.
+  const days = sortedDays(shotDays);
+  const first = days[0];
   if (!first) return null;
-  const anchor = snapToWeekday(firstShotDate, first);
+  let nearestDate: string | null = null;
+  let nearestDay: Weekday | null = null;
+  let bestGap = Infinity;
+  for (const day of days) {
+    const snapped = snapToWeekday(firstShotDate, day);
+    if (!snapped) continue;
+    const gap = Math.abs(daysApart(snapped, firstShotDate));
+    if (gap < bestGap) {
+      bestGap = gap;
+      nearestDate = snapped;
+      nearestDay = day;
+    }
+  }
+  if (!nearestDate || !nearestDay) return null;
+  const backToFirst =
+    (WEEKDAYS.indexOf(nearestDay) - WEEKDAYS.indexOf(first) + 7) % 7;
+  const anchor = addDaysCivil(nearestDate, -backToFirst);
   // Snapping moves up to 3 days either way, so it can step outside the range
   // every persistence boundary enforces — `establishAnchor("1900-01-01",
   // "sunday", 7)` gives "1899-12-31". Those boundaries would each drop it

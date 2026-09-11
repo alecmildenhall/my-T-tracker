@@ -139,18 +139,6 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
     };
   }, []);
 
-  /**
-   * Where focus goes when the shot-day select disables under it.
-   *
-   * The interval box sits immediately before the select in tab order, and its
-   * blur commit is what can disable that select — so tabbing out of the box
-   * after typing a non-weekly interval moves focus INTO the select, which the
-   * re-render then disables, and the browser blurs a disabled element onto
-   * <body>. Same class as the nine hand-off defects in slice B, and invisible
-   * to jsdom. Settings escapes it only by accident, because three chips sit
-   * between its input and its select.
-   */
-  const noticeRef = useRef<HTMLParagraphElement>(null);
   /** The start-date input, read by the escape hatch while it is still mounted. */
   const startFieldRef = useRef<HTMLInputElement>(null);
   /** Where "Remove start date" hands focus when it removes itself. */
@@ -394,7 +382,14 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
             // immediately after an action whose whole point was to have no
             // date. Same reasoning JourneySettings' Remove already records.
             onClick={() => {
-              handOffFocus(titleRef, noticeRef);
+              // One candidate, and that is stated rather than hidden: the
+              // notice this used to fall back to went with the shot-day select,
+              // so passing it left a permanently-null second candidate that
+              // looked like the util's "always more than one" rule was being
+              // followed when it was not. `titleRef` carries tabIndex={-1} and
+              // handOffFocus verifies the result, so a failure is visible
+              // rather than silent.
+              handOffFocus(titleRef);
               setStartDate(undefined);
               setStartDraft("");
             }}

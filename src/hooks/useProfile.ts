@@ -41,9 +41,30 @@ const EMPTY: Profile = {};
 function normalizeKnownFields(o: Record<string, unknown>): void {
   if (isBlank(o.startDate)) delete o.startDate;
   if (isBlank(o.preferredName)) delete o.preferredName;
-  // shotDay is an enum, not free text: drop anything that isn't one of the seven
-  // weekday keys (a hand-edit, an old value, or "" from a cleared <select>).
-  if (!isWeekday(o.shotDay)) delete o.shotDay;
+  // An ARRAY of enums, filtered per element and de-duplicated. This guarded
+  // `shotDay` until the rename and then guarded a field that no longer exists,
+  // which is worse than never having guarded it: a stale build or a hand-edit
+  // leaving `"shotDays": "wednesday"` flowed straight through, and a STRING is
+  // close enough to an array to get a long way — `"wednesday".includes(...)` is
+  // true, so the toggle even rendered pressed, and the first tap threw
+  // `days.filter is not a function`. An object threw on render.
+  if (Array.isArray(o.shotDays)) {
+    const clean = [...new Set(o.shotDays.filter(isWeekday))];
+    if (clean.length > 0) o.shotDays = clean;
+    else delete o.shotDays;
+  } else {
+    delete o.shotDays;
+  }
+  // The rhythm the user chose. Anything else is not a rhythm, and leaving it to
+  // `effectiveScheduleMode`'s default branch would silently fall back to
+  // inference for a value that merely looks wrong rather than absent.
+  if (
+    o.scheduleMode !== "grid" &&
+    o.scheduleMode !== "rolling" &&
+    o.scheduleMode !== "none"
+  ) {
+    delete o.scheduleMode;
+  }
   // The third boundary. Import and export were both hardened first, and this
   // one was missed: localStorage is hand-editable, and a string "14" or a 7.5
   // flowed straight into a field typed `number`. The save path's own guard did

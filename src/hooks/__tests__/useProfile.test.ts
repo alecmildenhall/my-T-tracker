@@ -59,13 +59,33 @@ describe("useProfile", () => {
     expect(result.current.profile.shotDays).toBeUndefined();
   });
 
-  it("drops an invalid shot day from storage (enum, not free text)", () => {
+  it.each([
+    ["a bad weekday in the list", { shotDays: ["someday"] }],
+    ["a STRING where a list belongs", { shotDays: "wednesday" }],
+    ["an object", { shotDays: {} }],
+    ["an empty list", { shotDays: [] }],
+    ["a rhythm that is not one", { scheduleMode: "sometimes" }],
+  ])("drops %s from storage", (_name, bad) => {
+    // This fed the RETIRED `shotDay` after the rename, so it guarded a field
+    // that no longer existed and passed vacuously. A string is the dangerous
+    // one: it is close enough to an array to get a long way, since
+    // `"wednesday".includes("wednesday")` is true, so the toggle renders
+    // pressed and the first tap throws `days.filter is not a function`.
     localStorage.setItem(
       STORAGE_KEYS.profile,
-      JSON.stringify({ shotDay: "someday", preferredName: "Lou" }),
+      JSON.stringify({ ...bad, preferredName: "Lou" }),
     );
     const { result } = renderHook(() => useProfile());
     expect(result.current.profile).toEqual({ preferredName: "Lou" });
+  });
+
+  it("keeps a valid set, de-duplicated", () => {
+    localStorage.setItem(
+      STORAGE_KEYS.profile,
+      JSON.stringify({ shotDays: ["monday", "monday", "thursday"] }),
+    );
+    const { result } = renderHook(() => useProfile());
+    expect(result.current.profile.shotDays).toEqual(["monday", "thursday"]);
   });
 
   it("coerces a corrupt (non-object) stored value to empty", () => {

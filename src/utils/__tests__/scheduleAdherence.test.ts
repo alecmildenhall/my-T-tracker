@@ -252,16 +252,24 @@ describe("perfect adherence on a multi-day rhythm", () => {
     const wrong: string[] = [];
     for (const days of SETS) {
       for (const weeks of [1, 2, 4]) {
+        // WHICH DAY THE HISTORY STARTS ON is an axis, not a detail. Without it
+        // this sweep was blind to a real bug: it always emitted the week-order
+        // first day first, so the anchor was always established from a shot
+        // already sitting on `sortedDays[0]` — the one case where snapping to
+        // that day cannot move forward past the shot. Review caught what the
+        // sweep could not, which is the failure mode a sweep exists to avoid.
+        for (let startAt = 0; startAt < days.length; startAt += 1) {
         const j = new Journal(days, weeks * 7);
-        const dates = onRhythm(days, weeks, 6);
+        const dates = onRhythm(days, weeks, 6).slice(startAt);
         dates.forEach((d) => j.log(d));
         j.shots.forEach((s, i) => {
           const delta = daysFromPlanned(s);
           if (delta !== 0)
             wrong.push(
-              `${days.join("+")} every ${weeks}w, shot ${i} (${s.date}): ${delta}`,
+              `${days.join("+")} every ${weeks}w from day ${startAt}, shot ${i} (${s.date}): ${delta}`,
             );
         });
+        }
       }
     }
     expect(wrong).toEqual([]);
