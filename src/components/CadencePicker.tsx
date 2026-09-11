@@ -318,6 +318,7 @@ function ModeRow({
         checked={current === value}
         onChange={() => onPick(value)}
       />
+      <span className="cadence__row__mark" aria-hidden="true" />
       {/* The visible label is a DIRECT child of the <label>, not wrapped one
           level deeper for layout. Nesting it put the text out of reach of the
           accessible-name check, which is a good proxy for putting it out of
