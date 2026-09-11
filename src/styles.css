@@ -2598,6 +2598,10 @@ select {
   font-size: 0.78rem;
   color: var(--text-muted);
   margin-top: 0.05rem;
+  /* Explicit, because this sits inside a <label> and the app bolds those. Left
+     to inherit it came out at 600, so the row's name and its explanation had
+     the same weight and neither read as subordinate to the other. */
+  font-weight: 400;
 }
 
 .cadence__row--on .cadence__row-sub {
@@ -2608,6 +2612,12 @@ select {
    what the fields belong to and puts them on a margin nothing else shares. */
 .cadence__reveal {
   margin: 0.15rem 0 0.6rem;
+  /* The app's field scale. This block used to live inside a <label> and picked
+     up its sizing; freestanding it inherited the 16px body size instead, so
+     "every … week(s)" sat larger than every other label on the card. The INPUT
+     is unaffected — it keeps the 16px the coarse-pointer rule guarantees, which
+     is what stops iOS zooming on focus. */
+  font-size: 0.85rem;
 }
 
 .cadence__days {
@@ -2622,6 +2632,12 @@ select {
 .cadence__day {
   flex: 1 1 0;
   min-width: 0;
+  /* Capped, or they stretch with the container: measured 121.8px each at a
+     1200px viewport, which is a very large pill around a single letter. The cap
+     never binds on a phone — 38.3px at 390px — so this only affects desktop,
+     where the row simply stops growing and stays left-aligned with the fields
+     above it. */
+  max-width: 56px;
   font: inherit;
   font-size: 0.78rem;
   font-weight: 600;
@@ -2632,6 +2648,18 @@ select {
   padding: 0.5rem 0;
   min-height: 44px;
   cursor: pointer;
+}
+
+/* The app's own ring, not the browser's. Found in a browser pass: these fell
+   through to the UA default (`outline: auto 1px rgb(16,16,16)` in Chromium),
+   which is visible here and is NOT this app's ring — so a screenshot passes it
+   while a keyboard user gets something that looks nothing like every other
+   focus in the app, and other engines may decline to draw it at all. The exact
+   defect the shot-day notice hit one pass earlier, on a new control. */
+.cadence__day:focus-visible,
+.cadence__row input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .cadence__day[aria-pressed="true"] {
