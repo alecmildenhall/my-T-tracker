@@ -1212,7 +1212,7 @@ describe("the confirm beat", () => {
 
 describe("ShotForm — the planned date", () => {
   const grid = {
-    shotDay: "wednesday" as const,
+    shotDays: ["wednesday"] as const,
     intervalDays: 7,
     scheduleAnchor: "2026-08-05",
   };
@@ -1285,7 +1285,7 @@ describe("ShotForm — the planned date", () => {
         onAddShot={() => "refused" as const}
         onAnchorEstablished={onAnchorEstablished}
         shots={[]}
-        profile={{ shotDay: "wednesday", intervalDays: 7 }}
+        profile={{ shotDays: ["wednesday"], intervalDays: 7 }}
       />,
     );
     fireEvent.change(screen.getByLabelText("Date"), {
@@ -1302,7 +1302,7 @@ describe("ShotForm — the planned date", () => {
         onAddShot={() => "saved" as const}
         onAnchorEstablished={onAnchorEstablished}
         shots={[]}
-        profile={{ shotDay: "wednesday", intervalDays: 7 }}
+        profile={{ shotDays: ["wednesday"], intervalDays: 7 }}
       />,
     );
     fireEvent.change(screen.getByLabelText("Date"), {
@@ -1437,7 +1437,7 @@ describe("ShotForm — the planned date", () => {
         shots={[]}
         // No stored anchor, so this save is the one that establishes it — which
         // is the half of the incoherence that mattered.
-        profile={{ shotDay: "wednesday", intervalDays: 7 }}
+        profile={{ shotDays: ["wednesday"], intervalDays: 7 }}
         draft={parked}
         onAnchorEstablished={onAnchorEstablished}
       />,
@@ -1464,7 +1464,7 @@ describe("ShotForm — the planned date", () => {
       { id: "a", date: "2026-07-08" },
       { id: "b", date: "2026-08-19" },
     ];
-    const profile = { shotDay: "wednesday" as const, intervalDays: 14 };
+    const profile = { shotDays: ["wednesday"] as const, intervalDays: 14 };
 
     const onEdit = vi.fn();
     const edit = render(

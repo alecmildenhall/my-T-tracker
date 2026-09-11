@@ -229,7 +229,7 @@ describe("parseBackup — profile", () => {
     const ok = parseBackup(
       JSON.stringify({
         ...JSON.parse(wrap([])),
-        profile: { shotDay: "wednesday" },
+        profile: { shotDays: ["wednesday"] },
       })
     );
     expect(ok.ok).toBe(true);
@@ -242,7 +242,7 @@ describe("parseBackup — profile", () => {
     expect(bad.ok).toBe(true);
     if (!bad.ok) return;
     expect(bad.profileUnreadable).toBe(true);
-    expect(bad.profile.shotDay).toBeUndefined();
+    expect(bad.profile.shotDays).toBeUndefined();
   });
 
   it("accepts a past start date", () => {

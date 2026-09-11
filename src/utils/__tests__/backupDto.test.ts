@@ -161,8 +161,8 @@ describe("pickProfileFields", () => {
   });
 
   it("keeps a valid shot day and drops a bogus one", () => {
-    expect(pickProfileFields({ shotDay: "wednesday" })).toEqual({
-      shotDay: "wednesday",
+    expect(pickProfileFields({ shotDays: ["wednesday"] })).toEqual({
+      shotDays: ["wednesday"],
     });
     expect(
       pickProfileFields({ shotDay: "someday" } as unknown as Profile),
@@ -198,7 +198,7 @@ describe("pickProfileFields", () => {
     const widest = pickProfileFields({
       startDate: "2025-01-15",
       preferredName: "Lou",
-      shotDay: "wednesday",
+      shotDays: ["wednesday"],
       intervalDays: MAX_INTERVAL_DAYS,
       scheduleAnchor: "2026-08-05",
     });

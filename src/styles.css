@@ -2550,3 +2550,108 @@ select {
   transform: none;
   filter: none;
 }
+
+/* ── Cadence picker ─────────────────────────────────────────────────────────
+   "How do you time your shots?" — three named rhythms, shared by the first-run
+   card and Settings so the two cannot drift apart on it. */
+
+.cadence__question {
+  font-weight: 600;
+  margin: 0 0 0.15rem;
+}
+
+.cadence__row {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-card-soft);
+  border-radius: var(--radius-md);
+  padding: 0.65rem 0.75rem;
+  margin-bottom: 0.45rem;
+  cursor: pointer;
+}
+
+.cadence__row--on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* The radio keeps its native control: it is the one thing here that must read
+   unambiguously as "pick exactly one of these", and a restyled circle is how
+   that stops being obvious. */
+.cadence__row input {
+  margin: 0.2rem 0 0;
+  accent-color: var(--accent);
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+  min-height: 0; /* the base input rule sets 44px, which would misalign it */
+}
+
+.cadence__row-label {
+  display: block;
+}
+
+.cadence__row-sub {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 0.05rem;
+}
+
+.cadence__row--on .cadence__row-sub {
+  color: #bae6fd;
+}
+
+/* Flush with every other field's left margin. Indenting under the radio shows
+   what the fields belong to and puts them on a margin nothing else shares. */
+.cadence__reveal {
+  margin: 0.15rem 0 0.6rem;
+}
+
+.cadence__days {
+  display: flex;
+  gap: 5px;
+  margin: 0.15rem 0 0.6rem;
+}
+
+/* Seven across one row. 33.6px wide at 390px inside the card — past WCAG 2.5.8
+   (24px) and under Apple's 44x44, which is the trade Google Clock also makes.
+   Height stays at the full 44px, so only one axis is short. */
+.cadence__day {
+  flex: 1 1 0;
+  min-width: 0;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-card-soft);
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  padding: 0.5rem 0;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.cadence__day[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #04121c;
+}
+
+.cadence__summary {
+  margin: 0.7rem 0 0;
+  padding: 0.55rem 0.7rem;
+  border-radius: var(--radius-md);
+  background: var(--success-wash);
+  border: 1px solid rgba(74, 222, 128, 0.3);
+  font-size: 0.82rem;
+  color: #d9f5e3;
+}
+
+.cadence__summary--warn {
+  background: rgba(249, 115, 115, 0.09);
+  border-color: rgba(249, 115, 115, 0.32);
+  color: #f6d5d5;
+}

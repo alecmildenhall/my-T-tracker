@@ -62,7 +62,7 @@ describe("Greeting", () => {
     // 2026-07-26 is a Sunday; a "sunday" shot day surfaces the shot-day greeting.
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-26T12:00:00"));
-    seedProfile({ preferredName: "Lou", shotDay: "sunday" });
+    seedProfile({ preferredName: "Lou", shotDays: ["sunday"] });
     seedShots([{ id: "s1", date: "2026-06-01" }]);
     renderGreeting();
     expect(screen.getByText("Happy shot day, Lou!")).toBeInTheDocument();

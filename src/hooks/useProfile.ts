@@ -4,7 +4,6 @@ import { useLocalStorage } from "./useLocalStorage";
 import type { Profile } from "../types/profile";
 import { isValidIntervalDays } from "../types/profile";
 import { isShotDateInRange } from "../utils/civilDate";
-import type { Weekday } from "../utils/weekday";
 import { STORAGE_KEYS } from "../storageKeys";
 import { isBlank } from "../utils/strings";
 import { isWeekday } from "../utils/weekday";
@@ -16,10 +15,9 @@ export interface UseProfile {
   /** Set (or clear, with undefined) the preferred name. */
   setPreferredName: (name: string | undefined) => void;
   /** Set (or clear, with undefined) the shot-day weekday. */
-  setShotDay: (day: Weekday | undefined) => void;
+  setSchedule: (patch: Partial<Profile>) => void;
   /** Days between shots. `undefined` clears it, which stops planned dates
    *  being computed rather than falling back to a guess. */
-  setIntervalDays: (days: number | undefined) => void;
   /** The date the schedule grid is aligned to. Written once, the first time a
    *  planned date needs one — see `planShot`. */
   setScheduleAnchor: (date: string | undefined) => void;
@@ -153,36 +151,29 @@ export function useProfile(): UseProfile {
     [updateProfile],
   );
 
-  const setShotDay = useCallback(
-    // Changing your day clears the anchor, so the next save re-establishes the
-    // grid on the new weekday.
-    //
-    // Freezing the anchor protects it from ACCIDENTAL movement — backdating a
-    // remembered shot, deleting the oldest one — and that is still right. But
-    // choosing a different shot day is the one input that should repoint it,
-    // and without this it did nothing at all: the grid stayed on Wednesday
-    // while the greeting moved to Friday, so a shot logged on the new day read
-    // "taken 2 days after" forever, with no way to repair it.
-    (day: Weekday | undefined) =>
-      updateProfile({ shotDay: day, scheduleAnchor: undefined }),
+  const setSchedule = useCallback(
+    /**
+     * Any part of the cadence — the rhythm, the days, the interval — applied
+     * together, and always clearing the anchor.
+     *
+     * One setter rather than three, because all three are the same act: a
+     * deliberate re-declaration of the schedule. Separate setters meant a single
+     * user action that changed two of them wrote the profile twice, and left
+     * every caller to remember the clearing for itself.
+     *
+     * Clearing is the point. Freezing the anchor protects it from ACCIDENTAL
+     * movement — backdating a remembered shot, deleting the oldest — and that is
+     * still right. But choosing a different rhythm should repoint it, and
+     * without this a weekly user switching to fortnightly kept a grid on the old
+     * phase: measured, every later shot read "taken 7 days before", forever,
+     * frozen, and unrepairable, because re-picking a day re-derives from history
+     * that is still on the old phase.
+     */
+    (patch: Partial<Profile>) =>
+      updateProfile({ ...patch, scheduleAnchor: undefined }),
     [updateProfile],
   );
 
-  const setIntervalDays = useCallback(
-    // Clears the anchor for the same reason setShotDay does: changing your
-    // cadence is a deliberate re-declaration of the schedule, and the anchor is
-    // frozen against ACCIDENTAL movement, not against you.
-    //
-    // Without this a weekly user switching to fortnightly kept a grid on the
-    // old phase: measured, every fortnightly shot then read "taken 7 days
-    // before", forever, frozen — schedule.ts's own named failure reaching in
-    // through the interval instead of the anchor. It was unrepairable too,
-    // since re-picking a shot day re-derives from the earliest shot, which is
-    // still on the old phase.
-    (days: number | undefined) =>
-      updateProfile({ intervalDays: days, scheduleAnchor: undefined }),
-    [updateProfile],
-  );
 
   const setScheduleAnchor = useCallback(
     (date: string | undefined) => updateProfile({ scheduleAnchor: date }),
@@ -193,8 +184,7 @@ export function useProfile(): UseProfile {
     profile,
     setStartDate,
     setPreferredName,
-    setShotDay,
-    setIntervalDays,
+    setSchedule,
     setScheduleAnchor,
     updateProfile,
     replaceProfile,

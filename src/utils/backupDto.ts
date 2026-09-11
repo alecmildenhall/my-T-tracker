@@ -81,7 +81,24 @@ export function pickProfileFields(p: Partial<Profile>): Profile {
   if (startDate !== undefined) out.startDate = startDate;
   const preferredName = nonBlankString(p.preferredName);
   if (preferredName !== undefined) out.preferredName = preferredName;
-  if (isWeekday(p.shotDay)) out.shotDay = p.shotDay;
+  // Filtered per element rather than trusted as a list: this is the boundary a
+  // hand-edited or hostile file arrives at, and one bad entry must not cost the
+  // whole set. De-duplicated because a repeated day would double a grid slot.
+  const shotDays = Array.isArray(p.shotDays)
+    ? [...new Set(p.shotDays.filter(isWeekday))]
+    : [];
+  if (shotDays.length > 0) out.shotDays = shotDays;
+  // The rhythm the user picked. Without this the mode reverts to whatever the
+  // values imply on restore — which is exactly the collision the stored field
+  // exists to resolve, so a rolling-every-7-days user would come back from
+  // their own backup with no planned dates at all.
+  if (
+    p.scheduleMode === "grid" ||
+    p.scheduleMode === "rolling" ||
+    p.scheduleMode === "none"
+  ) {
+    out.scheduleMode = p.scheduleMode;
+  }
   // Whole positive days only. A fraction or a zero would divide the schedule
   // grid into something meaningless, and this is the boundary where a
   // hand-edited or hostile file arrives.

@@ -26,6 +26,7 @@
 import { civilDateParts, isShotDateInRange } from "./civilDate";
 import { weekdayOf, WEEKDAYS } from "./weekday";
 import { isValidIntervalDays } from "../types/profile";
+import type { ScheduleMode } from "../types/profile";
 import type { Weekday } from "./weekday";
 
 /** Whole days added to a civil date, DST-proof for the same reason
@@ -80,6 +81,21 @@ export function snapToWeekday(iso: string, weekday: Weekday): string | null {
 }
 
 /**
+ * A weekday set in week order, de-duplicated, with anything unrecognised
+ * dropped.
+ *
+ * Order is imposed here rather than trusted from storage so the anchor and the
+ * planned date always agree about which day is "first" — a hand-edited or
+ * imported `["thursday", "monday"]` would otherwise anchor to Thursday while
+ * reading as Monday-first everywhere a person looks at it.
+ */
+function sortedDays(days: Weekday[] | undefined): Weekday[] {
+  if (!days) return [];
+  const present = new Set(days);
+  return WEEKDAYS.filter((d) => present.has(d));
+}
+
+/**
  * The date a user's schedule is aligned to, established once from their first
  * shot and then FROZEN on the profile.
  *
@@ -98,7 +114,7 @@ export function snapToWeekday(iso: string, weekday: Weekday): string | null {
  */
 export function establishAnchor(
   firstShotDate: string,
-  shotDay: Weekday,
+  shotDays: Weekday[],
   intervalDays: number,
 ): string | null {
   // Snapping to a weekday only keeps the grid weekday-aligned when the interval
@@ -114,7 +130,13 @@ export function establishAnchor(
   // guess that fails in both directions. So they get no planned dates, which is
   // the same answer this file gives to every other unknown.
   if (!isWeeklyMultiple(intervalDays)) return null;
-  const anchor = snapToWeekday(firstShotDate, shotDay);
+  // ONE anchor still suffices for a whole set. It is snapped to the earliest
+  // weekday in the set, and `plannedDateFor` re-snaps it to each of the others
+  // when it needs them — snapping moves at most 3 days, so every day's grid
+  // sits inside the same week and they cannot drift apart.
+  const first = sortedDays(shotDays)[0];
+  if (!first) return null;
+  const anchor = snapToWeekday(firstShotDate, first);
   // Snapping moves up to 3 days either way, so it can step outside the range
   // every persistence boundary enforces — `establishAnchor("1900-01-01",
   // "sunday", 7)` gives "1899-12-31". Those boundaries would each drop it
@@ -124,26 +146,22 @@ export function establishAnchor(
 }
 
 /**
- * The user's shot day, if it currently means anything.
+ * The user's shot days, if they currently mean anything.
  *
- * A weekday cannot describe a cadence that is not a whole number of weeks, so
- * the setting is inert while the interval is one — greyed out in Settings, and
- * silent in the greeting. Deliberately a *read-through* rather than clearing
- * the stored value: someone correcting a mistyped interval gets their day back
- * rather than having to remember it.
+ * Empty in every mode but the grid: a weekday cannot describe a cadence that is
+ * not a whole number of weeks, and it describes nothing at all for someone who
+ * chose to count from their last shot or not to track timing. Deliberately a
+ * *read-through* rather than clearing the stored value, so switching rhythms and
+ * switching back returns the days rather than asking for them again.
  */
-export function shotDayInEffect(profile: {
-  shotDay?: Weekday;
+export function shotDaysInEffect(profile: {
+  shotDays?: Weekday[];
   intervalDays?: number;
-}): Weekday | undefined {
-  if (!profile.shotDay) return undefined;
-  // An interval that is absent OR unusable leaves shot day doing its original
-  // job: the greeting. These two predicates used to disagree — `scheduleMode`
-  // treats an out-of-range interval as absent ("none") while this treated it as
-  // rolling and silently killed the greeting. For a garbage value the safe
-  // reading is "ignore it", not "act on it".
-  if (!isValidIntervalDays(profile.intervalDays)) return profile.shotDay;
-  return isWeeklyMultiple(profile.intervalDays) ? profile.shotDay : undefined;
+  scheduleMode?: ScheduleMode;
+}): Weekday[] {
+  return effectiveScheduleMode(profile) === "grid"
+    ? sortedDays(profile.shotDays)
+    : [];
 }
 
 /** A cadence a weekday can describe: a whole number of weeks. */
@@ -172,27 +190,44 @@ export function plannedDateFor(
   actual: string,
   anchor: string,
   intervalDays: number,
+  shotDays: Weekday[],
 ): string | null {
-  const offset = daysApart(anchor, actual);
-  // Null rather than a junk string. This is exported and was reachable with an
-  // unparseable date or a zero interval, and the result would have been frozen
-  // onto a shot rather than refused.
-  if (
-    // `isValidIntervalDays`, not a looser lookalike: a 7.5 would have divided
-    // the grid into fractional days and still returned a date.
-    !Number.isFinite(offset) ||
-    !isValidIntervalDays(intervalDays)
-  ) {
-    return null;
+  // `isValidIntervalDays`, not a looser lookalike: a 7.5 would have divided the
+  // grid into fractional days and still returned a date.
+  if (!isValidIntervalDays(intervalDays)) return null;
+  const days = sortedDays(shotDays);
+  if (days.length === 0) return null;
+
+  // One grid per weekday, each anchored by re-snapping the single stored anchor
+  // to that day. The planned date is the nearest slot across the whole set,
+  // which is what makes `[mon, thu]` twice weekly rather than two schedules.
+  let best: string | null = null;
+  let bestGap = Infinity;
+  for (const day of days) {
+    const dayAnchor = snapToWeekday(anchor, day);
+    if (!dayAnchor) continue;
+    const offset = daysApart(dayAnchor, actual);
+    // Null rather than a junk string. This is exported and was reachable with an
+    // unparseable date, and the result would have been frozen onto a shot.
+    if (!Number.isFinite(offset)) continue;
+    const slots = Math.floor(offset / intervalDays + 0.5);
+    const planned = addDaysCivil(dayAnchor, slots * intervalDays);
+    // Range-checked like establishAnchor, and for the same reason: the rounded
+    // slot lands up to half an interval away from the shot, so a large interval
+    // near the edge of the supported range can produce a date pickShotFields
+    // drops from the backup and toCsv blanks while History renders it.
+    if (!isShotDateInRange(planned)) continue;
+    const gap = Math.abs(daysApart(planned, actual));
+    // Strictly nearer, so an exact tie keeps the earlier weekday in week order.
+    // Ties are reachable — [sun, wed] at 7 days puts a Saturday shot 3 days from
+    // each — and an arbitrary winner would make the frozen value depend on
+    // array order rather than on the calendar.
+    if (gap < bestGap) {
+      bestGap = gap;
+      best = planned;
+    }
   }
-  const slots = Math.floor(offset / intervalDays + 0.5);
-  const planned = addDaysCivil(anchor, slots * intervalDays);
-  // Range-checked like establishAnchor, and for the same reason: the rounded
-  // slot lands up to half an interval away from the shot, so a large interval
-  // near the edge of the supported range can produce a date pickShotFields
-  // drops from the backup and toCsv blanks while History renders it — the
-  // three-way disagreement the comments around those boundaries exist to stop.
-  return isShotDateInRange(planned) ? planned : null;
+  return best;
 }
 
 /** Whole days from `a` to `b`. Local to this module rather than imported from
@@ -227,17 +262,52 @@ function daysApart(a: string, b: string): number {
  * injecting on Fridays when they meant Wednesdays reads "on time" every single
  * week. True, and useless. A non-weekly cadence has no such intent to miss.
  */
-export type ScheduleMode = "grid" | "rolling" | "none";
-
 export function scheduleMode(
-  shotDay: Weekday | undefined,
+  shotDays: Weekday[] | undefined,
   intervalDays: number | undefined,
 ): ScheduleMode {
   if (typeof intervalDays !== "number" || !isValidIntervalDays(intervalDays)) {
     return "none";
   }
   if (!isWeeklyMultiple(intervalDays)) return "rolling";
-  return shotDay ? "grid" : "none";
+  return shotDays && shotDays.length > 0 ? "grid" : "none";
+}
+
+/**
+ * The rhythm actually in force: what the user SAID, falling back to what the
+ * values imply.
+ *
+ * The stored answer wins because it carries what inference cannot. "Every 7
+ * days, counting from my last shot" and "every Wednesday" both store
+ * `intervalDays: 7`, and {@link scheduleMode} resolves that collision by
+ * returning `none` — correct when it is a guess, and wrong once the person has
+ * told us, because they would have picked a rhythm and silently received no
+ * planned dates.
+ *
+ * Inference remains for profiles written before the field existed and for
+ * backups from those builds, where a guess is all there is.
+ */
+export function effectiveScheduleMode(profile: {
+  shotDays?: Weekday[];
+  intervalDays?: number;
+  scheduleMode?: ScheduleMode;
+}): ScheduleMode {
+  if (!isValidIntervalDays(profile.intervalDays)) return "none";
+  switch (profile.scheduleMode) {
+    case "none":
+      return "none";
+    case "rolling":
+      return "rolling";
+    case "grid":
+      // A grid with nothing to align to plans nothing. Stated rather than
+      // assumed: the UI cannot store this, but an edited file can.
+      return isWeeklyMultiple(profile.intervalDays) &&
+        (profile.shotDays?.length ?? 0) > 0
+        ? "grid"
+        : "none";
+    default:
+      return scheduleMode(profile.shotDays, profile.intervalDays);
+  }
 }
 
 /**
@@ -276,9 +346,10 @@ export interface PlanInput {
    *  precisely the wrong answer. */
   anchorFrom?: string;
   profile: {
-    shotDay?: Weekday;
+    shotDays?: Weekday[];
     intervalDays?: number;
     scheduleAnchor?: string;
+    scheduleMode?: ScheduleMode;
   };
 }
 
@@ -314,7 +385,8 @@ export function planShot({
   anchorFrom,
   profile,
 }: PlanInput): Plan {
-  const mode = scheduleMode(profile.shotDay, profile.intervalDays);
+  // The rhythm the user CHOSE, not one reverse-engineered from their fields.
+  const mode = effectiveScheduleMode(profile);
   if (mode === "none" || typeof profile.intervalDays !== "number") return {};
 
   if (mode === "rolling") {
@@ -325,28 +397,28 @@ export function planShot({
     };
   }
 
-  // Grid. `shotDay` is non-undefined here by scheduleMode's definition.
+  // Grid. `shotDays` is non-empty here by effectiveScheduleMode's definition.
+  const days = profile.shotDays ?? [];
   const existing = profile.scheduleAnchor;
   if (existing) {
     return {
       plannedFor:
-        plannedDateFor(date, existing, profile.intervalDays) ?? undefined,
+        plannedDateFor(date, existing, profile.intervalDays, days) ?? undefined,
     };
   }
   const anchor = establishAnchor(
     anchorFrom ?? date,
-    profile.shotDay!,
+    days,
     profile.intervalDays,
   );
   if (!anchor) return {};
-  const planned = plannedDateFor(date, anchor, profile.intervalDays);
+  const planned = plannedDateFor(date, anchor, profile.intervalDays, days);
   // No planned date, no anchor. `plannedDateFor` refuses a slot outside the
   // range every persistence boundary enforces, which `establishAnchor` can
   // still have succeeded for — a large interval with a shot dated near 1900 or
   // near today+1y. Persisting anyway froze the grid to a shot that carries no
   // planned date of its own, and the anchor has no UI to inspect or reset, so
-  // the state would be unrepairable. Returning the anchor only alongside the
-  // value it produced keeps the two from disagreeing.
+  // the state would be unrepairable.
   if (!planned) return {};
   return { plannedFor: planned, anchorToPersist: anchor };
 }

@@ -53,10 +53,10 @@ describe("useProfile", () => {
   it("sets, persists, and clears the shot day", () => {
     const { result } = renderHook(() => useProfile());
     act(() => result.current.setShotDay("wednesday"));
-    expect(result.current.profile.shotDay).toBe("wednesday");
-    expect(stored()).toEqual({ shotDay: "wednesday" });
+    expect(result.current.profile.shotDays).toBe("wednesday");
+    expect(stored()).toEqual({ shotDays: ["wednesday"] });
     act(() => result.current.setShotDay(undefined));
-    expect(result.current.profile.shotDay).toBeUndefined();
+    expect(result.current.profile.shotDays).toBeUndefined();
   });
 
   it("drops an invalid shot day from storage (enum, not free text)", () => {
@@ -162,7 +162,7 @@ describe("useProfile — re-declaring the schedule clears its anchor", () => {
 
     act(() => result.current.setShotDay("friday"));
     expect(result.current.profile.scheduleAnchor).toBeUndefined();
-    expect(result.current.profile.shotDay).toBe("friday");
+    expect(result.current.profile.shotDays).toBe("friday");
   });
 
   it("clears it when the interval changes", () => {

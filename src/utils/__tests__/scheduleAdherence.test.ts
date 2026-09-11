@@ -63,7 +63,7 @@ class Journal {
     this.profile.scheduleAnchor = undefined;
   }
   setShotDay(day: Weekday) {
-    this.profile.shotDay = day;
+    this.profile.shotDays = day;
     this.profile.scheduleAnchor = undefined;
   }
 }

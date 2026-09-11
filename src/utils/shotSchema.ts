@@ -77,9 +77,14 @@ export const profileSchema = z.strictObject({
   // to re-import the very date it stored.
   startDate: z.string().refine(isRealDate, "invalid date").optional(),
   preferredName: z.string().min(1).optional(),
-  // Shot day is an enum: only the seven weekday keys are accepted, so a hand-edit
-  // or hostile file can't smuggle an arbitrary string past the boundary.
-  shotDay: z.enum(WEEKDAYS).optional(),
+  // An enum per element: only the seven weekday keys are accepted, so a
+  // hand-edit or hostile file can't smuggle an arbitrary string past the
+  // boundary. The DTO de-duplicates; this only rules on membership.
+  shotDays: z.array(z.enum(WEEKDAYS)).optional(),
+  // The rhythm the user chose. Restoring without it would send the mode back to
+  // whatever the values imply, which is the collision the field exists to
+  // resolve.
+  scheduleMode: z.enum(["grid", "rolling", "none"]).optional(),
   firstRunDone: z.boolean().optional(),
   // Bounds imported rather than restated, so this and the DTO allowlist cannot
   // drift into the app exporting a file its own importer refuses.

@@ -41,7 +41,7 @@ import {
   planShot,
   previousShotDateBefore,
   anchorReferenceDate,
-  scheduleMode,
+  effectiveScheduleMode,
 } from "../utils/schedule";
 
 /**
@@ -206,7 +206,10 @@ interface ShotFormProps {
   /** The cadence settings a planned date is worked out from. A prop rather than
    *  context, matching `shots` — the form stays renderable on its own, and with
    *  no profile it simply plans nothing. */
-  profile?: Pick<Profile, "shotDay" | "intervalDays" | "scheduleAnchor">;
+  profile?: Pick<
+    Profile,
+    "shotDays" | "intervalDays" | "scheduleAnchor" | "scheduleMode"
+  >;
   /** Called once, after a successful save, when a schedule grid needed an
    *  anchor and none existed. The parent persists it. */
   onAnchorEstablished?: (date: string) => void;
@@ -484,7 +487,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
         // was never rendered. The field is where a planned date is corrected,
         // so a pending one is a reason to show it, not to hide it.
         Boolean(draft?.plannedFor.trim()) ||
-        scheduleMode(profile.shotDay, profile.intervalDays) !== "none"),
+        effectiveScheduleMode(profile) !== "none"),
   );
   // Seeded by the same rule as the draft above, and it has to be: they are
   // compared to answer "has the user edited this?", so seeding them from

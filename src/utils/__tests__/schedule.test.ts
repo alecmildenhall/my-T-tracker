@@ -355,12 +355,12 @@ describe("plannedDateRolling", () => {
 });
 
 describe("planShot — the one entry point", () => {
-  const grid = { shotDay: "wednesday" as const, intervalDays: 7 };
+  const grid = { shotDays: ["wednesday"] as const, intervalDays: 7 };
 
   it("answers nothing when the settings answer no question", () => {
     expect(planShot({ date: WED, profile: {} })).toEqual({});
     expect(planShot({ date: WED, profile: { intervalDays: 7 } })).toEqual({});
-    expect(planShot({ date: WED, profile: { shotDay: "wednesday" } })).toEqual(
+    expect(planShot({ date: WED, profile: { shotDays: ["wednesday"] } })).toEqual(
       {},
     );
   });
@@ -391,7 +391,7 @@ describe("planShot — the one entry point", () => {
       date: "2026-08-19",
       previousShotDate: "2026-08-09",
       profile: {
-        shotDay: "wednesday",
+        shotDays: ["wednesday"],
         intervalDays: 10,
         scheduleAnchor: anchor,
       },
@@ -461,7 +461,7 @@ describe("planShot at the edge of the supported range", () => {
       planShot({
         date,
         anchorFrom: anchor,
-        profile: { shotDay: "wednesday", intervalDays: 364 },
+        profile: { shotDays: ["wednesday"], intervalDays: 364 },
       }),
     ).toEqual({});
   });

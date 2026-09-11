@@ -582,7 +582,7 @@ describe("DataManagement", () => {
         <DataManagement
           shots={shots}
           onReplaceAll={vi.fn(() => true)}
-          profile={{ shotDay: "monday" }}
+          profile={{ shotDays: ["monday"] }}
           onReplaceProfile={onReplaceProfile}
         />,
       );
@@ -590,12 +590,12 @@ describe("DataManagement", () => {
       // Only the shot day differs — name and start date are both absent on each
       // side. The change must still surface (not silently overwrite the shot day).
       uploadText(
-        toJson([{ id: "imp", date: "2026-05-01" }], { shotDay: "friday" }),
+        toJson([{ id: "imp", date: "2026-05-01" }], { shotDays: ["friday"] }),
       );
       const dialog = await screen.findByRole("dialog");
       fireEvent.click(within(dialog).getByRole("button", { name: "Replace" }));
 
-      expect(onReplaceProfile).toHaveBeenCalledWith({ shotDay: "friday" });
+      expect(onReplaceProfile).toHaveBeenCalledWith({ shotDays: ["friday"] });
       expect(screen.getByRole("status")).toHaveTextContent(
         "Your profile was updated.",
       );

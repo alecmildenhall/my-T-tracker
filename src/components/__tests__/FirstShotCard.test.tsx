@@ -337,7 +337,7 @@ describe("FirstShotCard — the disabled shot day", () => {
   const notice = () => screen.getByText(/No shot day with a non-weekly/);
 
   it("explains itself to assistive tech, not just on screen", () => {
-    seedProfile({ shotDay: "wednesday", intervalDays: 10 });
+    seedProfile({ shotDays: ["wednesday"], intervalDays: 10 });
     renderCard();
 
     const select = screen.getByLabelText(
@@ -357,7 +357,7 @@ describe("FirstShotCard — the disabled shot day", () => {
     // to land in the interval box — a number input, which re-raises the numeric
     // keyboard on a phone. The notice is silent and is the sentence explaining
     // why the control went away, which is what should be announced anyway.
-    seedProfile({ shotDay: "wednesday", intervalDays: 7 });
+    seedProfile({ shotDays: ["wednesday"], intervalDays: 7 });
     renderCard();
 
     const interval = screen.getByLabelText(
@@ -392,7 +392,7 @@ describe("FirstShotCard — the cadence that tracks nothing", () => {
   });
 
   it("says nothing once a day is set, or when the interval is non-weekly", () => {
-    seedProfile({ intervalDays: 7, shotDay: "wednesday" });
+    seedProfile({ intervalDays: 7, shotDays: ["wednesday"] });
     const first = renderCard();
     expect(needNotice()).toBeNull();
     first.unmount();

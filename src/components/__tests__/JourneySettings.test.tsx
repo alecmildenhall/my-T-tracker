@@ -474,13 +474,13 @@ describe("JourneySettings", () => {
     renderPanel();
     expect(shotDaySelect().value).toBe("");
     fireEvent.change(shotDaySelect(), { target: { value: "wednesday" } });
-    expect(stored()).toEqual({ shotDay: "wednesday" });
+    expect(stored()).toEqual({ shotDays: ["wednesday"] });
   });
 
   it("clearing shot day back to 'No shot day' removes it from storage", () => {
     localStorage.setItem(
       STORAGE_KEYS.profile,
-      JSON.stringify({ shotDay: "friday" }),
+      JSON.stringify({ shotDays: ["friday"] }),
     );
     renderPanel();
     expect(shotDaySelect().value).toBe("friday");
@@ -624,7 +624,7 @@ describe("JourneySettings — the interval must not discard the schedule anchor"
     localStorage.setItem(
       STORAGE_KEYS.profile,
       JSON.stringify({
-        shotDay: "wednesday",
+        shotDays: ["wednesday"],
         intervalDays: 14,
         scheduleAnchor: "2026-01-07",
       }),
@@ -644,7 +644,7 @@ describe("JourneySettings — the interval must not discard the schedule anchor"
     localStorage.setItem(
       STORAGE_KEYS.profile,
       JSON.stringify({
-        shotDay: "wednesday",
+        shotDays: ["wednesday"],
         intervalDays: 14,
         scheduleAnchor: "2026-01-07",
       }),
