@@ -228,6 +228,25 @@ body {
   font-size: 0.8rem;
 }
 
+/* iOS CENTRES the value inside a date or time input; every other field in the
+   app is left-aligned, so a date sat alone in the middle of its box next to a
+   name hard against the left edge. Chromium left-aligns already, which is why
+   neither a desktop sweep nor a screenshot at any width could show it -- it was
+   reported from a phone.
+
+   Only `text-align`, deliberately: `font-size` on a form control is the one
+   thing this stylesheet must never set outside the coarse-pointer rule, because
+   a class here out-specifies a media query and that is how iOS page-zoom came
+   back last time. */
+input[type="date"],
+input[type="time"] {
+  /* `start`, not `left`: it is what every other field in the app computes to,
+     so the two are now literally the same value rather than merely the same
+     result in English. */
+  text-align: start;
+}
+
+
 label {
   font-size: 0.8rem;
   /* The question outranks the note under it, and CONTRAST is what says so.
