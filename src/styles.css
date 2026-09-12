@@ -241,8 +241,21 @@ body {
 input[type="date"],
 input[type="time"] {
   /* `start`, not `left`: it is what every other field in the app computes to,
-     so the two are now literally the same value rather than merely the same
-     result in English. */
+     so the two are the same value rather than merely the same result in
+     English. This alone is NOT what fixes Safari -- see below -- but it is what
+     every other engine reads. */
+  text-align: start;
+}
+
+/* Safari is the reason this needs a second rule, and the first attempt failed
+   because `text-align` on the input never reaches the value.
+   Safari renders a temporal input as shadow DOM: the value lives in its own
+   part with its own layout, so the property applies to a box that is not the
+   one drawing the text. Reported twice from a phone before this was found —
+   Chromium left-aligns by default, so nothing I can measure here shows it.
+   `::-webkit-date-and-time-value` is the documented handle on that part. */
+input[type="date"]::-webkit-date-and-time-value,
+input[type="time"]::-webkit-date-and-time-value {
   text-align: start;
 }
 
