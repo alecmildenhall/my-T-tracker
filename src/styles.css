@@ -2714,6 +2714,20 @@ select {
   color: #04121c;
 }
 
+/* `.suggestion-chips` carries no margin of its own — it relies on a parent
+   `gap`, which every other place it appears provides and `.cadence__reveal`
+   does not. Measured: the chips sat exactly 0px under the interval box while
+   every other gap in the block was 7.2-11.2px, so they read as attached to it.
+
+   Scoped here rather than added to `.suggestion-chips`, which would move the
+   log form's reuse chips too. And a margin rather than a gap on the reveal, for
+   the reason the pain chips record: 0.55rem is deliberately MORE than an
+   ordinary field, because a chip row is lighter than a bordered input and needs
+   more air to separate from it at all. */
+.cadence__reveal .suggestion-chips {
+  margin-top: 0.55rem;
+}
+
 .cadence__summary {
   margin: 0.7rem 0 0;
   padding: 0.55rem 0.7rem;
