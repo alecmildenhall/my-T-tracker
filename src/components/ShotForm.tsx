@@ -265,6 +265,43 @@ function initialPlanned(
   return computed ?? "";
 }
 
+/**
+ * What is wrong with the date a shot was taken, in words, or null when nothing
+ * is — the ONE statement of the rule, read by the blur check and by submit.
+ *
+ * Extracted rather than duplicated: two copies of a validation rule is how the
+ * message and the check drift into disagreeing, which this field has already
+ * done once (a message naming a bound the form did not enforce).
+ *
+ * Ordering matters and the obvious order is wrong. A mistyped year is ALSO in
+ * the future — `9999-01-01` satisfies both tests — so checking "after today"
+ * first swallows the year typo and answers it with a bound the person never
+ * typed. `isShotDateInRange` is what separates them: fail it and the year is
+ * implausible on any reading, so name the year; pass it and the date is an
+ * ordinary near-future day, so name the rule.
+ */
+function takenDateProblem(value: string, storedDate?: string): string | null {
+  if (toTakenDate(value)) return null;
+  // An entry ALREADY stored keeps its date when you edit something else. Import
+  // is deliberately not held to the taken-date bound, so a restored backup can
+  // contain a future-dated shot — and refusing it here would blame the user for
+  // the one field they had not touched, with no way forward but to change their
+  // own record. Refusing what is being ENTERED is the rule; refusing what is
+  // already there is a dead end.
+  if (storedDate !== undefined && value === storedDate && toShotDate(value)) {
+    return null;
+  }
+  // Read fresh rather than at module load, so a session left open across New
+  // Year cannot name last year's bound.
+  const range = takenDateRange();
+  if (value.trim() === "") return "Add the date this shot was taken.";
+  if (!isRealDate(value))
+    return "Please enter a real calendar date (YYYY-MM-DD).";
+  if (!isShotDateInRange(value))
+    return `Check the year — dates run from ${range.min} to ${range.max}.`;
+  return `Log a shot after taking it — nothing later than ${range.max}.`;
+}
+
 export const ShotForm: React.FC<ShotFormProps> = ({
   profile = {},
   onAnchorEstablished,
@@ -536,18 +573,22 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   const [doseError, setDoseError] = useState<string | null>(null);
 
   /**
-   * Which fields a refused save is waiting on.
+   * Whether Save has actually been pressed and refused.
    *
-   * Derived, with no `blocked` flag beside it, and that is load-bearing rather
-   * than tidy. An error is only ever SET inside the submit handler — every other
-   * write clears one — so "an error is showing" already means "a save was
-   * refused and not yet fixed". A separate flag would be a second value for a
-   * fact these three already carry, free to disagree with them.
+   * This WAS redundant, and stopped being so the moment the date started
+   * validating on blur. While errors could only come from the submit handler,
+   * "an error is showing" meant "a save was refused" — so the flag was a second
+   * value for a fact the errors already carried, and mutation-testing proved it
+   * by staying green when it was removed. Blur breaks that equivalence: you can
+   * now have an error without ever having pressed the button, and the summary
+   * greeted that with "Not saved yet" about a save nobody attempted.
    *
-   * Mutation-tested, which is how the redundancy was found: removing the flag's
-   * reset turned nothing red, because the list being empty had always been what
-   * took the summary away.
+   * Worth keeping the story attached rather than just the flag: the same
+   * reasoning gives opposite answers before and after an unrelated-looking
+   * change, and a comment claiming redundancy would now be actively wrong.
    */
+  const [saveAttempted, setSaveAttempted] = useState(false);
+  /** Which fields a refused save is waiting on — live, so fixing one drops it. */
   const blockedFields = [
     dateError ? "date" : null,
     doseError ? "dose" : null,
@@ -669,38 +710,11 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // constraints, which cancels the submit event outright — the button appeared
     // to do nothing at all, with no message and nothing saved. Whatever we reject
     // now, we say why, next to the field.
-    // An entry ALREADY stored keeps its date when you edit something else.
-    // Import is deliberately not tightened to the taken-date bound (see
-    // `anchorReferenceDate`), so a restored backup can legitimately contain a
-    // future-dated shot — and without this, opening it to fix a typo in the
-    // notes hit "You can log a shot after taking it", blaming the user for a
-    // date they had not touched and offering no way forward but to change it.
-    // Refusing what is being ENTERED is the rule; refusing what is already
-    // there is a dead end. Creating a new future date stays blocked, and the
-    // anchor guard covers the schedule either way.
-    const unchanged = !!editingShot && date === editingShot.date;
     const parsedDate =
-      toTakenDate(date) ?? (unchanged ? toShotDate(date) : null);
+      toTakenDate(date) ??
+      (!!editingShot && date === editingShot.date ? toShotDate(date) : null);
     const parsedDose = doseMg === "" ? undefined : Number(doseMg);
 
-    // Blank and malformed are different mistakes and get different words. A
-    // blank date is almost always "meant to fill this in and forgot" — telling
-    // that person their date is not a real calendar date is answering a question
-    // they did not ask. The date is required precisely because a shot always
-    // happened on some day, so the fix is to ask for it, not to let it through.
-    //
-    // Out of range is a THIRD mistake, and it gets its own words for the same
-    // reason. It is nearly always a mistyped year — browsers auto-fill the
-    // segments you have not typed, so `0999` and `9999` are a slip, not a
-    // belief — and telling that person their date is not a real calendar date
-    // is both wrong (it is one) and no help in fixing it.
-    //
-    // The message names the actual boundary DATES, not their years. It used to
-    // say "1900 to 2027" while the real bound was 2027-08-13, so entering
-    // 2027-12-01 was refused by a message listing the very year that had just
-    // been typed — nothing left to work out. Read fresh here rather than at
-    // module load, so it cannot name last year's bound in a session left open.
-    const range = takenDateRange();
     // A FOURTH mistake, and it needs its own words for the reason the other
     // three do. "Check the year" is wrong here: the year is usually fine and the
     // date is a real one — the person has dated a dose to a day that has not
@@ -713,15 +727,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // the person never typed. `isShotDateInRange` is what separates them: fail
     // it and the year is implausible on any reading, so name the year; pass it
     // and the date is an ordinary near-future day, so name the rule.
-    const nextDateError = parsedDate
-      ? null
-      : date.trim() === ""
-        ? "Add the date this shot was taken."
-        : !isRealDate(date)
-          ? "Please enter a real calendar date (YYYY-MM-DD)."
-          : !isShotDateInRange(date)
-            ? `Check the year — dates run from ${range.min} to ${range.max}.`
-            : `Log a shot after taking it — nothing later than ${range.max}.`;
+    const nextDateError = takenDateProblem(date, editingShot?.date);
     // Mirrors the storage schema: a finite, non-negative number. Fractional doses
     // are fine (62.5mg while titrating is ordinary).
     const nextDoseError =
@@ -774,6 +780,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // `!parsedDate` is implied by nextDateError, but stating it narrows the type
     // so the branded CivilDate below can't be null.
     if (nextDateError || nextDoseError || nextPlannedError || !parsedDate) {
+      setSaveAttempted(true);
       // Back to the top of the form, where the summary is — and deliberately
       // NOT `focus()` on the offending field. Focusing a date input opens the
       // native picker, so the reward for pressing Save would be a calendar
@@ -989,7 +996,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
 
             It names the fields and stops there; the full sentence stays beside
             each one, so the same words are not maintained in two places. */}
-        {blockedFields.length > 0 && (
+        {saveAttempted && blockedFields.length > 0 && (
           <p className="shot-form__blocked">
             <strong>Not saved yet.</strong> Check the{" "}
             {blockedFields.join(" and the ")} below.
@@ -1039,6 +1046,21 @@ export const ShotForm: React.FC<ShotFormProps> = ({
                 // "untouched" means, so the comparison below answers it.
                 if (dateError) setDateError(null);
               }}
+              // BLUR, not change. A date input reports a complete value the
+              // moment three segments are filled, and typing a year fills them
+              // repeatedly on the way: 0002, 0020, 0202, then 2026. Checking per
+              // keystroke would flash "Check the year" three times AT someone
+              // typing a year correctly — the premature-validation punishment
+              // every guideline warns about, and the same intermediate values
+              // this file already documents ("0202-03-15 on the way to 2021").
+              //
+              // Leaving the field is the moment you are done with it, so that is
+              // when it answers. Submit keeps its own check as the backstop: the
+              // field can be left untouched and still be wrong, since it starts
+              // pre-filled.
+              onBlur={(e) =>
+                setDateError(takenDateProblem(e.target.value, editingShot?.date))
+              }
               required
               // Keeps the native picker inside the range the form will accept,
               // so a mistyped year is harder to produce in the first place.

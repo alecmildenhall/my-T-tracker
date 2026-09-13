@@ -293,6 +293,67 @@ describe("ShotForm field mapping", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
+  it("says the date is wrong when you LEAVE the field, not at submit", () => {
+    // Waiting for Save meant typing a future date, filling in six more fields,
+    // and only then being told the first one was wrong.
+    render(<ShotForm onAddShot={vi.fn()} />);
+    const date = screen.getByLabelText("Date");
+    fireEvent.change(date, {
+      target: { value: addDaysCivil(takenDateRange().max, 1) },
+    });
+    expect(screen.queryByRole("alert")).toBeNull(); // nothing yet
+    fireEvent.blur(date);
+    expect(screen.getByRole("alert")).toHaveTextContent(/after taking it/);
+  });
+
+  it("stays quiet while a year is still being typed", () => {
+    // Why blur and not change. A date input reports a COMPLETE value the moment
+    // three segments are filled, and typing a year fills them again and again on
+    // the way — 0002, 0020, 0202, then 2026 — so a per-keystroke check would
+    // flash "Check the year" three times at someone typing one correctly.
+    render(<ShotForm onAddShot={vi.fn()} />);
+    const date = screen.getByLabelText("Date");
+    for (const partial of ["0002-03-15", "0020-03-15", "0202-03-15"]) {
+      fireEvent.change(date, { target: { value: partial } });
+      expect(screen.queryByRole("alert")).toBeNull();
+    }
+    fireEvent.change(date, { target: { value: "2026-03-15" } });
+    fireEvent.blur(date);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("does not nag about an unchanged stored date on blur either", () => {
+    // The edit escape hatch reaches the blur check too, or tabbing through a
+    // restored future-dated shot would raise an error about a field the person
+    // never touched.
+    const future = addDaysCivil(takenDateRange().max, 30);
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        onUpdateShot={vi.fn()}
+        editingShot={{ id: "e1", date: future, notes: "orig" }}
+      />,
+    );
+    fireEvent.blur(screen.getByLabelText("Date"));
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("does NOT claim 'not saved yet' before you have tried to save", () => {
+    // Caught on the real build after blur validation landed. The summary was
+    // derived from "is an error showing", which had meant "a save was refused"
+    // right up until blur could raise one — so leaving the date field greeted
+    // you with "Not saved yet" about a save you had never attempted.
+    render(<ShotForm onAddShot={vi.fn()} />);
+    const date = screen.getByLabelText("Date");
+    fireEvent.change(date, {
+      target: { value: addDaysCivil(takenDateRange().max, 1) },
+    });
+    fireEvent.blur(date);
+
+    expect(screen.getByRole("alert")).toHaveTextContent(/after taking it/);
+    expect(screen.queryByText(/Not saved yet/)).toBeNull();
+  });
+
   it("says the save was refused, at the top of the form", () => {
     // The defect: reaching Save means scrolling past the message, so pressing it
     // changed nothing the user could see and the button read as broken.
