@@ -299,7 +299,12 @@ function takenDateProblem(value: string, storedDate?: string): string | null {
     return "Please enter a real calendar date (YYYY-MM-DD).";
   if (!isShotDateInRange(value))
     return `Check the year — dates run from ${range.min} to ${range.max}.`;
-  return `Log a shot after taking it — nothing later than ${range.max}.`;
+  // "today" FIRST, then the date. Naming only the date read as a fixed rule —
+  // "so it is always 2026-09-12?" — when the bound is simply today and moves
+  // with it. The parenthetical stays ISO because that is the format this app
+  // shows everywhere else; ShotListItem's comment warns against inventing a
+  // second one, and this message is not the place to start.
+  return `Log a shot after taking it — nothing later than today (${range.max}).`;
 }
 
 export const ShotForm: React.FC<ShotFormProps> = ({
@@ -566,7 +571,22 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   // Modal needs it as `initialFocusRef` — see the note on the <h2> below.
   const ownHeadingRef = useRef<HTMLHeadingElement>(null);
   const headingRef = externalHeadingRef ?? ownHeadingRef;
-  const [dateError, setDateError] = useState<string | null>(null);
+  /**
+   * Seeded from the restored draft, not started empty.
+   *
+   * A dismissed sheet keeps everything you typed, so reopening it used to bring
+   * back a date the form had already refused with nothing left saying so —
+   * the message gone, the field looking ordinary, and the refusal waiting to be
+   * rediscovered at Save.
+   *
+   * DERIVED rather than stored, which is why it survives at all: the error is a
+   * fact about the value, so re-asking the same question of the restored value
+   * is both simpler than persisting it and incapable of disagreeing with it. A
+   * fresh sheet is pre-filled with today and so starts silent, as it should.
+   */
+  const [dateError, setDateError] = useState<string | null>(() =>
+    takenDateProblem(start.date, editingShot?.date),
+  );
   const [plannedError, setPlannedError] = useState<string | null>(null);
   const [saveFailed, setSaveFailed] = useState(false);
   const [exportFailed, setExportFailed] = useState(false);
@@ -785,7 +805,12 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       // NOT `focus()` on the offending field. Focusing a date input opens the
       // native picker, so the reward for pressing Save would be a calendar
       // wheel covering the message that explains why you are looking at it.
-      scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+      // Called defensively: jsdom implements no layout and gives an element no
+      // `scrollTo` at all, so the unguarded call threw on every blocked-save
+      // test. They still PASSED — the throw landed outside the assertion — and
+      // surfaced only as vitest's "Errors" line, which is not the line I had
+      // been reading. Scrolling is a no-op without layout anyway.
+      scrollRef.current?.scrollTo?.({ top: 0, behavior: "smooth" });
       return;
     }
 

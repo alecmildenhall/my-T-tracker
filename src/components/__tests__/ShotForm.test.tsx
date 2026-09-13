@@ -338,6 +338,42 @@ describe("ShotForm field mapping", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
+  it("still says so when a refused draft is reopened", () => {
+    // Dismissing keeps everything you typed, so reopening brought back a date
+    // the form had already refused with nothing left saying so — the message
+    // gone, the field looking ordinary, the refusal waiting to be rediscovered
+    // at Save. Derived from the restored value, so it cannot go missing.
+    const future = addDaysCivil(takenDateRange().max, 1);
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        draft={{
+          date: future,
+          dateBaseline: takenDateRange().max,
+          time: "",
+          doseMg: "",
+          injectionSite: "",
+          injectionSitePosition: "",
+          testosteroneEster: "",
+          carrierOil: "",
+          pain: "",
+          offDays: "",
+          notes: "",
+          plannedFor: "",
+          plannedBaseline: "",
+        }}
+      />,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(/after taking it/);
+  });
+
+  it("opens silent on a fresh sheet", () => {
+    // The mirror: today is pre-filled and valid, so a new sheet must not greet
+    // anyone with an error about a field they have not touched.
+    render(<ShotForm onAddShot={vi.fn()} />);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("does NOT claim 'not saved yet' before you have tried to save", () => {
     // Caught on the real build after blur validation landed. The summary was
     // derived from "is an error showing", which had meant "a save was refused"
