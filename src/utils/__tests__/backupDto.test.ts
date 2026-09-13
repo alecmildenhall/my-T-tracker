@@ -164,8 +164,11 @@ describe("pickProfileFields", () => {
     expect(pickProfileFields({ shotDays: ["wednesday"] })).toEqual({
       shotDays: ["wednesday"],
     });
+    // The retired name returned {} because it is not read AT ALL, not because a
+    // weekday was rejected — a pass that proved nothing. The live field, with a
+    // bogus day in it, is the actual question.
     expect(
-      pickProfileFields({ shotDay: "someday" } as unknown as Profile),
+      pickProfileFields({ shotDays: ["someday"] } as unknown as Profile),
     ).toEqual({});
   });
 

@@ -1097,9 +1097,24 @@ export const ShotForm: React.FC<ShotFormProps> = ({
               // when it answers. Submit keeps its own check as the backstop: the
               // field can be left untouched and still be wrong, since it starts
               // pre-filled.
-              onBlur={(e) =>
-                setDateError(takenDateProblem(e.target.value, editingShot?.date))
-              }
+              onBlur={(e) => {
+                // Adopt the live value, not only judge it. Both sibling date
+                // fields already do this and say why: WebKit fires `change`
+                // unreliably — the picker's Reset fires none at all, and a
+                // picked date can arrive carrying the PREVIOUS value — so
+                // `date` can lag what the element holds.
+                //
+                // Validating `e.target.value` while storing `date` is the
+                // overloaded-state shape in two variables: blur would call the
+                // new value fine and Save would write the stale one, storing a
+                // shot on a different day from the one on screen. By blur the
+                // picker has closed and the element is correct, which is the
+                // workaround those reports land on: read the input.
+                setDate(e.target.value);
+                setDateError(
+                  takenDateProblem(e.target.value, editingShot?.date),
+                );
+              }}
               required
               // Keeps the native picker inside the range the form will accept,
               // so a mistyped year is harder to produce in the first place.

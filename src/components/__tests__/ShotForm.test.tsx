@@ -293,6 +293,36 @@ describe("ShotForm field mapping", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
+  it("adopts the value the ELEMENT holds when change never fired", () => {
+    // WebKit fires `change` unreliably on a date input — the picker's Reset
+    // fires none at all, and a picked date can arrive carrying the previous
+    // value — so React state can lag what the element shows. jsdom fires it
+    // reliably, so the divergence has to be staged: set the value through the
+    // native setter without dispatching, which is exactly "the picker changed
+    // it and told nobody".
+    //
+    // Validating the live value while SAVING the stale one stored a shot on a
+    // different day from the one on screen. Both sibling date fields already
+    // read the element on blur for this reason.
+    // The parameter is declared so the recorded call keeps its type; the other
+    // spies here cast at the read instead, which needs `ReturnType<typeof
+    // vi.fn>` and then does not satisfy the prop.
+    const onAddShot = vi.fn((_shot: ShotEntry) => "saved" as const);
+    render(<ShotForm onAddShot={onAddShot} />);
+    const date = screen.getByLabelText("Date") as HTMLInputElement;
+
+    const native = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      "value",
+    )!.set!;
+    native.call(date, "2026-05-04");
+    fireEvent.blur(date);
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+
+    expect(onAddShot).toHaveBeenCalledTimes(1);
+    expect(onAddShot.mock.calls[0][0].date).toBe("2026-05-04");
+  });
+
   it("says the date is wrong when you LEAVE the field, not at submit", () => {
     // Waiting for Save meant typing a future date, filling in six more fields,
     // and only then being told the first one was wrong.

@@ -236,7 +236,11 @@ describe("parseBackup — profile", () => {
     const bad = parseBackup(
       JSON.stringify({
         ...JSON.parse(wrap([])),
-        profile: { shotDay: "someday" },
+        // `shotDays`, not the retired `shotDay`: a strictObject rejects an
+        // unknown key outright, so feeding the old name proved only that the
+        // key is gone and never reached `z.array(z.enum(WEEKDAYS))`. Measured —
+        // relaxing the schema to `z.array(z.string())` left it green.
+        profile: { shotDays: ["someday"] },
       })
     );
     expect(bad.ok).toBe(true);

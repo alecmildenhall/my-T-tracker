@@ -148,6 +148,14 @@ describe("CadencePicker — the sentence", () => {
     expect(document.querySelector(".cadence__summary")).toBeNull();
   });
 
+  it("asks for the days when the rolling rhythm has no number", () => {
+    // The grid half warned about exactly this and the rolling half did not:
+    // "Every so many days" with an empty box stores `scheduleMode: "rolling"`
+    // and no `intervalDays`, so nothing ever gets a planned date, in silence.
+    setup({ scheduleMode: "rolling" });
+    expect(screen.getByText(/Add how many days/)).toBeInTheDocument();
+  });
+
   it("asks for the weeks when the days are chosen but the number is not", () => {
     // The mirror, and it was missing: days with no interval stores
     // `scheduleMode: "grid"` and no `intervalDays`, so `effectiveScheduleMode`
@@ -271,6 +279,24 @@ describe("CadencePicker — following the profile from elsewhere", () => {
     onChange.mockClear();
     view.unmount();
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("does not nag about a box an external change emptied", () => {
+    // Restoring {grid, 10} cannot be shown in weeks, so the box empties — and
+    // with `touched` left true an alert announced "Enter how many weeks" about
+    // a field this person never typed in.
+    const view = render(
+      <Host profile={{ scheduleMode: "rolling", intervalDays: 3 }} onChange={vi.fn()} />,
+    );
+    fireEvent.change(numberBox(), { target: { value: "9" } });
+    view.rerender(
+      <Host
+        profile={{ scheduleMode: "grid", shotDays: ["monday"], intervalDays: 10 }}
+        onChange={vi.fn()}
+      />,
+    );
+    expect(numberBox().value).toBe("");
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("follows a changed rhythm and day set too", () => {

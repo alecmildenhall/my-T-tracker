@@ -78,16 +78,23 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
 
 
   // Follow the profile when it changes underneath this card, the way the same
-  // two fields in JourneySettings already do. `useLocalStorage` subscribes to
-  // cross-tab `storage` events, so `profile` can change at any moment: another
-  // tab setting a cadence in Settings, or an import replacing the whole thing.
+  // field in JourneySettings does. `useLocalStorage` subscribes to cross-tab
+  // `storage` events, so `profile` can change at any moment: another tab
+  // editing Settings, or an import replacing the whole thing.
   //
-  // Without this the drafts stay at their mount-time values and then WIN, because
-  // every exit from this card commits them — navigating away, backgrounding, and
-  // notably logging the first shot, which unmounts the card. A draft still empty
-  // from mount would call setIntervalDays(undefined) and delete both the cadence
-  // and the schedule anchor that another tab had just set. Adjusted during
-  // render, React's documented pattern for state that follows changing props.
+  // Without this the draft stays at its mount-time value and then WINS, because
+  // every exit from this card commits it — navigating away, backgrounding, and
+  // notably logging the first shot, which unmounts the card. A draft still
+  // holding a stale date would write it over one another tab had just set.
+  // Adjusted during render, React's documented pattern for state that follows
+  // changing props.
+  //
+  // The START DATE only. This used to describe the cadence too — naming
+  // `setIntervalDays`, a setter that no longer exists — and that machinery now
+  // lives in `CadencePicker`, which follows the profile itself. Left as it was
+  // it read as documentation for the draft below while describing something
+  // deleted, which is the failure JourneySettings warns about in the same
+  // words: a stale comment here is dangerous rather than untidy.
   /** Committed on blur, like the same field in Settings: a date input reports a
    *  value only once all three segments are filled, and Chromium auto-fills the
    *  ones you have not typed — so committing per keystroke walks a year through
