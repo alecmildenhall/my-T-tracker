@@ -299,12 +299,18 @@ function takenDateProblem(value: string, storedDate?: string): string | null {
     return "Please enter a real calendar date (YYYY-MM-DD).";
   if (!isShotDateInRange(value))
     return `Check the year — dates run from ${range.min} to ${range.max}.`;
-  // "today" FIRST, then the date. Naming only the date read as a fixed rule —
-  // "so it is always 2026-09-12?" — when the bound is simply today and moves
-  // with it. The parenthetical stays ISO because that is the format this app
-  // shows everywhere else; ShotListItem's comment warns against inventing a
-  // second one, and this message is not the place to start.
-  return `Log a shot after taking it — nothing later than today (${range.max}).`;
+  // Describes the rule; does not instruct the person. "Log a shot after taking
+  // it — nothing later than today" was two orders in one line, and the first of
+  // them lectured someone about how to use the app while they were mid-task.
+  // The other messages here stay imperative on purpose: "Add the date" and
+  // "Check the year" tell you what to DO about a mistake, which is what WCAG's
+  // error-suggestion guidance asks for. This one was telling you how to live.
+  //
+  // "today" leads and the date follows in parentheses: naming only the date read
+  // as a fixed rule — "so it is always 2026-09-12?" — when the bound moves with
+  // the day. ISO in the parenthetical because that is the format the app shows
+  // everywhere else; ShotListItem warns against inventing a second one.
+  return `Shots dated later than today (${range.max}) are invalid.`;
 }
 
 export const ShotForm: React.FC<ShotFormProps> = ({
@@ -335,6 +341,24 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   // become the schedule's anchor.
   /** The scrolling part of the sheet — taken back to the top on a blocked save. */
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * Send the user to the first field still holding a problem.
+   *
+   * Found by querying for `aria-invalid`, not by plumbing a ref per field: the
+   * DOM already knows which are invalid AND what order they are in, so this
+   * cannot disagree with the summary about which one comes first, and a fourth
+   * validated field needs nothing added here.
+   *
+   * `handOffFocus`, never a bare `.focus()` — it verifies the result, which is
+   * the rule this codebase settled after nine focus defects.
+   */
+  const focusFirstProblem = () => {
+    const first = scrollRef.current?.querySelector<HTMLElement>(
+      '[aria-invalid="true"]',
+    );
+    if (first) handOffFocus(first);
+  };
 
   const takenRange = takenDateRange();
   const plannedRange = shotDateRange();
@@ -800,17 +824,12 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // `!parsedDate` is implied by nextDateError, but stating it narrows the type
     // so the branded CivilDate below can't be null.
     if (nextDateError || nextDoseError || nextPlannedError || !parsedDate) {
+      // NOTHING MOVES. The summary appears in the pinned footer, which is
+      // already on screen — so there is no jump to make, and the scroll
+      // position you chose is kept. Nor does focus move on its own: focusing a
+      // date input opens the picker, and the reward for pressing Save should
+      // not be a calendar wheel over the message explaining why.
       setSaveAttempted(true);
-      // Back to the top of the form, where the summary is — and deliberately
-      // NOT `focus()` on the offending field. Focusing a date input opens the
-      // native picker, so the reward for pressing Save would be a calendar
-      // wheel covering the message that explains why you are looking at it.
-      // Called defensively: jsdom implements no layout and gives an element no
-      // `scrollTo` at all, so the unguarded call threw on every blocked-save
-      // test. They still PASSED — the throw landed outside the assertion — and
-      // surfaced only as vitest's "Errors" line, which is not the line I had
-      // been reading. Scrolling is a no-op without layout anyway.
-      scrollRef.current?.scrollTo?.({ top: 0, behavior: "smooth" });
       return;
     }
 
@@ -1007,26 +1026,6 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       </div>
 
       <div className="shot-form__scroll" ref={scrollRef}>
-        {/* First thing under the header rule, which is where the view is taken
-            on a blocked save.
-
-            NOT `role="alert"`, and that is the opposite of the instinct. The
-            field messages already carry one, and role=alert announces wherever
-            the element is — so a screen-reader user has always been told why the
-            save was refused, scroll position being irrelevant to them. The
-            defect this fixes is purely POSITIONAL: reaching Save means scrolling
-            past the message, so a sighted user presses a button and sees
-            nothing change. A second alert would announce the same refusal twice
-            to the people who were never affected.
-
-            It names the fields and stops there; the full sentence stays beside
-            each one, so the same words are not maintained in two places. */}
-        {saveAttempted && blockedFields.length > 0 && (
-          <p className="shot-form__blocked">
-            <strong>Not saved yet.</strong> Check the{" "}
-            {blockedFields.join(" and the ")} below.
-          </p>
-        )}
         {/* Marks the MINORITY, which here is the required field rather than the
             optional ones. Baymard's checkout research recommends marking BOTH
             explicitly, because unmarked fields make people guess — but their
@@ -1552,9 +1551,43 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       </div>
 
       <div className="shot-form__bar shot-form__bar--bottom">
-        {/* Above the button, so it is between what you pressed and where you
-            pressed it, and inside the dialog so the focus trap can reach it and
-            a screen reader announces it. */}
+        {/* Above the button, in the one region of this sheet that is always on
+            screen — the reply arrives where the question was asked.
+
+            It used to sit at the top of the scroller, on GOV.UK's error-summary
+            pattern. That pattern moves focus to the top because on a long PAGE
+            the response would otherwise be lost off screen; this footer is
+            pinned, so it cannot be lost, and the scroll was a 500px jump buying
+            nothing. It also depended on the date happening to be the first
+            field: the moment the dose was the problem, the top showed a summary
+            and not the field, and you were hunting anyway.
+
+            NOT `role="alert"`. The field messages already carry one, and
+            role=alert announces wherever the element sits, so a screen-reader
+            user has always been told why. The defect was positional; a second
+            alert would announce the same refusal twice to people it never
+            affected.
+
+            This slot is shared with the storage banner below, and they cannot
+            collide: a validation failure means the save never ran, a storage
+            failure means it ran and the device refused. */}
+        {saveAttempted && blockedFields.length > 0 && (
+          <p className="shot-form__blocked">
+            <strong>Not saved yet.</strong> Check the{" "}
+            {/* A real button, so the keyboard and a screen reader get the same
+                route a thumb does. It FOCUSES rather than merely scrolling:
+                focusing a date input opens the picker, which is unwelcome when
+                the app does it uninvited and fine when you asked to go there. */}
+            <button
+              type="button"
+              className="shot-form__blocked-jump"
+              onClick={() => focusFirstProblem()}
+            >
+              {blockedFields.join(" and the ")}
+            </button>
+            .
+          </p>
+        )}
         {saveFailed && (
           <div className="shot-form__save-error" role="alert">
             <p className="shot-form__save-error-text">

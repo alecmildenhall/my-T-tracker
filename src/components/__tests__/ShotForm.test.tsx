@@ -303,7 +303,7 @@ describe("ShotForm field mapping", () => {
     });
     expect(screen.queryByRole("alert")).toBeNull(); // nothing yet
     fireEvent.blur(date);
-    expect(screen.getByRole("alert")).toHaveTextContent(/after taking it/);
+    expect(screen.getByRole("alert")).toHaveTextContent(/later than today/);
   });
 
   it("stays quiet while a year is still being typed", () => {
@@ -364,7 +364,7 @@ describe("ShotForm field mapping", () => {
         }}
       />,
     );
-    expect(screen.getByRole("alert")).toHaveTextContent(/after taking it/);
+    expect(screen.getByRole("alert")).toHaveTextContent(/later than today/);
   });
 
   it("opens silent on a fresh sheet", () => {
@@ -386,13 +386,15 @@ describe("ShotForm field mapping", () => {
     });
     fireEvent.blur(date);
 
-    expect(screen.getByRole("alert")).toHaveTextContent(/after taking it/);
+    expect(screen.getByRole("alert")).toHaveTextContent(/later than today/);
     expect(screen.queryByText(/Not saved yet/)).toBeNull();
   });
 
-  it("says the save was refused, at the top of the form", () => {
-    // The defect: reaching Save means scrolling past the message, so pressing it
-    // changed nothing the user could see and the button read as broken.
+  it("says the save was refused, above the button you pressed", () => {
+    // The defect: reaching Save means scrolling past the field message, so
+    // pressing it changed nothing the user could see and the button read as
+    // broken. The summary lives in the pinned footer, which is the one region
+    // that is always on screen — so nothing has to move to show it.
     const onAddShot = vi.fn();
     render(<ShotForm onAddShot={onAddShot} />);
     fireEvent.change(screen.getByLabelText("Date"), {
@@ -401,7 +403,20 @@ describe("ShotForm field mapping", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
 
     expect(screen.getByText(/Not saved yet/)).toBeInTheDocument();
-    expect(screen.getByText(/Check the date below/)).toBeInTheDocument();
+    // The field names are a real button, so a keyboard and a screen reader get
+    // the same route to the problem that a thumb does.
+    expect(screen.getByRole("button", { name: "date" })).toBeInTheDocument();
+  });
+
+  it("takes you to the offending field when you ask", () => {
+    render(<ShotForm onAddShot={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: addDaysCivil(takenDateRange().max, 1) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+    fireEvent.click(screen.getByRole("button", { name: "date" }));
+
+    expect(document.activeElement).toBe(screen.getByLabelText("Date"));
   });
 
   it("keeps ONE alert, so the refusal is announced once", () => {
@@ -447,7 +462,7 @@ describe("ShotForm field mapping", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
 
     expect(onAddShot).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toHaveTextContent(/after taking it/);
+    expect(screen.getByRole("alert")).toHaveTextContent(/later than today/);
     expect(screen.getByRole("alert")).toHaveTextContent(takenDateRange().max);
     expect(screen.getByLabelText("Date")).toHaveAttribute(
       "aria-invalid",
@@ -1110,7 +1125,7 @@ describe("ShotForm draft publishing", () => {
     fireEvent.click(screen.getByRole("button", { name: /Update shot/i }));
 
     expect(onUpdateShot).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toHaveTextContent(/after taking it/);
+    expect(screen.getByRole("alert")).toHaveTextContent(/later than today/);
   });
 
   it("lets an edit's date be put back without leaving the form dirty", () => {
