@@ -35,6 +35,31 @@ export interface CadencePickerProps {
   onChange: (patch: Partial<Profile>) => void;
 }
 
+/**
+ * Whether two day sets hold the same days — BY VALUE, never by identity.
+ *
+ * `normalizeKnownFields` rebuilds this array on every profile write
+ * (`[...new Set(...)]`), so a reference check called every unrelated write an
+ * external change. Measured against the real store: select a rhythm, type 2 in
+ * the weeks box, tap a day — the box emptied and nothing was stored. On iOS
+ * that is the ordinary path, since Safari does not focus a <button> on tap, so
+ * no blur fires and the typed value has not been committed yet.
+ *
+ * The unit tests could not see it: their harness merges patches with
+ * `{...prev, ...patch}`, which preserves array identity where the real store
+ * does not. A stand-in for the store that differs in the one dimension the code
+ * depends on — the proxy shape this project keeps paying for.
+ *
+ * Order-insensitive on purpose. Stored sets are canonically ordered, so this
+ * only matters for a hand-edited file, where "same days, different order" is
+ * still the same schedule and re-syncing would discard typing for nothing.
+ */
+function sameDays(a: Weekday[] | undefined, b: Weekday[] | undefined): boolean {
+  const x = a ?? [];
+  const y = b ?? [];
+  return x.length === y.length && x.every((d) => y.includes(d));
+}
+
 /** The number the box shows for a stored interval, in the unit of the mode. */
 function draftFor(mode: ScheduleMode | undefined, intervalDays?: number) {
   if (!isValidIntervalDays(intervalDays)) return "";
@@ -76,12 +101,27 @@ export function CadencePicker({
   if (
     profile.scheduleMode !== lastSeen.scheduleMode ||
     profile.intervalDays !== lastSeen.intervalDays ||
-    profile.shotDays !== lastSeen.shotDays
+    !sameDays(profile.shotDays, lastSeen.shotDays)
   ) {
+    // PER FIELD, never all three together. Re-syncing everything whenever
+    // anything changed meant this control undid its own work: tapping a day
+    // writes `shotDays`, the profile comes back changed, and the number box was
+    // reset along with it — discarding a typed interval that had not been
+    // committed yet. On iOS that is the ordinary path, since Safari does not
+    // focus a <button> on tap, so tapping a day fires no blur.
+    //
+    // Each piece follows only its own source, so a change to one cannot disturb
+    // what is half-typed in another.
+    if (profile.scheduleMode !== lastSeen.scheduleMode) {
+      setMode(profile.scheduleMode);
+    }
+    if (!sameDays(profile.shotDays, lastSeen.shotDays)) {
+      setDays(profile.shotDays ?? []);
+    }
+    if (profile.intervalDays !== lastSeen.intervalDays) {
+      setNumDraft(draftFor(profile.scheduleMode, profile.intervalDays));
+    }
     setLastSeen(profile);
-    setMode(profile.scheduleMode);
-    setDays(profile.shotDays ?? []);
-    setNumDraft(draftFor(profile.scheduleMode, profile.intervalDays));
   }
 
   const unit: "day" | "week" = mode === "grid" ? "week" : "day";
@@ -141,6 +181,13 @@ export function CadencePicker({
   const pickMode = (next: ScheduleMode) => {
     setMode(next);
     setNumDraft(draftFor(next, profile.intervalDays));
+    setTouched(false);
+    // The newly revealed box has not been typed in, whatever happened in the
+    // one before it. Without this, erring in the rolling box and then switching
+    // rhythms greeted you with "Enter how many weeks" on a field you had never
+    // seen — the exact thing `touched` exists to prevent. A committed 10-day
+    // interval does it too, with no typo involved: `draftFor` returns "" because
+    // 10 is not a whole number of weeks.
     // The mode is stored the moment it is picked, even before the rest is
     // filled in — that is what lets someone come back to a half-answered
     // setting and find their own choice still selected. `shotDays` and
@@ -246,10 +293,24 @@ export function CadencePicker({
             {sentence && !problem && (
               <p className="cadence__summary">{sentence}</p>
             )}
-            {days.length === 0 && !problem && (
+            {/* Both halves of an incomplete grid, not just the days. A grid
+                needs days AND a whole number of weeks; with either missing,
+                `effectiveScheduleMode` returns "none" and no shot ever gets a
+                planned date. Only the days half was covered, so choosing days
+                and leaving the number empty went silent — no sentence, no
+                warning, no error, since an untouched box raises none. The panel
+                this component replaced carried the mirror notice and it was
+                lost in the move.
+
+                The interval is checked through `describeWeeklySchedule`
+                returning null rather than by re-testing the number here: one
+                statement of "is this a usable weekly rhythm", so the warning
+                and the sentence cannot disagree about it. */}
+            {!problem && !sentence && (
               <p className="cadence__summary cadence__summary--warn">
-                Pick at least one day — otherwise there is nothing to plan your
-                shots against.
+                {days.length === 0
+                  ? "Pick at least one day — otherwise there is nothing to plan your shots against."
+                  : "Add how many weeks — otherwise there is nothing to plan your shots against."}
               </p>
             )}
           </div>

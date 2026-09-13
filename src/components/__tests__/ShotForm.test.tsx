@@ -442,6 +442,23 @@ describe("ShotForm field mapping", () => {
     ).toBeInTheDocument();
   });
 
+  it("sends you to the field you NAMED, not whichever is first", () => {
+    // One button spanning "date and the dose" always jumped to the date, so
+    // tapping the word "dose" took you somewhere else — worse than offering no
+    // jump at all.
+    render(<ShotForm onAddShot={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: addDaysCivil(takenDateRange().max, 1) },
+    });
+    fireEvent.change(screen.getByLabelText("Dose (mg)"), {
+      target: { value: "-5" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+    fireEvent.click(screen.getByRole("button", { name: "dose" }));
+
+    expect(document.activeElement).toBe(screen.getByLabelText("Dose (mg)"));
+  });
+
   it("takes you to the offending field when you ask", () => {
     render(<ShotForm onAddShot={vi.fn()} />);
     fireEvent.change(screen.getByLabelText("Date"), {

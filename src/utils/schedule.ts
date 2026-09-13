@@ -81,15 +81,6 @@ export function snapToWeekday(iso: string, weekday: Weekday): string | null {
 }
 
 /**
- * A weekday set in week order, de-duplicated, with anything unrecognised
- * dropped.
- *
- * Order is imposed here rather than trusted from storage so the anchor and the
- * planned date always agree about which day is "first" — a hand-edited or
- * imported `["thursday", "monday"]` would otherwise anchor to Thursday while
- * reading as Monday-first everywhere a person looks at it.
- */
-/**
  * The next occurrence of `weekday` on or after `iso` — FORWARD only, never the
  * nearest.
  *
@@ -112,6 +103,15 @@ function forwardToWeekday(iso: string, weekday: Weekday): string | null {
   return addDaysCivil(iso, forward);
 }
 
+/**
+ * A weekday set in week order, de-duplicated, with anything unrecognised
+ * dropped.
+ *
+ * Order is imposed here rather than trusted from storage so the anchor and the
+ * planned date always agree about which day is "first" — a hand-edited or
+ * imported `["thursday", "monday"]` would otherwise anchor to Thursday while
+ * reading as Monday-first everywhere a person looks at it.
+ */
 function sortedDays(days: Weekday[] | undefined): Weekday[] {
   if (!days) return [];
   const present = new Set(days);

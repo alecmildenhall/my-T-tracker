@@ -1,7 +1,16 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { CadencePicker } from "../CadencePicker";
+import {
+  ProfileProvider,
+  useProfileContext,
+} from "../../context/ProfileContext";
 import type { Profile } from "../../types/profile";
+
+// This file now renders a real ProfileProvider, so it touches storage — and a
+// profile left behind by one test was read by the next, which is why a test
+// that passed alone failed inside the file.
+beforeEach(() => localStorage.clear());
 
 type Patch = Partial<Profile>;
 
@@ -139,6 +148,16 @@ describe("CadencePicker — the sentence", () => {
     expect(document.querySelector(".cadence__summary")).toBeNull();
   });
 
+  it("asks for the weeks when the days are chosen but the number is not", () => {
+    // The mirror, and it was missing: days with no interval stores
+    // `scheduleMode: "grid"` and no `intervalDays`, so `effectiveScheduleMode`
+    // returns "none" and NO shot ever gets a planned date — silently, since an
+    // untouched box raises no error. The panel this replaced had this notice
+    // and it was lost in the move.
+    setup({ scheduleMode: "grid", shotDays: ["monday"] });
+    expect(screen.getByText(/Add how many weeks/)).toBeInTheDocument();
+  });
+
   it("asks for a day when the rhythm is chosen but no day is", () => {
     setup({ scheduleMode: "grid", intervalDays: 7 });
     expect(screen.getByText(/Pick at least one day/)).toBeInTheDocument();
@@ -169,6 +188,19 @@ describe("CadencePicker — an unusable number is refused OUT LOUD", () => {
     // reporting a failure for not having answered yet. The empty branch is a
     // prompt, not a validation result.
     setup({ scheduleMode: "rolling" });
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(numberBox()).not.toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("does not carry an error into a freshly revealed box", () => {
+    // `touched` was never reset on a rhythm change, so erring in one box and
+    // switching greeted you with "Enter how many weeks" on a field you had
+    // never seen — exactly what that flag exists to prevent.
+    setup({ scheduleMode: "rolling", intervalDays: 10 });
+    fireEvent.change(numberBox(), { target: { value: "0" } });
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+
+    fireEvent.click(mode(/On certain days/));
     expect(screen.queryByRole("alert")).toBeNull();
     expect(numberBox()).not.toHaveAttribute("aria-invalid", "true");
   });
@@ -265,5 +297,52 @@ describe("CadencePicker — leaving without blurring", () => {
     onChange.mockClear();
     remove();
     expect(onChange).not.toHaveBeenCalled();
+  });
+});
+
+
+/**
+ * Against the REAL store, not the merging harness above.
+ *
+ * The harness merges patches with `{...prev, ...patch}`, which preserves array
+ * identity — and the store does not, because `normalizeKnownFields` rebuilds
+ * `shotDays` on every write. A reference check therefore passed every test here
+ * and lost typed input in the app. A stand-in that differs from the real thing
+ * in the dimension the code depends on is the proxy shape this project keeps
+ * paying for, so these go through the provider.
+ */
+describe("CadencePicker — against the real profile store", () => {
+  const Real = () => {
+    const { profile, setSchedule } = useProfileContext();
+    return <CadencePicker idPrefix="t" profile={profile} onChange={setSchedule} />;
+  };
+  const renderReal = () =>
+    render(
+      <ProfileProvider>
+        <Real />
+      </ProfileProvider>,
+    );
+
+  it("keeps a typed interval when an unrelated part of the profile is written", () => {
+    // On iOS this is the ordinary path: Safari does not focus a <button> on
+    // tap, so tapping a day fires no blur and the typed number is uncommitted.
+    renderReal();
+    fireEvent.click(screen.getByRole("radio", { name: /On certain days/ }));
+    const box = () => screen.getByRole("spinbutton") as HTMLInputElement;
+    fireEvent.change(box(), { target: { value: "2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Monday" }));
+
+    expect(box().value).toBe("2");
+  });
+
+  it("still follows a day set genuinely changed from outside", () => {
+    // The mirror, so the fix above cannot be "never re-sync": rebuilt-but-equal
+    // must be ignored while actually-different must still come through.
+    renderReal();
+    fireEvent.click(screen.getByRole("radio", { name: /On certain days/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Monday" }));
+    expect(
+      screen.getByRole("button", { name: "Monday" }),
+    ).toHaveAttribute("aria-pressed", "true");
   });
 });

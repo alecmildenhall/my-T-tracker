@@ -343,21 +343,23 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   const scrollRef = useRef<HTMLDivElement>(null);
 
   /**
-   * Send the user to the first field still holding a problem.
+   * Send the user to the field NAMED, not to whichever is first.
    *
-   * Found by querying for `aria-invalid`, not by plumbing a ref per field: the
-   * DOM already knows which are invalid AND what order they are in, so this
-   * cannot disagree with the summary about which one comes first, and a fourth
-   * validated field needs nothing added here.
+   * Every blocked field is its own button, because one button spanning "date
+   * and the dose" always jumped to the date — so tapping the word "dose" took
+   * you somewhere else, which is worse than not offering the jump.
+   *
+   * The control is found through the error id it already points at via
+   * `aria-describedby`, so this uses an association the markup keeps anyway.
    *
    * `handOffFocus`, never a bare `.focus()` — it verifies the result, which is
    * the rule this codebase settled after nine focus defects.
    */
-  const focusFirstProblem = () => {
-    const first = scrollRef.current?.querySelector<HTMLElement>(
-      '[aria-invalid="true"]',
+  const focusProblem = (describedBy: string) => {
+    const field = scrollRef.current?.querySelector<HTMLElement>(
+      `[aria-describedby~="${describedBy}"]`,
     );
-    if (first) handOffFocus(first);
+    if (field) handOffFocus(field);
   };
 
   const takenRange = takenDateRange();
@@ -632,12 +634,21 @@ export const ShotForm: React.FC<ShotFormProps> = ({
    * change, and a comment claiming redundancy would now be actively wrong.
    */
   const [saveAttempted, setSaveAttempted] = useState(false);
-  /** Which fields a refused save is waiting on — live, so fixing one drops it. */
+  /**
+   * Which fields a refused save is waiting on — live, so fixing one drops it.
+   *
+   * Each carries the id of its own error message, which is how its control is
+   * found: the field already points at that id through `aria-describedby`, so
+   * this rides an association the markup maintains anyway rather than adding a
+   * ref per field for the summary to keep in step.
+   */
   const blockedFields = [
-    dateError ? "date" : null,
-    doseError ? "dose" : null,
-    plannedError ? "planned date" : null,
-  ].filter((f): f is string => f !== null);
+    dateError ? { label: "date", describedBy: "date-error" } : null,
+    doseError ? { label: "dose", describedBy: "dose-error" } : null,
+    plannedError
+      ? { label: "planned date", describedBy: "planned-error" }
+      : null,
+  ].filter((f): f is { label: string; describedBy: string } => f !== null);
   const [time, setTime] = useState<string>(start.time);
   const [doseMg, setDoseMg] = useState<string>(start.doseMg);
   const [injectionSite, setInjectionSite] = useState<string>(
@@ -674,6 +685,10 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   // default form looks like, so the editing-sync effect and Cancel can't drift.
   // Stable (setters are stable), so it's safe in the effect's dependency list.
   const resetForm = useCallback(() => {
+    // Or a save refused earlier keeps its summary alive: a LATER error raised by
+    // blur alone would re-show "Not saved yet." for a save nobody attempted,
+    // which is the exact condition this flag exists to prevent.
+    setSaveAttempted(false);
     setDate(todayLocalISO());
     // Reseeded, so the baseline moves with it. Leaving the baseline behind is
     // what let a form cleared after midnight treat a genuine backdate as no
@@ -1579,17 +1594,23 @@ export const ShotForm: React.FC<ShotFormProps> = ({
                 date is invalid also matches the field's own words, so the two
                 describe one fault in one vocabulary rather than two. */}
             <strong>Not saved yet.</strong> The{" "}
-            {/* A real button, so the keyboard and a screen reader get the same
-                route a thumb does. It FOCUSES rather than merely scrolling:
-                focusing a date input opens the picker, which is unwelcome when
-                the app does it uninvited and fine when you asked to go there. */}
-            <button
-              type="button"
-              className="shot-form__blocked-jump"
-              onClick={() => focusFirstProblem()}
-            >
-              {blockedFields.join(" and the ")}
-            </button>{" "}
+            {/* One button per field, each going to its own. A real button, so
+                the keyboard and a screen reader get the same route a thumb
+                does, and it FOCUSES rather than merely scrolling: focusing a
+                date input opens the picker, which is unwelcome when the app
+                does it uninvited and fine when you asked to go there. */}
+            {blockedFields.map((field, i) => (
+              <React.Fragment key={field.describedBy}>
+                {i > 0 && <>{" and the "}</>}
+                <button
+                  type="button"
+                  className="shot-form__blocked-jump"
+                  onClick={() => focusProblem(field.describedBy)}
+                >
+                  {field.label}
+                </button>
+              </React.Fragment>
+            ))}{" "}
             {blockedFields.length > 1 ? "are" : "is"} invalid.
           </p>
         )}
