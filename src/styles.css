@@ -2403,6 +2403,20 @@ select {
 
 /* Sits inside the sheet, because the storage banner is behind an inert `#root`
    while the sheet is open and cannot be seen, announced, or clicked. */
+/* The blocked-save summary, first thing under the header rule. Borrows the
+   storage banner's chrome below so the two read as the same kind of thing —
+   the app could not do what you asked — rather than as two inventions. */
+.shot-form__blocked {
+  margin: 0 0 0.75rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--danger-engaged-border);
+  border-left-width: 3px;
+  border-radius: 8px;
+  background: var(--danger-engaged-bg);
+  color: var(--text);
+  font-size: 0.8rem;
+}
+
 .shot-form__save-error {
   /* The bottom bar is a flex ROW holding the Save button. Left to itself the
      message becomes a second column, squeezing Save into a two-line stub and

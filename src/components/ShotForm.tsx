@@ -291,6 +291,9 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   // The date TAKEN stops at today; "Planned for" is allowed to be ahead. Same
   // control, different questions — one range for both is what let a future shot
   // become the schedule's anchor.
+  /** The scrolling part of the sheet — taken back to the top on a blocked save. */
+  const scrollRef = useRef<HTMLDivElement>(null);
+
   const takenRange = takenDateRange();
   const plannedRange = shotDateRange();
   const carried = useMemo(() => carryForward(shots), [shots]);
@@ -531,6 +534,25 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   const [saveFailed, setSaveFailed] = useState(false);
   const [exportFailed, setExportFailed] = useState(false);
   const [doseError, setDoseError] = useState<string | null>(null);
+
+  /**
+   * Which fields a refused save is waiting on.
+   *
+   * Derived, with no `blocked` flag beside it, and that is load-bearing rather
+   * than tidy. An error is only ever SET inside the submit handler — every other
+   * write clears one — so "an error is showing" already means "a save was
+   * refused and not yet fixed". A separate flag would be a second value for a
+   * fact these three already carry, free to disagree with them.
+   *
+   * Mutation-tested, which is how the redundancy was found: removing the flag's
+   * reset turned nothing red, because the list being empty had always been what
+   * took the summary away.
+   */
+  const blockedFields = [
+    dateError ? "date" : null,
+    doseError ? "dose" : null,
+    plannedError ? "planned date" : null,
+  ].filter((f): f is string => f !== null);
   const [time, setTime] = useState<string>(start.time);
   const [doseMg, setDoseMg] = useState<string>(start.doseMg);
   const [injectionSite, setInjectionSite] = useState<string>(
@@ -699,7 +721,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
           ? "Please enter a real calendar date (YYYY-MM-DD)."
           : !isShotDateInRange(date)
             ? `Check the year — dates run from ${range.min} to ${range.max}.`
-            : `You can log a shot after taking it — nothing later than ${range.max}.`;
+            : `Log a shot after taking it — nothing later than ${range.max}.`;
     // Mirrors the storage schema: a finite, non-negative number. Fractional doses
     // are fine (62.5mg while titrating is ordinary).
     const nextDoseError =
@@ -751,8 +773,14 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     setDoseError(nextDoseError);
     // `!parsedDate` is implied by nextDateError, but stating it narrows the type
     // so the branded CivilDate below can't be null.
-    if (nextDateError || nextDoseError || nextPlannedError || !parsedDate)
+    if (nextDateError || nextDoseError || nextPlannedError || !parsedDate) {
+      // Back to the top of the form, where the summary is — and deliberately
+      // NOT `focus()` on the offending field. Focusing a date input opens the
+      // native picker, so the reward for pressing Save would be a calendar
+      // wheel covering the message that explains why you are looking at it.
+      scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
       return;
+    }
 
     const newShot: ShotEntry = {
       id: editingShot ? editingShot.id : newId(),
@@ -946,7 +974,27 @@ export const ShotForm: React.FC<ShotFormProps> = ({
         </h2>
       </div>
 
-      <div className="shot-form__scroll">
+      <div className="shot-form__scroll" ref={scrollRef}>
+        {/* First thing under the header rule, which is where the view is taken
+            on a blocked save.
+
+            NOT `role="alert"`, and that is the opposite of the instinct. The
+            field messages already carry one, and role=alert announces wherever
+            the element is — so a screen-reader user has always been told why the
+            save was refused, scroll position being irrelevant to them. The
+            defect this fixes is purely POSITIONAL: reaching Save means scrolling
+            past the message, so a sighted user presses a button and sees
+            nothing change. A second alert would announce the same refusal twice
+            to the people who were never affected.
+
+            It names the fields and stops there; the full sentence stays beside
+            each one, so the same words are not maintained in two places. */}
+        {blockedFields.length > 0 && (
+          <p className="shot-form__blocked">
+            <strong>Not saved yet.</strong> Check the{" "}
+            {blockedFields.join(" and the ")} below.
+          </p>
+        )}
         {/* Marks the MINORITY, which here is the required field rather than the
             optional ones. Baymard's checkout research recommends marking BOTH
             explicitly, because unmarked fields make people guess — but their

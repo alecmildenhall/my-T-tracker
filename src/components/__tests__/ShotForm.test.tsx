@@ -293,6 +293,48 @@ describe("ShotForm field mapping", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
+  it("says the save was refused, at the top of the form", () => {
+    // The defect: reaching Save means scrolling past the message, so pressing it
+    // changed nothing the user could see and the button read as broken.
+    const onAddShot = vi.fn();
+    render(<ShotForm onAddShot={onAddShot} />);
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: addDaysCivil(takenDateRange().max, 1) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+
+    expect(screen.getByText(/Not saved yet/)).toBeInTheDocument();
+    expect(screen.getByText(/Check the date below/)).toBeInTheDocument();
+  });
+
+  it("keeps ONE alert, so the refusal is announced once", () => {
+    // The summary is deliberately not an alert. The field message already is,
+    // and role=alert announces wherever the element sits — so a screen-reader
+    // user was always told why. The defect was positional, and a second alert
+    // would announce the same refusal twice to the people it never affected.
+    render(<ShotForm onAddShot={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: addDaysCivil(takenDateRange().max, 1) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+  });
+
+  it("takes the summary away when the field is fixed", () => {
+    render(<ShotForm onAddShot={vi.fn()} />);
+    const date = screen.getByLabelText("Date");
+    fireEvent.change(date, {
+      target: { value: addDaysCivil(takenDateRange().max, 1) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+    expect(screen.getByText(/Not saved yet/)).toBeInTheDocument();
+
+    fireEvent.change(date, { target: { value: takenDateRange().max } });
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+    expect(screen.queryByText(/Not saved yet/)).toBeNull();
+  });
+
   it("refuses a shot dated tomorrow, in its own words", () => {
     // A different mistake from a mistyped year, and it must not borrow that
     // message: the year is fine, the date is real, and the person has dated a
