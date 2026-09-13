@@ -2636,12 +2636,24 @@ select {
   margin: 0 0 0.15rem;
 }
 
+/* A fieldset brings its own border, margin and padding; this is a grouping for
+   semantics, not a visible box. `min-width: 0` because a fieldset defaults to
+   min-content and would otherwise refuse to shrink — the same trap the pain and
+   off-days groups already record. */
+.cadence__rhythms {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
 /* The hint sat flush against the first rhythm, where every other field in the
    form leaves 4.8px between its hint and its control — measured on the start
-   date directly above this one. On the GROUP rather than the row, so the gap
-   between rhythms is untouched. */
-.cadence__rhythms {
-  margin-top: 0.3rem;
+   date directly above this one. On the HINT now rather than the group, because
+   the group became a fieldset and a <legend> is lifted out of the flow into the
+   fieldset's own legend box, taking no part in any gap below it. */
+.cadence__rhythms > .field-hint {
+  margin-bottom: 0.3rem;
 }
 
 .cadence__row {

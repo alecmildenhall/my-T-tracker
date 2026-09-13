@@ -189,7 +189,10 @@ export function establishAnchor(
   const backToFirst =
     (WEEKDAYS.indexOf(nearestDay) - WEEKDAYS.indexOf(first) + 7) % 7;
   const anchor = addDaysCivil(nearestDate, -backToFirst);
-  // Snapping moves up to 3 days either way, so it can step outside the range
+  // The two-step anchor moves up to 9 days BACK from the reference — 3 for the
+  // snap to the nearest day of the set, and up to 6 more stepping back to the
+  // set's first day — where the single-day version moved at most 3 either way.
+  // So it can step outside the range
   // every persistence boundary enforces — `establishAnchor("1900-01-01",
   // "sunday", 7)` gives "1899-12-31". Those boundaries would each drop it
   // silently, leaving the user with no planned dates and no explanation. The
@@ -280,11 +283,6 @@ export function plannedDateFor(
     if (!Number.isFinite(offset)) continue;
     const slots = Math.floor(offset / intervalDays + 0.5);
     const planned = addDaysCivil(dayAnchor, slots * intervalDays);
-    // Range-checked like establishAnchor, and for the same reason: the rounded
-    // slot lands up to half an interval away from the shot, so a large interval
-    // near the edge of the supported range can produce a date pickShotFields
-    // drops from the backup and toCsv blanks while History renders it.
-    if (!isShotDateInRange(planned)) continue;
     const gap = Math.abs(daysApart(planned, actual));
     // Strictly nearer, so an exact tie keeps the earlier weekday in week order.
     // Ties are reachable — [sun, wed] at 7 days puts a Saturday shot 3 days from
@@ -295,7 +293,18 @@ export function plannedDateFor(
       best = planned;
     }
   }
-  return best;
+  // Range-checked ONCE, on the winner, and never as a filter inside the loop.
+  // Filtering there quietly promoted the runner-up: with the nearest day's slot
+  // out of range and a farther day's inside it, the shot was frozen against the
+  // farther day — a wrong "N days later" rather than no planned date at all,
+  // and frozen means unrepairable. The single-day version returned null here,
+  // and it was right to.
+  //
+  // The bound is the one every persistence boundary enforces: the rounded slot
+  // sits up to half an interval from the shot, so a long cadence near the edge
+  // can produce a date `pickShotFields` drops from the backup and `toCsv`
+  // blanks while History still renders it.
+  return best !== null && isShotDateInRange(best) ? best : null;
 }
 
 /** Whole days from `a` to `b`. Local to this module rather than imported from

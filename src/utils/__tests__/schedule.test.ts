@@ -537,6 +537,28 @@ describe("anchorReferenceDate", () => {
   });
 });
 
+describe("plannedDateFor — an out-of-range winner is refused, not replaced", () => {
+  it("returns null rather than promoting a farther weekday", () => {
+    // The range check used to filter INSIDE the loop, which quietly promoted the
+    // runner-up: with the nearest day's slot out of range and a farther day's
+    // inside it, the shot froze against the farther day — a wrong "N days
+    // later" instead of no planned date, and frozen means unrepairable.
+    //
+    // Found by searching for a case where the two behaviours differ, which also
+    // showed WHERE it is reachable. Not at the upper bound: a slot lands within
+    // half an interval of the shot, the interval caps at 365, and a shot cannot
+    // be later than today — so a slot can never exceed today+182. The LOWER
+    // bound has no such protection, because a shot may sit within half an
+    // interval of 1900-01-01 and the slot rounds back past it.
+    //
+    // Measured: this froze 1900-02-11 onto a shot dated 1900-01-01, reading
+    // "41 days later" forever.
+    expect(
+      plannedDateFor("1900-01-01", "1900-02-11", 84, ["sunday", "saturday"]),
+    ).toBeNull();
+  });
+});
+
 describe("daysFromPlanned", () => {
   it("is null when the shot has no planned date", () => {
     expect(daysFromPlanned({ date: WED })).toBeNull();

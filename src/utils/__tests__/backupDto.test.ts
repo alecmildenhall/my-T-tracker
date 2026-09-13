@@ -442,3 +442,23 @@ describe("a dismissal alone is not user data", () => {
     expect(hasProfileData({})).toBe(false);
   });
 });
+
+describe("pickProfileFields — shot days are canonical", () => {
+  it("orders a day set by week, so an unchanged import says nothing changed", () => {
+    // `profileDataFields` compares serialized profiles, so the same schedule
+    // written in a different order compared unequal and the import reported
+    // "Your profile was updated" when nothing had.
+    expect(
+      pickProfileFields({ shotDays: ["thursday", "monday"] }).shotDays,
+    ).toEqual(["monday", "thursday"]);
+  });
+
+  it("still drops what is not a weekday, and de-duplicates", () => {
+    expect(
+      pickProfileFields({
+        shotDays: ["monday", "someday", "monday"] as never,
+      }).shotDays,
+    ).toEqual(["monday"]);
+  });
+});
+

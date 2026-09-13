@@ -238,6 +238,25 @@ describe("CadencePicker — following the profile from elsewhere", () => {
     expect(numberBox().value).toBe("10");
   });
 
+  it("re-reads the number when only the RHYTHM changes", () => {
+    // `draftFor` is unit-dependent: storage is always days, the box shows weeks
+    // in the grid rhythm. Following only `intervalDays` left the old number
+    // under the new unit — a restore of {rolling, 14} as {grid, 14} showed "14"
+    // beside "weeks" and summarised "every 14 weeks" for a fortnightly cadence,
+    // then committed 98 over the restored backup on unmount.
+    const view = render(
+      <Host profile={{ scheduleMode: "rolling", intervalDays: 14 }} onChange={vi.fn()} />,
+    );
+    view.rerender(
+      <Host
+        profile={{ scheduleMode: "grid", shotDays: ["monday"], intervalDays: 14 }}
+        onChange={vi.fn()}
+      />,
+    );
+    expect(numberBox().value).toBe("2");
+    expect(screen.getByText("Mondays, every other week.")).toBeInTheDocument();
+  });
+
   it("does not write the stale value back over it on the way out", () => {
     // The half that loses data: the unmount commit compared its own stale draft
     // against the restored profile, wrote the old number back, and cleared the

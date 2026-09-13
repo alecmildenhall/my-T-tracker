@@ -14,10 +14,11 @@ export interface UseProfile {
   setStartDate: (date: string | undefined) => void;
   /** Set (or clear, with undefined) the preferred name. */
   setPreferredName: (name: string | undefined) => void;
-  /** Set (or clear, with undefined) the shot-day weekday. */
+  /** Any part of the cadence — rhythm, days, interval — applied together, and
+   *  ALWAYS clearing the schedule anchor, which is the whole reason it is one
+   *  setter. `undefined` for a field clears it, which stops planned dates being
+   *  computed rather than falling back to a guess. */
   setSchedule: (patch: Partial<Profile>) => void;
-  /** Days between shots. `undefined` clears it, which stops planned dates
-   *  being computed rather than falling back to a guess. */
   /** The date the schedule grid is aligned to. Written once, the first time a
    *  planned date needs one — see `planShot`. */
   setScheduleAnchor: (date: string | undefined) => void;

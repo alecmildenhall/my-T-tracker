@@ -118,7 +118,21 @@ export function CadencePicker({
     if (!sameDays(profile.shotDays, lastSeen.shotDays)) {
       setDays(profile.shotDays ?? []);
     }
-    if (profile.intervalDays !== lastSeen.intervalDays) {
+    // BOTH inputs, because `draftFor` reads both: the stored value is always
+    // days, and the box shows weeks in the grid rhythm. Following only
+    // `intervalDays` meant an external change of rhythm alone left the old
+    // number under the new unit — a restore of {rolling, 14} as {grid, 14}
+    // showed "14" beside "weeks" and summarised "every 14 weeks" for a
+    // fortnightly cadence, then committed 98 over the freshly restored backup
+    // on the way out, clearing its anchor with it.
+    //
+    // This is the mirror of the bug the per-field sync was introduced to fix,
+    // and the pair is the lesson: a derived value has to follow EVERY input it
+    // derives from, and no more than those.
+    if (
+      profile.intervalDays !== lastSeen.intervalDays ||
+      profile.scheduleMode !== lastSeen.scheduleMode
+    ) {
       setNumDraft(draftFor(profile.scheduleMode, profile.intervalDays));
     }
     setLastSeen(profile);
@@ -212,19 +226,20 @@ export function CadencePicker({
 
   return (
     <div className="cadence">
-      <p className="cadence__question" id={`${idPrefix}-cadence-label`}>
-        When do you take your shots?
-      </p>
-      <p className="field-hint" id={`${idPrefix}-cadence-hint`}>
-        Track how on time your shots are.
-      </p>
-
-      <div
-        className="cadence__rhythms"
-        role="radiogroup"
-        aria-labelledby={`${idPrefix}-cadence-label`}
-        aria-describedby={`${idPrefix}-cadence-hint`}
-      >
+      {/* A FIELDSET, not `role="radiogroup"`. ARIA permits a radiogroup only
+          radios as children, and the revealed blocks put seven `aria-pressed`
+          day buttons, a number input, a chip group and an error inside it — so
+          posinset/setsize and arrow navigation were computed over content that
+          is not part of the group. A fieldset is the native grouping and
+          permits any content, while the radios remain one group to AT through
+          the `name` they share. */}
+      <fieldset className="cadence__rhythms">
+        <legend className="cadence__question">
+          When do you take your shots?
+        </legend>
+        <p className="field-hint" id={`${idPrefix}-cadence-hint`}>
+          Track how on time your shots are.
+        </p>
         <ModeRow
           idPrefix={idPrefix}
           value="grid"
@@ -347,7 +362,7 @@ export function CadencePicker({
           sub="No planned dates, no tracking lateness"
           onPick={pickMode}
         />
-      </div>
+      </fieldset>
     </div>
   );
 }
