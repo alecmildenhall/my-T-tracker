@@ -166,13 +166,14 @@ export function CadencePicker({
   return (
     <div className="cadence">
       <p className="cadence__question" id={`${idPrefix}-cadence-label`}>
-        How do you time your shots?
+        When do you take your shots?
       </p>
       <p className="field-hint" id={`${idPrefix}-cadence-hint`}>
         Track how on time your shots are.
       </p>
 
       <div
+        className="cadence__rhythms"
         role="radiogroup"
         aria-labelledby={`${idPrefix}-cadence-label`}
         aria-describedby={`${idPrefix}-cadence-hint`}

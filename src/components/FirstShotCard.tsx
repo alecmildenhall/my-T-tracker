@@ -51,6 +51,31 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
     setStartDate,
   } = useProfileContext();
 
+  /**
+   * Nothing left to ask? Then this card has nothing to offer.
+   *
+   * Someone who opens Settings first and fills it in came back to Home and met
+   * a "Before your first shot" card with every field already populated — a
+   * setup prompt for setup they had just finished.
+   *
+   * EVERY field, not merely one, and the difference is a regression avoided
+   * rather than a nicety. `hasProfileData` was the obvious check and is wrong
+   * here: type a name into this card, wander to History, come back, and the
+   * card you were half way through would be gone, with the rest of it reachable
+   * only from Settings. The card is useless exactly when it can ask nothing new.
+   *
+   * SNAPSHOT at mount, never live — typing into the card writes to the profile
+   * immediately, so a live check would make the card vanish under the person
+   * using it, mid-keystroke. Home unmounts when you leave it, so this re-arms on
+   * every return, which is exactly when the answer can have changed.
+   */
+  const [alreadySetUp] = useState(
+    () =>
+      profile.preferredName !== undefined &&
+      profile.startDate !== undefined &&
+      profile.scheduleMode !== undefined,
+  );
+
 
   // Follow the profile when it changes underneath this card, the way the same
   // two fields in JourneySettings already do. `useLocalStorage` subscribes to
@@ -241,6 +266,10 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
     }, wait);
     return () => window.clearTimeout(t);
   }, [dismissal]);
+
+  // After every hook, never before: bailing early would change the hook order
+  // between renders, which React forbids outright.
+  if (alreadySetUp) return null;
 
   return (
     <section

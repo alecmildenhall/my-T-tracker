@@ -26,6 +26,67 @@ const renderCard = () =>
 const startField = () =>
   screen.getByLabelText("When did you start T?") as HTMLInputElement;
 
+describe("FirstShotCard — when it should not appear at all", () => {
+  it("stays away when Settings already answered everything", () => {
+    // The complaint this fixes: fill Settings in first, come back to Home, and
+    // meet a "Before your first shot" card with every field already populated.
+    seedProfile({
+      preferredName: "Lou",
+      startDate: "2024-03-15",
+      scheduleMode: "none",
+    });
+    const { container } = render(
+      <ProfileProvider>
+        <FirstShotCard onGoToSettings={vi.fn()} onDone={vi.fn()} />
+      </ProfileProvider>,
+    );
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("still appears when only SOME of it is answered", () => {
+    // `hasProfileData` was the obvious check and would regress this: a name
+    // typed into the card is profile data, so wandering to History and back
+    // would lose the half-filled card and send you to Settings for the rest.
+    seedProfile({ preferredName: "Lou" });
+    render(
+      <ProfileProvider>
+        <FirstShotCard onGoToSettings={vi.fn()} onDone={vi.fn()} />
+      </ProfileProvider>,
+    );
+    expect(
+      screen.getByRole("heading", { name: "Before your first shot" }),
+    ).toBeInTheDocument();
+  });
+
+  it("does not vanish under someone filling it in", () => {
+    // The reason the check is a mount-time snapshot. Typing writes to the
+    // profile on each keystroke; a live check would unmount the card mid-use.
+    render(
+      <ProfileProvider>
+        <FirstShotCard onGoToSettings={vi.fn()} onDone={vi.fn()} />
+      </ProfileProvider>,
+    );
+    fireEvent.change(screen.getByLabelText("What should the app call you?"), {
+      target: { value: "Lou" },
+    });
+    fireEvent.change(startField(), { target: { value: "2024-03-15" } });
+    // BLUR, or the date never commits and this passes for the wrong reason:
+    // without it the third field is still unset, so a live check would keep the
+    // card too and the snapshot goes untested. Mutation-tested — swapping the
+    // snapshot for a live check turns this red only once all three are stored.
+    fireEvent.blur(startField());
+    fireEvent.click(screen.getByRole("radio", { name: /rather not track/ }));
+    expect(storedProfile()).toMatchObject({
+      preferredName: "Lou",
+      startDate: "2024-03-15",
+      scheduleMode: "none",
+    });
+    expect(
+      screen.getByRole("heading", { name: "Before your first shot" }),
+    ).toBeInTheDocument();
+  });
+});
+
 describe("FirstShotCard — the start date", () => {
   it("clears a stored start date when the field is emptied", () => {
     // It used to restore instead, so the native picker's own "Reset" emptied
