@@ -408,6 +408,40 @@ describe("ShotForm field mapping", () => {
     expect(screen.getByRole("button", { name: "date" })).toBeInTheDocument();
   });
 
+  it("names the problem rather than setting a chore", () => {
+    // "Check the date" asked you to go and look without saying what you would
+    // find. It also matches the field's own wording now, so the two describe
+    // one fault in one vocabulary.
+    render(<ShotForm onAddShot={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: addDaysCivil(takenDateRange().max, 1) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+
+    expect(
+      screen.getByText((_, el) => el?.textContent === "Not saved yet. The date is invalid."),
+    ).toBeInTheDocument();
+  });
+
+  it("agrees in number when two fields are wrong", () => {
+    // The easy thing to get wrong, and nothing else would catch it: with two
+    // fields the sentence needs "are", not "is".
+    render(<ShotForm onAddShot={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: addDaysCivil(takenDateRange().max, 1) },
+    });
+    fireEvent.change(screen.getByLabelText("Dose (mg)"), {
+      target: { value: "-5" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+
+    expect(
+      screen.getByText((_, el) =>
+        el?.textContent === "Not saved yet. The date and the dose are invalid.",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("takes you to the offending field when you ask", () => {
     render(<ShotForm onAddShot={vi.fn()} />);
     fireEvent.change(screen.getByLabelText("Date"), {

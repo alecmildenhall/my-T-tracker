@@ -1573,7 +1573,12 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             failure means it ran and the device refused. */}
         {saveAttempted && blockedFields.length > 0 && (
           <p className="shot-form__blocked">
-            <strong>Not saved yet.</strong> Check the{" "}
+            {/* Names the PROBLEM, not a chore. "Check the date" asks you to go
+                and look; it does not say what you would find, so the summary
+                read as an errand while the reason sat elsewhere. Saying the
+                date is invalid also matches the field's own words, so the two
+                describe one fault in one vocabulary rather than two. */}
+            <strong>Not saved yet.</strong> The{" "}
             {/* A real button, so the keyboard and a screen reader get the same
                 route a thumb does. It FOCUSES rather than merely scrolling:
                 focusing a date input opens the picker, which is unwelcome when
@@ -1584,8 +1589,8 @@ export const ShotForm: React.FC<ShotFormProps> = ({
               onClick={() => focusFirstProblem()}
             >
               {blockedFields.join(" and the ")}
-            </button>
-            .
+            </button>{" "}
+            {blockedFields.length > 1 ? "are" : "is"} invalid.
           </p>
         )}
         {saveFailed && (
