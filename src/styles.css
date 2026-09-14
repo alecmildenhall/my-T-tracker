@@ -228,6 +228,38 @@ body {
   font-size: 0.8rem;
 }
 
+/* iOS CENTRES the value inside a date or time input; every other field in the
+   app is left-aligned, so a date sat alone in the middle of its box next to a
+   name hard against the left edge. Chromium left-aligns already, which is why
+   neither a desktop sweep nor a screenshot at any width could show it -- it was
+   reported from a phone.
+
+   Only `text-align`, deliberately: `font-size` on a form control is the one
+   thing this stylesheet must never set outside the coarse-pointer rule, because
+   a class here out-specifies a media query and that is how iOS page-zoom came
+   back last time. */
+input[type="date"],
+input[type="time"] {
+  /* `start`, not `left`: it is what every other field in the app computes to,
+     so the two are the same value rather than merely the same result in
+     English. This alone is NOT what fixes Safari -- see below -- but it is what
+     every other engine reads. */
+  text-align: start;
+}
+
+/* Safari is the reason this needs a second rule, and the first attempt failed
+   because `text-align` on the input never reaches the value.
+   Safari renders a temporal input as shadow DOM: the value lives in its own
+   part with its own layout, so the property applies to a box that is not the
+   one drawing the text. Reported twice from a phone before this was found —
+   Chromium left-aligns by default, so nothing I can measure here shows it.
+   `::-webkit-date-and-time-value` is the documented handle on that part. */
+input[type="date"]::-webkit-date-and-time-value,
+input[type="time"]::-webkit-date-and-time-value {
+  text-align: start;
+}
+
+
 label {
   font-size: 0.8rem;
   /* The question outranks the note under it, and CONTRAST is what says so.
@@ -1150,6 +1182,19 @@ select {
      group's accessible NAME rather than a description hung off it — see the
      note in ShotForm. Inline it would run on after the question. */
   display: block;
+  /* This line WRAPS to two lines on a phone, and that is accepted rather than
+     fixed. Measured at 390px: the longest forms need 335px against 329 — six
+     over, so they wrap; a four-day gap still fits on one. Naming the reference
+     shot and saying "taken" are worth a second line, where the alternative was
+     a shorter line leaving "earlier than what?" open, which is the ambiguity
+     the wording exists to close.
+
+     `pretty` asks the engine to avoid a ragged last line where it can. Measured
+     honestly: at 320px it does NOT change this break — "this one" still lands on
+     the second line, because Chromium applies `pretty` narrowly and that is two
+     words rather than a single-word orphan. Kept because it costs nothing and
+     helps at other widths, NOT because it solved this one. */
+  text-wrap: pretty;
   margin-top: 0.25rem;
   font-size: 0.75rem;
   font-weight: 400;
@@ -2371,6 +2416,50 @@ select {
 
 /* Sits inside the sheet, because the storage banner is behind an inert `#root`
    while the sheet is open and cannot be seen, announced, or clicked. */
+/* The blocked-save summary, in the pinned footer above Save. Borrows the
+   storage banner's chrome below so the two read as the same kind of thing —
+   the app could not do what you asked — rather than as two inventions.
+
+   `flex: 1 0 100%` for the reason the storage banner records: the bottom bar is
+   a flex ROW holding Save, so left to itself this becomes a second column and
+   squeezes the button into a two-line stub. */
+/* The field names are a real button — same route for a thumb, a keyboard and a
+   screen reader. Styled as the sentence's own emphasis rather than a link, so it
+   reads as part of the message instead of navigation out of it.
+
+   Every one of these declarations is undoing a UA default: without them the
+   browser paints a grey pill with its own padding, which read as a chip rather
+   than as a word in a sentence. */
+.shot-form__blocked-jump {
+  font: inherit;
+  font-size: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  min-height: 0;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.shot-form__blocked-jump:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.shot-form__blocked {
+  flex: 1 0 100%;
+  margin: 0 0 0.6rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--danger-engaged-border);
+  border-left-width: 3px;
+  border-radius: 8px;
+  background: var(--danger-engaged-bg);
+  color: var(--text);
+  font-size: 0.8rem;
+}
+
 .shot-form__save-error {
   /* The bottom bar is a flex ROW holding the Save button. Left to itself the
      message becomes a second column, squeezing Save into a two-line stub and
@@ -2550,3 +2639,223 @@ select {
   transform: none;
   filter: none;
 }
+
+/* ── Cadence picker ─────────────────────────────────────────────────────────
+   "How do you time your shots?" — three named rhythms, shared by the first-run
+   card and Settings so the two cannot drift apart on it. */
+
+.cadence__question {
+  font-weight: 600;
+  margin: 0 0 0.15rem;
+}
+
+/* A fieldset brings its own border, margin and padding; this is a grouping for
+   semantics, not a visible box. `min-width: 0` because a fieldset defaults to
+   min-content and would otherwise refuse to shrink — the same trap the pain and
+   off-days groups already record. */
+.cadence__rhythms {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+/* The hint sat flush against the first rhythm, where every other field in the
+   form leaves 4.8px between its hint and its control — measured on the start
+   date directly above this one. On the HINT now rather than the group, because
+   the group became a fieldset and a <legend> is lifted out of the flow into the
+   fieldset's own legend box, taking no part in any gap below it. */
+.cadence__rhythms > .field-hint {
+  margin-bottom: 0.3rem;
+}
+
+.cadence__row {
+  position: relative;
+  display: flex;
+  /* BOTH declared, and neither is redundant — the same trap `.off-days-row`
+     records a few hundred lines down, made again here. `.cadence__row` is a
+     <label>, and the base `label` rule sets `flex-direction: column` and
+     `flex: 1 1 0`. Declaring only `display: flex` left those in force, so the
+     mark sat ABOVE the words instead of beside them. Every measurement passed
+     — the row was still the right height, nothing wrapped, nothing overflowed —
+     and it was visible in my own screenshots, which is the part worth
+     remembering: the check that finds this is looking, and looking at the thing
+     rather than past it. */
+  flex-direction: row;
+  flex: none;
+  align-items: center;
+  gap: 0.55rem;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-card-soft);
+  border-radius: var(--radius-md);
+  padding: 0.55rem 0.7rem;
+  margin-bottom: 0.45rem;
+  cursor: pointer;
+}
+
+.cadence__row--on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* Invisible rather than `display: none`: a hidden input is not focusable, and
+   the native radio is here for its keyboard and arrow-key behaviour. Covering
+   the row is what makes the whole thing one target. Mirrors `.off-days-row`,
+   which is the app's selector pattern — the bare native control read as a
+   different kind of thing sitting among them. */
+.cadence__row input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+/* The radio's stand-in, drawn because the real input covers the whole row. */
+.cadence__row__mark {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--border-subtle);
+  display: grid;
+  place-items: center;
+}
+.cadence__row__mark::after {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--accent);
+  transform: scale(0);
+  transition: transform 0.12s ease;
+}
+.cadence__row--on .cadence__row__mark {
+  border-color: var(--accent);
+}
+.cadence__row--on .cadence__row__mark::after {
+  transform: scale(1);
+}
+
+/* The ring goes on the ROW, since the input itself is invisible. */
+.cadence__row:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.cadence__row-text {
+  display: block;
+}
+
+.cadence__row-sub {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 0.05rem;
+  /* Explicit, because this sits inside a <label> and the app bolds those. Left
+     to inherit it came out at 600, so the row's name and its explanation had
+     the same weight and neither read as subordinate to the other. */
+  font-weight: 400;
+}
+
+.cadence__row--on .cadence__row-sub {
+  color: #bae6fd;
+}
+
+/* Flush with every other field's left margin. Indenting under the radio shows
+   what the fields belong to and puts them on a margin nothing else shares. */
+.cadence__reveal {
+  margin: 0.15rem 0 0.6rem;
+  /* The app's field scale. This block used to live inside a <label> and picked
+     up its sizing; freestanding it inherited the 16px body size instead, so
+     "every … week(s)" sat larger than every other label on the card. The INPUT
+     is unaffected — it keeps the 16px the coarse-pointer rule guarantees, which
+     is what stops iOS zooming on focus. */
+  font-size: 0.85rem;
+}
+
+.cadence__days {
+  display: flex;
+  gap: 5px;
+  margin: 0.15rem 0 0.6rem;
+}
+
+/* Seven across one row. 33.6px wide at 390px inside the card — past WCAG 2.5.8
+   (24px) and under Apple's 44x44, which is the trade Google Clock also makes.
+   Height stays at the full 44px, so only one axis is short. */
+.cadence__day {
+  flex: 1 1 0;
+  min-width: 0;
+  /* Capped, or they stretch with the container: measured 121.8px each at a
+     1200px viewport, which is a very large pill around a single letter. The cap
+     never binds on a phone — 38.3px at 390px — so this only affects desktop,
+     where the row simply stops growing and stays left-aligned with the fields
+     above it. */
+  max-width: 56px;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-card-soft);
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  padding: 0.5rem 0;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+/* The app's own ring, not the browser's. Found in a browser pass: these fell
+   through to the UA default (`outline: auto 1px rgb(16,16,16)` in Chromium),
+   which is visible here and is NOT this app's ring — so a screenshot passes it
+   while a keyboard user gets something that looks nothing like every other
+   focus in the app, and other engines may decline to draw it at all. The exact
+   defect the shot-day notice hit one pass earlier, on a new control. */
+.cadence__day:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.cadence__day[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #04121c;
+}
+
+/* `.suggestion-chips` carries no margin of its own — it relies on a parent
+   `gap`, which every other place it appears provides and `.cadence__reveal`
+   does not. Measured: the chips sat exactly 0px under the interval box while
+   every other gap in the block was 7.2-11.2px, so they read as attached to it.
+
+   Scoped here rather than added to `.suggestion-chips`, which would move the
+   log form's reuse chips too. And a margin rather than a gap on the reveal, for
+   the reason the pain chips record: 0.55rem is deliberately MORE than an
+   ordinary field, because a chip row is lighter than a bordered input and needs
+   more air to separate from it at all. */
+.cadence__reveal .suggestion-chips {
+  margin-top: 0.55rem;
+}
+
+.cadence__summary {
+  margin: 0.7rem 0 0;
+  padding: 0.55rem 0.7rem;
+  border-radius: var(--radius-md);
+  background: var(--success-wash);
+  border: 1px solid rgba(74, 222, 128, 0.3);
+  font-size: 0.82rem;
+  color: #d9f5e3;
+}
+
+/* Neither confirmation nor problem: the rhythm is chosen and something is
+   still missing, which is a fact about what you will get rather than a success
+   or a fault. The base rule is the app's SUCCESS wash, so falling through to it
+   painted "Pick a day to plan your shots against." in the same green as the
+   confirmed schedule sentence — while the identical state one rhythm down was
+   painted red. Same state, two opposite signals, and neither of them neutral. */
+.cadence__summary--info {
+  background: var(--bg-card-soft);
+  border-color: var(--border-subtle);
+  color: var(--text-muted);
+}
+

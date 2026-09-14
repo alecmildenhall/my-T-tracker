@@ -73,20 +73,40 @@ export function offDaysWindowDays(
  * you, which is what is measured — and it matches `offDaysLabel`, which anchors
  * on "the previous shot" for the same reason.
  *
- * A zero-length window reads "today" rather than "0 days". Both are accurate;
- * "0 days" is the sort of true-but-clumsy phrasing a person has to decode, and
- * this line exists to tell someone at a sharps bin what they are being asked
- * about. It is the same instinct as "first shot" instead of "0 days late".
+ * The length is folded INTO the sentence rather than hung off a separator. A
+ * "·" reads as metadata — a chip beside a label — where this is the sentence's
+ * own content, and the guidance on relative time says the same: it belongs
+ * "within a sentence, following the action that it's relative to".
  *
- * The ISO dates stay out of it. Every date this app displays is the stored
- * string, and ShotListItem's comment warns against inventing a second format.
- * Measured at 236px — the narrowest this field ever gets, at a 561px viewport,
- * NOT on a phone — this fits one line where "Since the shot before this one ·
- * 13 days" wraps.
+ * "BEFORE THIS ONE", never "ago", and never "today". That is an accuracy rule
+ * rather than a style one, and the obvious wording is wrong: "ago" and "today"
+ * are relative to NOW, while this window is relative to THE SHOT BEING LOGGED.
+ * Measured before the change — logging a shot dated 1 June with a previous shot
+ * that same day reported "today", months after the fact. Every backdated entry
+ * would have inherited the error the moment "N days ago" replaced "N days".
+ *
+ * Naming the reference out loud is what makes that safe rather than merely
+ * true. "4 days earlier" was accurate and left the question open — earlier than
+ * what? — so the reader supplies "than now", which is the very error being
+ * avoided. "taken 4 days before this one" cannot be read that way.
+ *
+ * "taken" earns its five characters by making the clause grammatical rather
+ * than elliptical: it is a participle modifying the shot ("your previous shot,
+ * TAKEN 4 days before this one"), where the bare "4 days before this one" hung
+ * off the comma as a fragment the reader had to attach for themselves.
+ *
+ * "the day before this one" for a one-day gap, on the same reasoning that rules
+ * out "yesterday": the relative-time guidance prefers a named day at that
+ * distance, and every name it offers is anchored to now.
+ *
+ * The dates themselves stay out of it. Every date this app displays is the
+ * stored ISO string, and ShotListItem's comment warns against inventing a
+ * second format on the same surface.
  */
 export function offDaysWindowLabel(days: number | null): string {
   const anchor = "Since your previous shot";
   if (days === null) return anchor;
-  if (days === 0) return `${anchor} · today`;
-  return `${anchor} · ${days} ${days === 1 ? "day" : "days"}`;
+  if (days === 0) return `${anchor}, taken the same day as this one`;
+  if (days === 1) return `${anchor}, taken the day before this one`;
+  return `${anchor}, taken ${days} days before this one`;
 }

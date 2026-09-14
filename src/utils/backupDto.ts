@@ -17,7 +17,7 @@ import type { Profile } from "../types/profile";
 import { isValidIntervalDays } from "../types/profile";
 import { isShotDateInRange } from "./civilDate";
 import { nonBlankString } from "./strings";
-import { isWeekday } from "./weekday";
+import { WEEKDAYS } from "./weekday";
 
 /** Rebuild a shot from known fields only — fresh object, no spread, no carried
  *  prototype or stray keys, no blank strings. Accepts a domain shot (export) or a
@@ -81,7 +81,30 @@ export function pickProfileFields(p: Partial<Profile>): Profile {
   if (startDate !== undefined) out.startDate = startDate;
   const preferredName = nonBlankString(p.preferredName);
   if (preferredName !== undefined) out.preferredName = preferredName;
-  if (isWeekday(p.shotDay)) out.shotDay = p.shotDay;
+  // Filtered per element rather than trusted as a list: this is the boundary a
+  // hand-edited or hostile file arrives at, and one bad entry must not cost the
+  // whole set. De-duplicated because a repeated day would double a grid slot.
+  // Canonically ORDERED as well as de-duplicated, because `profileDataFields`
+  // compares serialized profiles: `["thursday","monday"]` against a stored
+  // `["monday","thursday"]` is the same schedule and compared unequal, so an
+  // import that changed nothing reported "Your profile was updated" — the exact
+  // false alarm that compare exists to prevent. Ordering here rather than only
+  // in `sortedDays` downstream, so what is STORED is canonical too.
+  const shotDays = WEEKDAYS.filter(
+    (d) => Array.isArray(p.shotDays) && p.shotDays.includes(d),
+  );
+  if (shotDays.length > 0) out.shotDays = shotDays;
+  // The rhythm the user picked. Without this the mode reverts to whatever the
+  // values imply on restore — which is exactly the collision the stored field
+  // exists to resolve, so a rolling-every-7-days user would come back from
+  // their own backup with no planned dates at all.
+  if (
+    p.scheduleMode === "grid" ||
+    p.scheduleMode === "rolling" ||
+    p.scheduleMode === "none"
+  ) {
+    out.scheduleMode = p.scheduleMode;
+  }
   // Whole positive days only. A fraction or a zero would divide the schedule
   // grid into something meaningless, and this is the boundary where a
   // hand-edited or hostile file arrives.

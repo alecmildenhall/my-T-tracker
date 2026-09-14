@@ -26,6 +26,104 @@ const renderCard = () =>
 const startField = () =>
   screen.getByLabelText("When did you start T?") as HTMLInputElement;
 
+describe("FirstShotCard — when it should not appear at all", () => {
+  it("stays away when Settings already answered everything", () => {
+    // The complaint this fixes: fill Settings in first, come back to Home, and
+    // meet a "Before your first shot" card with every field already populated.
+    seedProfile({
+      preferredName: "Lou",
+      startDate: "2024-03-15",
+      scheduleMode: "none",
+    });
+    const { container } = render(
+      <ProfileProvider>
+        <FirstShotCard onGoToSettings={vi.fn()} onDone={vi.fn()} />
+      </ProfileProvider>,
+    );
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("still appears when a rhythm was picked but never completed", () => {
+    // `pickMode` stores `scheduleMode` the instant a rhythm is tapped, so "a
+    // mode string is present" was true of a cadence that plans nothing. Tapping
+    // "On certain days" and leaving hid the card forever over a half-received
+    // answer — taking with it the line that would have said so, and leaving
+    // Settings as the only way back.
+    seedProfile({
+      preferredName: "Lou",
+      startDate: "2024-03-15",
+      scheduleMode: "grid", // no days, no interval
+    });
+    render(
+      <ProfileProvider>
+        <FirstShotCard onGoToSettings={vi.fn()} onDone={vi.fn()} />
+      </ProfileProvider>,
+    );
+    expect(
+      screen.getByRole("heading", { name: "Before your first shot" }),
+    ).toBeInTheDocument();
+  });
+
+  it("stays away when the rhythm is a complete answer of 'not tracking'", () => {
+    // The mirror: "I'd rather not track this" has no fields to fill, so it IS
+    // answered. Inferring that from the values alone would call it incomplete.
+    seedProfile({
+      preferredName: "Lou",
+      startDate: "2024-03-15",
+      scheduleMode: "none",
+    });
+    const { container } = render(
+      <ProfileProvider>
+        <FirstShotCard onGoToSettings={vi.fn()} onDone={vi.fn()} />
+      </ProfileProvider>,
+    );
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("still appears when only SOME of it is answered", () => {
+    // `hasProfileData` was the obvious check and would regress this: a name
+    // typed into the card is profile data, so wandering to History and back
+    // would lose the half-filled card and send you to Settings for the rest.
+    seedProfile({ preferredName: "Lou" });
+    render(
+      <ProfileProvider>
+        <FirstShotCard onGoToSettings={vi.fn()} onDone={vi.fn()} />
+      </ProfileProvider>,
+    );
+    expect(
+      screen.getByRole("heading", { name: "Before your first shot" }),
+    ).toBeInTheDocument();
+  });
+
+  it("does not vanish under someone filling it in", () => {
+    // The reason the check is a mount-time snapshot. Typing writes to the
+    // profile on each keystroke; a live check would unmount the card mid-use.
+    render(
+      <ProfileProvider>
+        <FirstShotCard onGoToSettings={vi.fn()} onDone={vi.fn()} />
+      </ProfileProvider>,
+    );
+    fireEvent.change(screen.getByLabelText("What should the app call you?"), {
+      target: { value: "Lou" },
+    });
+    fireEvent.change(startField(), { target: { value: "2024-03-15" } });
+    // BLUR, or the date never commits and this passes for the wrong reason:
+    // without it the third field is still unset, so a live check would keep the
+    // card too and the snapshot goes untested. Mutation-tested — swapping the
+    // snapshot for a live check turns this red only once all three are stored.
+    fireEvent.blur(startField());
+    fireEvent.click(screen.getByRole("radio", { name: /rather not track/ }));
+    expect(storedProfile()).toMatchObject({
+      preferredName: "Lou",
+      startDate: "2024-03-15",
+      scheduleMode: "none",
+    });
+    expect(
+      screen.getByRole("heading", { name: "Before your first shot" }),
+    ).toBeInTheDocument();
+  });
+});
+
 describe("FirstShotCard — the start date", () => {
   it("clears a stored start date when the field is emptied", () => {
     // It used to restore instead, so the native picker's own "Reset" emptied
@@ -190,28 +288,7 @@ describe("FirstShotCard — leaving without blurring", () => {
     expect(storedProfile().startDate).toBeUndefined();
   });
 
-  it("does NOT wipe the cadence when the interval box holds garbage", () => {
-    // The sibling of the date defect, on the field beside it. A number input
-    // reports value "" for unparseable text too -- "-", "1e", "1.2.3" all
-    // sanitize to "" -- so the hatch's default of `badInput: false` read a
-    // fumbled keystroke as "deliberately emptied" and cleared the cadence. That
-    // also clears `scheduleAnchor`, so the grid every later shot is measured
-    // against goes with it, silently, on a background with no blur.
-    seedProfile({ intervalDays: 14 });
-    const { removeCard } = renderRemovableCard();
-    const box = screen.getByLabelText(
-      "How many days between your shots?",
-    ) as HTMLInputElement;
-    Object.defineProperty(box, "validity", {
-      configurable: true,
-      value: { badInput: true },
-    });
-    fireEvent.change(box, { target: { value: "" } });
-    removeCard();
-
-    expect(storedProfile().intervalDays).toBe(14);
-  });
-
+  
   it("does NOT carry out a HALF-TYPED date as a deletion", () => {
     // The mirror of the test above, and the one that matters more, because it
     // fails the other way: an empty `<input type="date">` reports `""` for both
@@ -286,190 +363,6 @@ describe("FirstShotCard — leaving without blurring", () => {
   });
 });
 
-describe("FirstShotCard — the interval's unit", () => {
-  const box = () =>
-    screen.getByLabelText("How many days between your shots?") as HTMLInputElement;
-
-  it("shows the unit beside the box, where it cannot disappear", () => {
-    // It lived only in the placeholder, which goes the moment a chip or a
-    // keystroke fills the box — screenshotted on a phone showing a bare "2".
-    renderCard();
-    expect(document.querySelector(".interval-field__unit")!.textContent).toBe(
-      "days",
-    );
-    expect(box().placeholder).toBe("");
-  });
-
-  it("still shows it once a quick pick has filled the box", () => {
-    renderCard();
-    fireEvent.click(screen.getByRole("button", { name: "2 weeks" }));
-    expect(box().value).toBe("14");
-    expect(document.querySelector(".interval-field__unit")!.textContent).toBe(
-      "days",
-    );
-  });
-
-  it("keeps the unit out of the accessible name", () => {
-    // The unit is NOT inside a wrapping <label>, deliberately. When it was, the
-    // name computed as "Or every how many days? days" — the duplication that
-    // `aria-hidden` is meant to prevent, except the name comes from the label's
-    // contents and tools disagree about honouring it there. Associating the
-    // label by id puts the unit outside it however that is computed.
-    renderCard();
-    expect(box()).toHaveAccessibleName("How many days between your shots?");
-    expect(
-      document.querySelector(".interval-field__unit")!.getAttribute("aria-hidden"),
-    ).toBe("true");
-  });
-
-  it("leaves the group heading unit-neutral, because it covers the chips too", () => {
-    // Unlike the Settings copy, where the label is tied to the input alone. Here
-    // the heading sits above chips in WEEKS and a box in DAYS, so naming either
-    // unit in it would be wrong for the other.
-    renderCard();
-    expect(
-      screen.getByText("How often do you take it?"),
-    ).toBeInTheDocument();
-  });
-});
-
-describe("FirstShotCard — the disabled shot day", () => {
-  const notice = () => screen.getByText(/No shot day with a non-weekly/);
-
-  it("explains itself to assistive tech, not just on screen", () => {
-    seedProfile({ shotDay: "wednesday", intervalDays: 10 });
-    renderCard();
-
-    const select = screen.getByLabelText(
-      "Which day do you usually take it?",
-    ) as HTMLSelectElement;
-    expect(select.disabled).toBe(true);
-    // Without this a screen reader announces "disabled" and no reason — the one
-    // part of the sentence a sighted user gets for free.
-    expect(select.getAttribute("aria-describedby")).toContain(
-      "first-shot-day-notice",
-    );
-    expect(notice()).toHaveAttribute("id", "first-shot-day-notice");
-  });
-
-  it("hands focus to the notice, never into the number input", () => {
-    // The select disables under whatever focus it holds, and the hand-off used
-    // to land in the interval box — a number input, which re-raises the numeric
-    // keyboard on a phone. The notice is silent and is the sentence explaining
-    // why the control went away, which is what should be announced anyway.
-    seedProfile({ shotDay: "wednesday", intervalDays: 7 });
-    renderCard();
-
-    const interval = screen.getByLabelText(
-      "How many days between your shots?",
-    ) as HTMLInputElement;
-    fireEvent.change(interval, { target: { value: "10" } });
-    fireEvent.blur(interval);
-
-    expect(document.activeElement).toBe(notice());
-    expect(document.activeElement).not.toBe(interval);
-    // Landing correctly is half of it. Focus that moves with nothing on screen
-    // changing is one of slice B's nine defects (WCAG 2.4.7), and this target
-    // was relying on the browser's own ring rather than the app's — found in a
-    // browser pass, because a rule existing and a rule painting are different
-    // questions and only this half is answerable here.
-    expectVisibleFocusRing("shot day disabled by a non-weekly interval");
-  });
-});
-
-describe("FirstShotCard — the cadence that tracks nothing", () => {
-  const needNotice = () => screen.queryByText(/a weekly rhythm needs one/i);
-
-  it("says so when a weekly interval has no shot day", () => {
-    // scheduleMode returns "none" for this, so no shot ever gets a planned
-    // date — and it was the only silent one. The non-weekly case has always
-    // explained itself ("a weekday can't describe every 10 days"), while this,
-    // the commoner of the two, said nothing. Because a planned date freezes at
-    // save time, every shot logged during the silence stays unmeasurable.
-    seedProfile({ intervalDays: 7 });
-    renderCard();
-    expect(needNotice()).not.toBeNull();
-  });
-
-  it("says nothing once a day is set, or when the interval is non-weekly", () => {
-    seedProfile({ intervalDays: 7, shotDay: "wednesday" });
-    const first = renderCard();
-    expect(needNotice()).toBeNull();
-    first.unmount();
-
-    // Non-weekly has its own notice; this one must not double up.
-    seedProfile({ intervalDays: 10 });
-    renderCard();
-    expect(needNotice()).toBeNull();
-  });
-});
-
-describe("FirstShotCard — drafts follow the profile", () => {
-  it("does not write a stale draft over a profile changed elsewhere", () => {
-    // `useLocalStorage` listens for cross-tab `storage` events, so the profile
-    // can change under this card. Without a sync the drafts keep their
-    // mount-time values and then WIN, because every exit commits them —
-    // including logging the first shot, which unmounts the card. An empty
-    // interval draft would call setIntervalDays(undefined) and delete both the
-    // cadence and the schedule anchor another tab had just set.
-    renderCard(); // mounts with an empty interval draft
-    const box = screen.getByLabelText(
-      "How many days between your shots?",
-    ) as HTMLInputElement;
-    expect(box.value).toBe("");
-
-    // Another tab writes a cadence, and the store broadcasts it.
-    act(() => {
-      localStorage.setItem(
-        STORAGE_KEYS.profile,
-        JSON.stringify({ intervalDays: 14, scheduleAnchor: "2026-08-05" }),
-      );
-      window.dispatchEvent(
-        new StorageEvent("storage", {
-          key: STORAGE_KEYS.profile,
-          newValue: localStorage.getItem(STORAGE_KEYS.profile),
-          // The hook filters on storageArea, so a synthetic event without it is
-          // silently ignored — the listener is real, the event was not.
-          storageArea: localStorage,
-        }),
-      );
-    });
-
-    expect(box.value).toBe("14");
-    // And the commit on the way out agrees with it rather than clearing it.
-    fireEvent.blur(box);
-    expect(storedProfile().intervalDays).toBe(14);
-    expect(storedProfile().scheduleAnchor).toBe("2026-08-05");
-  });
-
-  it("keeps the cadence when the interval box holds unparseable text", () => {
-    // A number input reports "" for anything it cannot parse — "1e", "-",
-    // "1.2.3" — not just for empty. Reading that as a deliberate clear meant a
-    // fumbled keystroke plus a blur deleted the cadence. `validity.badInput`
-    // separates the two; jsdom does not implement it, so the flag is passed in
-    // explicitly here the way the real blur handler passes it.
-    seedProfile({ intervalDays: 14 });
-    renderCard();
-    const box = screen.getByLabelText(
-      "How many days between your shots?",
-    ) as HTMLInputElement;
-    expect(box.value).toBe("14");
-
-    fireEvent.change(box, { target: { value: "" } });
-    // `validity` is a read-only getter, so it cannot be passed through the
-    // event — it has to be defined on the element, which is also closer to what
-    // the browser does. jsdom does not implement badInput, so the real one is
-    // always false here and only a browser exercises the true branch.
-    Object.defineProperty(box, "validity", {
-      value: { badInput: true },
-      configurable: true,
-    });
-    fireEvent.blur(box);
-
-    expect(storedProfile().intervalDays).toBe(14);
-    expect(box.value).toBe("14");
-  });
-});
 
 describe("FirstShotCard — Done", () => {
   it("confirms on the button before it calls back", () => {

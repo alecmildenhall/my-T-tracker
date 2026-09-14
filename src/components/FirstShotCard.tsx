@@ -23,49 +23,14 @@
 // it as a second route rather than the only one.
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useProfileContext } from "../context/ProfileContext";
-import { WEEKDAYS, isWeekday, weekdayLabel } from "../utils/weekday";
-import { isWeeklyMultiple } from "../utils/schedule";
 import { handOffFocus } from "../utils/focus";
+import { CadencePicker } from "./CadencePicker";
+import { effectiveScheduleMode } from "../utils/schedule";
 import { CONFIRM_MS } from "../utils/timing";
 import { SHEET_EXIT_MS } from "./Modal";
 import { isRealDate } from "../utils/civilDate";
 import { commitDateDraft } from "../utils/dateDraft";
-import {
-  isValidIntervalDays,
-  MIN_INTERVAL_DAYS,
-  MAX_INTERVAL_DAYS,
-} from "../types/profile";
 
-/**
- * The cadences worth a shortcut, labelled by their span rather than by a name.
- *
- * "Fortnightly" is British and lands blankly on a lot of readers; "biweekly" is
- * worse, because it genuinely means both "every two weeks" and "twice a week"
- * and the dictionaries record both. Numbers are unambiguous in every dialect,
- * and reading "1 week / 2 weeks / 12 weeks" as a set makes the axis obvious at
- * a glance in a way "Weekly / Fortnightly" does not.
- *
- * All three are on evidence:
- *   - 7 — weekly, the most common, especially subcutaneous.
- *   - 14 — every other week. UCSF's masculinising guidance and the clinics
- *     describe testosterone as "every week or every other week", with
- *     intramuscular routinely 100–200mg every 1–2 weeks and "200mg once every
- *     two weeks" a common primary-care default.
- *   - 84 — testosterone undecanoate (Nebido, Aveed). Nebido is 12-weekly after
- *     loading; the measured optimal interval in hypogonadal and transgender men
- *     has a median of 12.0 weeks. Someone on this injects four or five times a
- *     year, so typing 84 is a thing they would otherwise do rarely and get
- *     wrong.
- *
- * Every one is a multiple of 7, so all three keep the weekday grid working.
- * Twice-weekly is the notable absence and cannot be expressed at all — it is
- * every 3.5 days, and the interval is whole days. See the roadmap.
- */
-const QUICK_PICKS = [
-  { label: "1 week", days: 7 },
-  { label: "2 weeks", days: 14 },
-  { label: "12 weeks", days: 84 },
-];
 
 interface FirstShotCardProps {
   /** Takes them to Settings, where all of this lives permanently. */
@@ -82,85 +47,66 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
 }) => {
   const {
     profile,
-    setShotDay,
-    setIntervalDays,
+    setSchedule,
     setPreferredName,
     setStartDate,
   } = useProfileContext();
 
   /**
-   * ONE draft for the interval, which both the chips and the box write to.
+   * Nothing left to ask? Then this card has nothing to offer.
    *
-   * They used to be separate — the box kept its own draft and blanked itself
-   * whenever a chip's value was stored — and the two then disagreed in both
-   * directions: tapping Weekly left the box empty instead of showing 7, and
-   * typing 10 left Weekly still lit, because the chip read the saved profile
-   * while the box had not committed yet. One value, one meaning: the chips fill
-   * the box, and what is in the box decides which chip is lit.
+   * Someone who opens Settings first and fills it in came back to Home and met
+   * a "Before your first shot" card with every field already populated — a
+   * setup prompt for setup they had just finished.
+   *
+   * EVERY field, not merely one, and the difference is a regression avoided
+   * rather than a nicety. `hasProfileData` was the obvious check and is wrong
+   * here: type a name into this card, wander to History, come back, and the
+   * card you were half way through would be gone, with the rest of it reachable
+   * only from Settings. The card is useless exactly when it can ask nothing new.
+   *
+   * SNAPSHOT at mount, never live — typing into the card writes to the profile
+   * immediately, so a live check would make the card vanish under the person
+   * using it, mid-keystroke. Home unmounts when you leave it, so this re-arms on
+   * every return, which is exactly when the answer can have changed.
    */
-  const [intervalDraft, setIntervalDraft] = useState(
-    profile.intervalDays !== undefined ? String(profile.intervalDays) : "",
+  const [alreadySetUp] = useState(
+    () =>
+      profile.preferredName !== undefined &&
+      profile.startDate !== undefined &&
+      // ANSWERED, not merely started. `pickMode` stores `scheduleMode` the
+      // instant a rhythm is tapped, before the days or the weeks exist — so
+      // "a mode string is present" was true of a cadence that plans nothing.
+      // Tap "On certain days", leave, and the card hid itself forever over an
+      // answer it had only half received, taking with it the very line that
+      // would have said so ("Add how many weeks to plan your shot dates") and
+      // leaving Settings as the only way back.
+      //
+      // "I'd rather not track this" is a complete answer with no fields to
+      // fill, which is why it is named rather than inferred from the values.
+      (profile.scheduleMode === "none" ||
+        effectiveScheduleMode(profile) !== "none"),
   );
+
 
   // Follow the profile when it changes underneath this card, the way the same
-  // two fields in JourneySettings already do. `useLocalStorage` subscribes to
-  // cross-tab `storage` events, so `profile` can change at any moment: another
-  // tab setting a cadence in Settings, or an import replacing the whole thing.
+  // field in JourneySettings does. `useLocalStorage` subscribes to cross-tab
+  // `storage` events, so `profile` can change at any moment: another tab
+  // editing Settings, or an import replacing the whole thing.
   //
-  // Without this the drafts stay at their mount-time values and then WIN, because
-  // every exit from this card commits them — navigating away, backgrounding, and
-  // notably logging the first shot, which unmounts the card. A draft still empty
-  // from mount would call setIntervalDays(undefined) and delete both the cadence
-  // and the schedule anchor that another tab had just set. Adjusted during
-  // render, React's documented pattern for state that follows changing props.
-  const [lastSavedInterval, setLastSavedInterval] = useState(
-    profile.intervalDays,
-  );
-  if (lastSavedInterval !== profile.intervalDays) {
-    setLastSavedInterval(profile.intervalDays);
-    setIntervalDraft(
-      profile.intervalDays !== undefined ? String(profile.intervalDays) : "",
-    );
-  }
-
-  const commitInterval = (badInput = false) => {
-    const trimmed = intervalDraft.trim();
-    // `badInput` distinguishes the two things an empty `value` means, which
-    // is otherwise unanswerable: a number input reports "" both when it is
-    // genuinely empty AND when it holds something unparseable, because the
-    // HTML value-sanitization algorithm discards text that is not a valid
-    // floating-point number. Measured: "1e", "-" and "1.2.3" all read as "".
-    // Treating that as a deliberate clear meant a fumbled keystroke plus a
-    // blur deleted the cadence. `validity.badInput` is the real question —
-    // false for empty, true for garbage — rather than a proxy for it.
-    if (badInput) {
-      setIntervalDraft(
-        profile.intervalDays !== undefined ? String(profile.intervalDays) : "",
-      );
-      return;
-    }
-    if (trimmed === "") {
-      // Guarded like the branch below: setIntervalDays also clears the schedule
-      // anchor, and this commit runs from an effect cleanup — so every
-      // navigation away wrote the profile, and on a quota-exhausted device
-      // raised the storage-failure banner for something nobody edited.
-      if (profile.intervalDays !== undefined) setIntervalDays(undefined);
-      return;
-    }
-    const parsed = Number(trimmed);
-    if (isValidIntervalDays(parsed)) {
-      // Only on a real change — see JourneySettings: setIntervalDays clears the
-      // schedule anchor, so an idle blur would discard it.
-      if (parsed !== profile.intervalDays) setIntervalDays(parsed);
-    } else {
-      // Put the box back to what is actually saved, so the screen and the
-      // profile never disagree.
-      setIntervalDraft(
-        profile.intervalDays !== undefined ? String(profile.intervalDays) : "",
-      );
-    }
-  };
-
+  // Without this the draft stays at its mount-time value and then WINS, because
+  // every exit from this card commits it — navigating away, backgrounding, and
+  // notably logging the first shot, which unmounts the card. A draft still
+  // holding a stale date would write it over one another tab had just set.
+  // Adjusted during render, React's documented pattern for state that follows
+  // changing props.
+  //
+  // The START DATE only. This used to describe the cadence too — naming
+  // `setIntervalDays`, a setter that no longer exists — and that machinery now
+  // lives in `CadencePicker`, which follows the profile itself. Left as it was
+  // it read as documentation for the draft below while describing something
+  // deleted, which is the failure JourneySettings warns about in the same
+  // words: a stale comment here is dangerous rather than untidy.
   /** Committed on blur, like the same field in Settings: a date input reports a
    *  value only once all three segments are filled, and Chromium auto-fills the
    *  ones you have not typed — so committing per keystroke walks a year through
@@ -182,14 +128,9 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
   const commitAllRef = useRef(() => {});
   useEffect(() => {
     commitAllRef.current = () => {
-      // Ask the live control, exactly like the date field below. Defaulting
-      // `badInput` to false here was a guess that an empty box was a deliberate
-      // clear -- and a number input reports "" for garbage too ("-", "1e"), so
-      // one fumbled keystroke plus a background wiped the cadence AND the frozen
-      // schedule anchor with it. The blur path already asks; the hatch is the
-      // path that exists precisely for when blur never happens.
-      commitInterval(intervalRef.current?.validity.badInput ?? true);
-      // Only on a real change, for the reason `commitInterval` above documents:
+      // The cadence is no longer committed here: `CadencePicker` owns that
+      // field and carries its own hatch, so this one is down to the start date.
+      // Only on a real change, for the reason that hatch documents:
       // this runs from an effect cleanup, so every navigation away wrote the
       // profile — and `updateProfile` always returns a fresh object, so the
       // write is real. The card unmounts the moment the first shot is logged,
@@ -242,20 +183,6 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
     };
   }, []);
 
-  /**
-   * Where focus goes when the shot-day select disables under it.
-   *
-   * The interval box sits immediately before the select in tab order, and its
-   * blur commit is what can disable that select — so tabbing out of the box
-   * after typing a non-weekly interval moves focus INTO the select, which the
-   * re-render then disables, and the browser blurs a disabled element onto
-   * <body>. Same class as the nine hand-off defects in slice B, and invisible
-   * to jsdom. Settings escapes it only by accident, because three chips sit
-   * between its input and its select.
-   */
-  const intervalRef = useRef<HTMLInputElement>(null);
-  const shotDaySelectRef = useRef<HTMLSelectElement>(null);
-  const noticeRef = useRef<HTMLParagraphElement>(null);
   /** The start-date input, read by the escape hatch while it is still mounted. */
   const startFieldRef = useRef<HTMLInputElement>(null);
   /** Where "Remove start date" hands focus when it removes itself. */
@@ -359,65 +286,9 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
     return () => window.clearTimeout(t);
   }, [dismissal]);
 
-  /**
-   * A whole-week cadence with no shot day tracks NOTHING, silently.
-   *
-   * `scheduleMode` returns "none" for it — a weekly grid has no idea which
-   * week-day its slots fall on — so no shot gets a planned date. The card
-   * invites exactly this: it asks how often under a hint promising you can
-   * "track how on time your shots are", and the day is a separate control that
-   * starts on "No shot day". Tap "1 week", move on, and nothing is measured.
-   *
-   * The asymmetry is what makes it a defect rather than a limitation: the
-   * NON-weekly case says so out loud ("a weekday can't describe every 10 days.
-   * Your gaps are still tracked."), while this one — the commoner of the two —
-   * says nothing at all. And because a planned date is frozen at save time,
-   * every shot logged during the silence stays unmeasurable even after the day
-   * is set later.
-   */
-  const shotDayNeeded =
-    isValidIntervalDays(profile.intervalDays) &&
-    isWeeklyMultiple(profile.intervalDays) &&
-    !profile.shotDay;
-
-  const shotDayUnavailable =
-    isValidIntervalDays(profile.intervalDays) &&
-    !isWeeklyMultiple(profile.intervalDays);
-
-  // Only on the false -> true EDGE. Without the ref this also ran on MOUNT,
-  // where `document.activeElement` is `<body>` by definition — so anyone with a
-  // non-weekly interval already saved and no shots yet had focus yanked into
-  // the number box the instant Home painted, scrolling the page and raising a
-  // numeric keyboard nobody asked for.
-  const wasUnavailable = useRef(shotDayUnavailable);
-  useEffect(() => {
-    const justDisabled = shotDayUnavailable && !wasUnavailable.current;
-    wasUnavailable.current = shotDayUnavailable;
-    if (!justDisabled) return;
-    const active = document.activeElement;
-    if (active === document.body || active === shotDaySelectRef.current) {
-      // The NOTICE first, not the number input. `<body>` here is a proxy for
-      // two different situations and cannot tell them apart: focus was on the
-      // select we just disabled (the case this exists for), or the user tapped
-      // blank card background to dismiss the keyboard and focus was simply
-      // nowhere. Both look identical by the time a passive effect runs, because
-      // disabling a focused element blurs it.
-      //
-      // So the target is chosen to be harmless under the false positive rather
-      // than the check being sharpened past what it can know. Landing in the
-      // number input re-raised the numeric keyboard the user had just
-      // dismissed; landing on the notice is silent, and it is the sentence
-      // explaining why the control below it went away — which is what a screen
-      // reader should hear at that moment anyway. Same reasoning as
-      // JourneySettings' "Remove start date", which avoids the date field
-      // precisely because focusing one summons a picker.
-      //
-      // The `<body>` case stays, deliberately: a false positive now costs a
-      // silent focus move, where a false negative strands focus on <body>
-      // inside the page, which is the failure this project treats as severe.
-      handOffFocus(noticeRef, intervalRef);
-    }
-  }, [shotDayUnavailable]);
+  // After every hook, never before: bailing early would change the hook order
+  // between renders, which React forbids outright.
+  if (alreadySetUp) return null;
 
   return (
     <section
@@ -559,7 +430,14 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
             // immediately after an action whose whole point was to have no
             // date. Same reasoning JourneySettings' Remove already records.
             onClick={() => {
-              handOffFocus(titleRef, noticeRef);
+              // One candidate, and that is stated rather than hidden: the
+              // notice this used to fall back to went with the shot-day select,
+              // so passing it left a permanently-null second candidate that
+              // looked like the util's "always more than one" rule was being
+              // followed when it was not. `titleRef` carries tabIndex={-1} and
+              // handOffFocus verifies the result, so a failure is visible
+              // rather than silent.
+              handOffFocus(titleRef);
               setStartDate(undefined);
               setStartDraft("");
             }}
@@ -570,116 +448,13 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
       </div>
 
       <div className="first-shot-card__field">
-        <span className="first-shot-card__label">
-          How often do you take it?
-        </span>
-        {/* The pair's hint, under the FIRST of the two questions it describes
-            rather than trailing the second — it says why you would answer
-            either, so it has to arrive before you meet them. */}
-        <p className="field-hint" id="first-shot-cadence-hint">
-          Track how on time your shots are.
-        </p>
-        {/* The box ABOVE the chips, and both drawn exactly as Settings draws
-            them — same classes, so there is one style for one control rather
-            than two that drift. This card used to put the chips first and hang
-            the input inside their flex row as a stretchy pill, which made the
-            same question look like two different questions depending on where
-            you met it. The wording still differs, deliberately: this heading
-            covers the chips too, so it stays unit-neutral. */}
-        <div className="interval-field">
-          <label className="visually-hidden" htmlFor="first-shot-interval">
-            How many days between your shots?
-          </label>
-          <input
-            id="first-shot-interval"
-            className="interval-field__input"
-            type="number"
-            min={MIN_INTERVAL_DAYS}
-            max={MAX_INTERVAL_DAYS}
-            step={1}
-            inputMode="numeric"
-            ref={intervalRef}
-            value={intervalDraft}
-            onChange={(e) => setIntervalDraft(e.target.value)}
-            onBlur={(e) => commitInterval(e.target.validity.badInput)}
-            aria-describedby="first-shot-cadence-hint"
-          />
-          <span className="interval-field__unit" aria-hidden="true">
-            days
-          </span>
-        </div>
-        <div
-          className="suggestion-chips suggestion-chips--tight"
-          role="group"
-          aria-label="Common intervals"
-        >
-          {QUICK_PICKS.map(({ label, days }) => (
-            <button
-              key={days}
-              type="button"
-              className={`chip${intervalDraft === String(days) ? " chip--active" : ""}`}
-              aria-current={intervalDraft === String(days) ? true : undefined}
-              onClick={() => {
-                setIntervalDraft(String(days));
-                if (days !== profile.intervalDays) setIntervalDays(days);
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {shotDayNeeded && (
-        <p className="field-hint field-hint--notice" id="first-shot-day-needed">
-          Pick a day too — a weekly rhythm needs one before your shots can have
-          a planned date.
-        </p>
-      )}
-
-      {/* tabIndex={-1} so it can receive focus when the select under it
-          disables — it is not a control and never joins the tab order. */}
-      {shotDayUnavailable && (
-        <p
-          className="field-hint field-hint--notice"
-          id="first-shot-day-notice"
-          ref={noticeRef}
-          tabIndex={-1}
-        >
-          No shot day with a non-weekly interval — a weekday can’t describe
-          every {profile.intervalDays} days. Your gaps are still tracked.
-        </p>
-      )}
-
-      <div className="first-shot-card__field">
-        <label className="form-column">
-          Which day do you usually take it?
-          <select
-            ref={shotDaySelectRef}
-            value={profile.shotDay ?? ""}
-            disabled={shotDayUnavailable}
-            // The notice explaining WHY this is disabled, when it is. Without
-            // it a screen reader announces "disabled" and no reason — the one
-            // piece of the sentence a sighted user gets for free.
-            aria-describedby={
-              shotDayUnavailable
-                ? "first-shot-cadence-hint first-shot-day-notice"
-                : shotDayNeeded
-                  ? "first-shot-cadence-hint first-shot-day-needed"
-                  : "first-shot-cadence-hint"
-            }
-            onChange={(e) =>
-              setShotDay(isWeekday(e.target.value) ? e.target.value : undefined)
-            }
-          >
-            <option value="">No shot day</option>
-            {WEEKDAYS.map((day) => (
-              <option key={day} value={day}>
-                {weekdayLabel(day)}
-              </option>
-            ))}
-          </select>
-        </label>
+        {/* The same control Settings uses, from one file. These two have
+            already answered an identical question opposite ways once. */}
+        <CadencePicker
+          idPrefix="first-shot"
+          profile={profile}
+          onChange={setSchedule}
+        />
       </div>
 
       {/* An explicit end to the card.

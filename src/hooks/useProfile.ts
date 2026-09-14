@@ -4,10 +4,9 @@ import { useLocalStorage } from "./useLocalStorage";
 import type { Profile } from "../types/profile";
 import { isValidIntervalDays } from "../types/profile";
 import { isShotDateInRange } from "../utils/civilDate";
-import type { Weekday } from "../utils/weekday";
 import { STORAGE_KEYS } from "../storageKeys";
 import { isBlank } from "../utils/strings";
-import { isWeekday } from "../utils/weekday";
+import { WEEKDAYS, isWeekday } from "../utils/weekday";
 
 export interface UseProfile {
   profile: Profile;
@@ -15,11 +14,11 @@ export interface UseProfile {
   setStartDate: (date: string | undefined) => void;
   /** Set (or clear, with undefined) the preferred name. */
   setPreferredName: (name: string | undefined) => void;
-  /** Set (or clear, with undefined) the shot-day weekday. */
-  setShotDay: (day: Weekday | undefined) => void;
-  /** Days between shots. `undefined` clears it, which stops planned dates
-   *  being computed rather than falling back to a guess. */
-  setIntervalDays: (days: number | undefined) => void;
+  /** Any part of the cadence — rhythm, days, interval — applied together, and
+   *  ALWAYS clearing the schedule anchor, which is the whole reason it is one
+   *  setter. `undefined` for a field clears it, which stops planned dates being
+   *  computed rather than falling back to a guess. */
+  setSchedule: (patch: Partial<Profile>) => void;
   /** The date the schedule grid is aligned to. Written once, the first time a
    *  planned date needs one — see `planShot`. */
   setScheduleAnchor: (date: string | undefined) => void;
@@ -43,9 +42,37 @@ const EMPTY: Profile = {};
 function normalizeKnownFields(o: Record<string, unknown>): void {
   if (isBlank(o.startDate)) delete o.startDate;
   if (isBlank(o.preferredName)) delete o.preferredName;
-  // shotDay is an enum, not free text: drop anything that isn't one of the seven
-  // weekday keys (a hand-edit, an old value, or "" from a cleared <select>).
-  if (!isWeekday(o.shotDay)) delete o.shotDay;
+  // An ARRAY of enums, filtered per element and de-duplicated. This guarded
+  // `shotDay` until the rename and then guarded a field that no longer exists,
+  // which is worse than never having guarded it: a stale build or a hand-edit
+  // leaving `"shotDays": "wednesday"` flowed straight through, and a STRING is
+  // close enough to an array to get a long way — `"wednesday".includes(...)` is
+  // true, so the toggle even rendered pressed, and the first tap threw
+  // `days.filter is not a function`. An object threw on render.
+  if (Array.isArray(o.shotDays)) {
+    // Week order, not insertion order. `pickProfileFields` already canonicalises
+    // on the import/export boundary and its comment claimed that made the STORE
+    // canonical too — which was false, because the UI writes straight through
+    // `toggleDay` as `[...days, day]`. Every consumer re-sorts, so nothing was
+    // broken; the claim was, and an invariant asserted in a comment but enforced
+    // on only one of two paths is the stale documentation this file warns about.
+    const present = new Set(o.shotDays.filter(isWeekday));
+    const clean = WEEKDAYS.filter((d) => present.has(d));
+    if (clean.length > 0) o.shotDays = clean;
+    else delete o.shotDays;
+  } else {
+    delete o.shotDays;
+  }
+  // The rhythm the user chose. Anything else is not a rhythm, and leaving it to
+  // `effectiveScheduleMode`'s default branch would silently fall back to
+  // inference for a value that merely looks wrong rather than absent.
+  if (
+    o.scheduleMode !== "grid" &&
+    o.scheduleMode !== "rolling" &&
+    o.scheduleMode !== "none"
+  ) {
+    delete o.scheduleMode;
+  }
   // The third boundary. Import and export were both hardened first, and this
   // one was missed: localStorage is hand-editable, and a string "14" or a 7.5
   // flowed straight into a field typed `number`. The save path's own guard did
@@ -153,36 +180,29 @@ export function useProfile(): UseProfile {
     [updateProfile],
   );
 
-  const setShotDay = useCallback(
-    // Changing your day clears the anchor, so the next save re-establishes the
-    // grid on the new weekday.
-    //
-    // Freezing the anchor protects it from ACCIDENTAL movement — backdating a
-    // remembered shot, deleting the oldest one — and that is still right. But
-    // choosing a different shot day is the one input that should repoint it,
-    // and without this it did nothing at all: the grid stayed on Wednesday
-    // while the greeting moved to Friday, so a shot logged on the new day read
-    // "taken 2 days after" forever, with no way to repair it.
-    (day: Weekday | undefined) =>
-      updateProfile({ shotDay: day, scheduleAnchor: undefined }),
+  const setSchedule = useCallback(
+    /**
+     * Any part of the cadence — the rhythm, the days, the interval — applied
+     * together, and always clearing the anchor.
+     *
+     * One setter rather than three, because all three are the same act: a
+     * deliberate re-declaration of the schedule. Separate setters meant a single
+     * user action that changed two of them wrote the profile twice, and left
+     * every caller to remember the clearing for itself.
+     *
+     * Clearing is the point. Freezing the anchor protects it from ACCIDENTAL
+     * movement — backdating a remembered shot, deleting the oldest — and that is
+     * still right. But choosing a different rhythm should repoint it, and
+     * without this a weekly user switching to fortnightly kept a grid on the old
+     * phase: measured, every later shot read "taken 7 days before", forever,
+     * frozen, and unrepairable, because re-picking a day re-derives from history
+     * that is still on the old phase.
+     */
+    (patch: Partial<Profile>) =>
+      updateProfile({ ...patch, scheduleAnchor: undefined }),
     [updateProfile],
   );
 
-  const setIntervalDays = useCallback(
-    // Clears the anchor for the same reason setShotDay does: changing your
-    // cadence is a deliberate re-declaration of the schedule, and the anchor is
-    // frozen against ACCIDENTAL movement, not against you.
-    //
-    // Without this a weekly user switching to fortnightly kept a grid on the
-    // old phase: measured, every fortnightly shot then read "taken 7 days
-    // before", forever, frozen — schedule.ts's own named failure reaching in
-    // through the interval instead of the anchor. It was unrepairable too,
-    // since re-picking a shot day re-derives from the earliest shot, which is
-    // still on the old phase.
-    (days: number | undefined) =>
-      updateProfile({ intervalDays: days, scheduleAnchor: undefined }),
-    [updateProfile],
-  );
 
   const setScheduleAnchor = useCallback(
     (date: string | undefined) => updateProfile({ scheduleAnchor: date }),
@@ -193,8 +213,7 @@ export function useProfile(): UseProfile {
     profile,
     setStartDate,
     setPreferredName,
-    setShotDay,
-    setIntervalDays,
+    setSchedule,
     setScheduleAnchor,
     updateProfile,
     replaceProfile,

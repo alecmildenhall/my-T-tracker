@@ -41,7 +41,7 @@ import {
   planShot,
   previousShotDateBefore,
   anchorReferenceDate,
-  scheduleMode,
+  effectiveScheduleMode,
 } from "../utils/schedule";
 
 /**
@@ -206,7 +206,10 @@ interface ShotFormProps {
   /** The cadence settings a planned date is worked out from. A prop rather than
    *  context, matching `shots` — the form stays renderable on its own, and with
    *  no profile it simply plans nothing. */
-  profile?: Pick<Profile, "shotDay" | "intervalDays" | "scheduleAnchor">;
+  profile?: Pick<
+    Profile,
+    "shotDays" | "intervalDays" | "scheduleAnchor" | "scheduleMode"
+  >;
   /** Called once, after a successful save, when a schedule grid needed an
    *  anchor and none existed. The parent persists it. */
   onAnchorEstablished?: (date: string) => void;
@@ -262,6 +265,54 @@ function initialPlanned(
   return computed ?? "";
 }
 
+/**
+ * What is wrong with the date a shot was taken, in words, or null when nothing
+ * is — the ONE statement of the rule, read by the blur check and by submit.
+ *
+ * Extracted rather than duplicated: two copies of a validation rule is how the
+ * message and the check drift into disagreeing, which this field has already
+ * done once (a message naming a bound the form did not enforce).
+ *
+ * Ordering matters and the obvious order is wrong. A mistyped year is ALSO in
+ * the future — `9999-01-01` satisfies both tests — so checking "after today"
+ * first swallows the year typo and answers it with a bound the person never
+ * typed. `isShotDateInRange` is what separates them: fail it and the year is
+ * implausible on any reading, so name the year; pass it and the date is an
+ * ordinary near-future day, so name the rule.
+ */
+function takenDateProblem(value: string, storedDate?: string): string | null {
+  if (toTakenDate(value)) return null;
+  // An entry ALREADY stored keeps its date when you edit something else. Import
+  // is deliberately not held to the taken-date bound, so a restored backup can
+  // contain a future-dated shot — and refusing it here would blame the user for
+  // the one field they had not touched, with no way forward but to change their
+  // own record. Refusing what is being ENTERED is the rule; refusing what is
+  // already there is a dead end.
+  if (storedDate !== undefined && value === storedDate && toShotDate(value)) {
+    return null;
+  }
+  // Read fresh rather than at module load, so a session left open across New
+  // Year cannot name last year's bound.
+  const range = takenDateRange();
+  if (value.trim() === "") return "Add the date this shot was taken.";
+  if (!isRealDate(value))
+    return "Please enter a real calendar date (YYYY-MM-DD).";
+  if (!isShotDateInRange(value))
+    return `Check the year — dates run from ${range.min} to ${range.max}.`;
+  // Describes the rule; does not instruct the person. "Log a shot after taking
+  // it — nothing later than today" was two orders in one line, and the first of
+  // them lectured someone about how to use the app while they were mid-task.
+  // The other messages here stay imperative on purpose: "Add the date" and
+  // "Check the year" tell you what to DO about a mistake, which is what WCAG's
+  // error-suggestion guidance asks for. This one was telling you how to live.
+  //
+  // "today" leads and the date follows in parentheses: naming only the date read
+  // as a fixed rule — "so it is always 2026-09-12?" — when the bound moves with
+  // the day. ISO in the parenthetical because that is the format the app shows
+  // everywhere else; ShotListItem warns against inventing a second one.
+  return `Shots dated later than today (${range.max}) are invalid.`;
+}
+
 export const ShotForm: React.FC<ShotFormProps> = ({
   profile = {},
   onAnchorEstablished,
@@ -288,6 +339,29 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   // The date TAKEN stops at today; "Planned for" is allowed to be ahead. Same
   // control, different questions — one range for both is what let a future shot
   // become the schedule's anchor.
+  /** The scrolling part of the sheet — taken back to the top on a blocked save. */
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * Send the user to the field NAMED, not to whichever is first.
+   *
+   * Every blocked field is its own button, because one button spanning "date
+   * and the dose" always jumped to the date — so tapping the word "dose" took
+   * you somewhere else, which is worse than not offering the jump.
+   *
+   * The control is found through the error id it already points at via
+   * `aria-describedby`, so this uses an association the markup keeps anyway.
+   *
+   * `handOffFocus`, never a bare `.focus()` — it verifies the result, which is
+   * the rule this codebase settled after nine focus defects.
+   */
+  const focusProblem = (describedBy: string) => {
+    const field = scrollRef.current?.querySelector<HTMLElement>(
+      `[aria-describedby~="${describedBy}"]`,
+    );
+    if (field) handOffFocus(field);
+  };
+
   const takenRange = takenDateRange();
   const plannedRange = shotDateRange();
   const carried = useMemo(() => carryForward(shots), [shots]);
@@ -484,7 +558,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
         // was never rendered. The field is where a planned date is corrected,
         // so a pending one is a reason to show it, not to hide it.
         Boolean(draft?.plannedFor.trim()) ||
-        scheduleMode(profile.shotDay, profile.intervalDays) !== "none"),
+        effectiveScheduleMode(profile) !== "none"),
   );
   // Seeded by the same rule as the draft above, and it has to be: they are
   // compared to answer "has the user edited this?", so seeding them from
@@ -523,11 +597,58 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   // Modal needs it as `initialFocusRef` — see the note on the <h2> below.
   const ownHeadingRef = useRef<HTMLHeadingElement>(null);
   const headingRef = externalHeadingRef ?? ownHeadingRef;
-  const [dateError, setDateError] = useState<string | null>(null);
+  /**
+   * Seeded from the restored draft, not started empty.
+   *
+   * A dismissed sheet keeps everything you typed, so reopening it used to bring
+   * back a date the form had already refused with nothing left saying so —
+   * the message gone, the field looking ordinary, and the refusal waiting to be
+   * rediscovered at Save.
+   *
+   * DERIVED rather than stored, which is why it survives at all: the error is a
+   * fact about the value, so re-asking the same question of the restored value
+   * is both simpler than persisting it and incapable of disagreeing with it. A
+   * fresh sheet is pre-filled with today and so starts silent, as it should.
+   */
+  const [dateError, setDateError] = useState<string | null>(() =>
+    takenDateProblem(start.date, editingShot?.date),
+  );
   const [plannedError, setPlannedError] = useState<string | null>(null);
   const [saveFailed, setSaveFailed] = useState(false);
   const [exportFailed, setExportFailed] = useState(false);
   const [doseError, setDoseError] = useState<string | null>(null);
+
+  /**
+   * Whether Save has actually been pressed and refused.
+   *
+   * This WAS redundant, and stopped being so the moment the date started
+   * validating on blur. While errors could only come from the submit handler,
+   * "an error is showing" meant "a save was refused" — so the flag was a second
+   * value for a fact the errors already carried, and mutation-testing proved it
+   * by staying green when it was removed. Blur breaks that equivalence: you can
+   * now have an error without ever having pressed the button, and the summary
+   * greeted that with "Not saved yet" about a save nobody attempted.
+   *
+   * Worth keeping the story attached rather than just the flag: the same
+   * reasoning gives opposite answers before and after an unrelated-looking
+   * change, and a comment claiming redundancy would now be actively wrong.
+   */
+  const [saveAttempted, setSaveAttempted] = useState(false);
+  /**
+   * Which fields a refused save is waiting on — live, so fixing one drops it.
+   *
+   * Each carries the id of its own error message, which is how its control is
+   * found: the field already points at that id through `aria-describedby`, so
+   * this rides an association the markup maintains anyway rather than adding a
+   * ref per field for the summary to keep in step.
+   */
+  const blockedFields = [
+    dateError ? { label: "date", describedBy: "date-error" } : null,
+    doseError ? { label: "dose", describedBy: "dose-error" } : null,
+    plannedError
+      ? { label: "planned date", describedBy: "planned-error" }
+      : null,
+  ].filter((f): f is { label: string; describedBy: string } => f !== null);
   const [time, setTime] = useState<string>(start.time);
   const [doseMg, setDoseMg] = useState<string>(start.doseMg);
   const [injectionSite, setInjectionSite] = useState<string>(
@@ -564,6 +685,10 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   // default form looks like, so the editing-sync effect and Cancel can't drift.
   // Stable (setters are stable), so it's safe in the effect's dependency list.
   const resetForm = useCallback(() => {
+    // Or a save refused earlier keeps its summary alive: a LATER error raised by
+    // blur alone would re-show "Not saved yet." for a save nobody attempted,
+    // which is the exact condition this flag exists to prevent.
+    setSaveAttempted(false);
     setDate(todayLocalISO());
     // Reseeded, so the baseline moves with it. Leaving the baseline behind is
     // what let a form cleared after midnight treat a genuine backdate as no
@@ -644,38 +769,11 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // constraints, which cancels the submit event outright — the button appeared
     // to do nothing at all, with no message and nothing saved. Whatever we reject
     // now, we say why, next to the field.
-    // An entry ALREADY stored keeps its date when you edit something else.
-    // Import is deliberately not tightened to the taken-date bound (see
-    // `anchorReferenceDate`), so a restored backup can legitimately contain a
-    // future-dated shot — and without this, opening it to fix a typo in the
-    // notes hit "You can log a shot after taking it", blaming the user for a
-    // date they had not touched and offering no way forward but to change it.
-    // Refusing what is being ENTERED is the rule; refusing what is already
-    // there is a dead end. Creating a new future date stays blocked, and the
-    // anchor guard covers the schedule either way.
-    const unchanged = !!editingShot && date === editingShot.date;
     const parsedDate =
-      toTakenDate(date) ?? (unchanged ? toShotDate(date) : null);
+      toTakenDate(date) ??
+      (!!editingShot && date === editingShot.date ? toShotDate(date) : null);
     const parsedDose = doseMg === "" ? undefined : Number(doseMg);
 
-    // Blank and malformed are different mistakes and get different words. A
-    // blank date is almost always "meant to fill this in and forgot" — telling
-    // that person their date is not a real calendar date is answering a question
-    // they did not ask. The date is required precisely because a shot always
-    // happened on some day, so the fix is to ask for it, not to let it through.
-    //
-    // Out of range is a THIRD mistake, and it gets its own words for the same
-    // reason. It is nearly always a mistyped year — browsers auto-fill the
-    // segments you have not typed, so `0999` and `9999` are a slip, not a
-    // belief — and telling that person their date is not a real calendar date
-    // is both wrong (it is one) and no help in fixing it.
-    //
-    // The message names the actual boundary DATES, not their years. It used to
-    // say "1900 to 2027" while the real bound was 2027-08-13, so entering
-    // 2027-12-01 was refused by a message listing the very year that had just
-    // been typed — nothing left to work out. Read fresh here rather than at
-    // module load, so it cannot name last year's bound in a session left open.
-    const range = takenDateRange();
     // A FOURTH mistake, and it needs its own words for the reason the other
     // three do. "Check the year" is wrong here: the year is usually fine and the
     // date is a real one — the person has dated a dose to a day that has not
@@ -688,15 +786,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // the person never typed. `isShotDateInRange` is what separates them: fail
     // it and the year is implausible on any reading, so name the year; pass it
     // and the date is an ordinary near-future day, so name the rule.
-    const nextDateError = parsedDate
-      ? null
-      : date.trim() === ""
-        ? "Add the date this shot was taken."
-        : !isRealDate(date)
-          ? "Please enter a real calendar date (YYYY-MM-DD)."
-          : !isShotDateInRange(date)
-            ? `Check the year — dates run from ${range.min} to ${range.max}.`
-            : `You can log a shot after taking it — nothing later than ${range.max}.`;
+    const nextDateError = takenDateProblem(date, editingShot?.date);
     // Mirrors the storage schema: a finite, non-negative number. Fractional doses
     // are fine (62.5mg while titrating is ordinary).
     const nextDoseError =
@@ -748,8 +838,15 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     setDoseError(nextDoseError);
     // `!parsedDate` is implied by nextDateError, but stating it narrows the type
     // so the branded CivilDate below can't be null.
-    if (nextDateError || nextDoseError || nextPlannedError || !parsedDate)
+    if (nextDateError || nextDoseError || nextPlannedError || !parsedDate) {
+      // NOTHING MOVES. The summary appears in the pinned footer, which is
+      // already on screen — so there is no jump to make, and the scroll
+      // position you chose is kept. Nor does focus move on its own: focusing a
+      // date input opens the picker, and the reward for pressing Save should
+      // not be a calendar wheel over the message explaining why.
+      setSaveAttempted(true);
       return;
+    }
 
     const newShot: ShotEntry = {
       id: editingShot ? editingShot.id : newId(),
@@ -943,7 +1040,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
         </h2>
       </div>
 
-      <div className="shot-form__scroll">
+      <div className="shot-form__scroll" ref={scrollRef}>
         {/* Marks the MINORITY, which here is the required field rather than the
             optional ones. Baymard's checkout research recommends marking BOTH
             explicitly, because unmarked fields make people guess — but their
@@ -987,6 +1084,36 @@ export const ShotForm: React.FC<ShotFormProps> = ({
                 // Nothing to record here: the baseline already says what
                 // "untouched" means, so the comparison below answers it.
                 if (dateError) setDateError(null);
+              }}
+              // BLUR, not change. A date input reports a complete value the
+              // moment three segments are filled, and typing a year fills them
+              // repeatedly on the way: 0002, 0020, 0202, then 2026. Checking per
+              // keystroke would flash "Check the year" three times AT someone
+              // typing a year correctly — the premature-validation punishment
+              // every guideline warns about, and the same intermediate values
+              // this file already documents ("0202-03-15 on the way to 2021").
+              //
+              // Leaving the field is the moment you are done with it, so that is
+              // when it answers. Submit keeps its own check as the backstop: the
+              // field can be left untouched and still be wrong, since it starts
+              // pre-filled.
+              onBlur={(e) => {
+                // Adopt the live value, not only judge it. Both sibling date
+                // fields already do this and say why: WebKit fires `change`
+                // unreliably — the picker's Reset fires none at all, and a
+                // picked date can arrive carrying the PREVIOUS value — so
+                // `date` can lag what the element holds.
+                //
+                // Validating `e.target.value` while storing `date` is the
+                // overloaded-state shape in two variables: blur would call the
+                // new value fine and Save would write the stale one, storing a
+                // shot on a different day from the one on screen. By blur the
+                // picker has closed and the element is correct, which is the
+                // workaround those reports land on: read the input.
+                setDate(e.target.value);
+                setDateError(
+                  takenDateProblem(e.target.value, editingShot?.date),
+                );
               }}
               required
               // Keeps the native picker inside the range the form will accept,
@@ -1041,7 +1168,17 @@ export const ShotForm: React.FC<ShotFormProps> = ({
                 step="any"
                 inputMode="decimal"
                 value={doseMg}
-                onChange={(e) => setDoseMg(e.target.value)}
+                onChange={(e) => {
+                  setDoseMg(e.target.value);
+                  // Like the date and planned fields beside it. Without this the
+                  // dose error outlived its cause: type -5, press Save, correct
+                  // it to 50, and the red message, `aria-invalid` AND the
+                  // footer summary all kept naming a field already fixed —
+                  // a standing "Not saved yet" about a problem that was gone.
+                  // The summary's own comment calls the list live; this is what
+                  // makes that true rather than true of two fields out of three.
+                  if (doseError) setDoseError(null);
+                }}
                 placeholder="e.g. 50"
                 aria-invalid={doseError ? true : undefined}
                 aria-describedby={doseError ? "dose-error" : undefined}
@@ -1454,9 +1591,66 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       </div>
 
       <div className="shot-form__bar shot-form__bar--bottom">
-        {/* Above the button, so it is between what you pressed and where you
-            pressed it, and inside the dialog so the focus trap can reach it and
-            a screen reader announces it. */}
+        {/* Above the button, in the one region of this sheet that is always on
+            screen — the reply arrives where the question was asked.
+
+            It used to sit at the top of the scroller, on GOV.UK's error-summary
+            pattern. That pattern moves focus to the top because on a long PAGE
+            the response would otherwise be lost off screen; this footer is
+            pinned, so it cannot be lost, and the scroll was a 500px jump buying
+            nothing. It also depended on the date happening to be the first
+            field: the moment the dose was the problem, the top showed a summary
+            and not the field, and you were hunting anyway.
+
+            `role="alert"`, and it was NOT — on the reasoning that the field
+            messages already carry one, so a screen-reader user had always been
+            told why. That was true while errors could only originate at submit.
+            BLUR VALIDATION BROKE IT, and this is the same equivalence the
+            `saveAttempted` comment above records as broken; I applied the
+            insight there and not here.
+
+            Measured: blur with a bad date (the field alert announces once),
+            then press Save. `setDateError` writes the IDENTICAL string, so
+            React mutates nothing and no announcement fires — and the summary
+            was a plain paragraph. The button produced no audible feedback at
+            all, which is the same "did that do anything?" the summary exists to
+            answer, for the people who cannot see it appear.
+
+            The cost is that both can announce when a save is refused without a
+            blur first. That is the right way round: a headline and its detail
+            said twice beats a button that says nothing.
+
+            This slot is shared with the storage banner below, and they cannot
+            collide: a validation failure means the save never ran, a storage
+            failure means it ran and the device refused. */}
+        {saveAttempted && blockedFields.length > 0 && (
+          <p className="shot-form__blocked" role="alert">
+            {/* Names the PROBLEM, not a chore. "Check the date" asks you to go
+                and look; it does not say what you would find, so the summary
+                read as an errand while the reason sat elsewhere. Saying the
+                date is invalid also matches the field's own words, so the two
+                describe one fault in one vocabulary rather than two. */}
+            <strong>Not saved yet.</strong> The{" "}
+            {/* One button per field, each going to its own. A real button, so
+                the keyboard and a screen reader get the same route a thumb
+                does, and it FOCUSES rather than merely scrolling: focusing a
+                date input opens the picker, which is unwelcome when the app
+                does it uninvited and fine when you asked to go there. */}
+            {blockedFields.map((field, i) => (
+              <React.Fragment key={field.describedBy}>
+                {i > 0 && <>{" and the "}</>}
+                <button
+                  type="button"
+                  className="shot-form__blocked-jump"
+                  onClick={() => focusProblem(field.describedBy)}
+                >
+                  {field.label}
+                </button>
+              </React.Fragment>
+            ))}{" "}
+            {blockedFields.length > 1 ? "are" : "is"} invalid.
+          </p>
+        )}
         {saveFailed && (
           <div className="shot-form__save-error" role="alert">
             <p className="shot-form__save-error-text">

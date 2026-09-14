@@ -8,6 +8,9 @@
 // Every field is optional — the app is fully usable without setting any of it.
 import type { Weekday } from "../utils/weekday";
 
+/** Which rhythm a user times their shots by. */
+export type ScheduleMode = "grid" | "rolling" | "none";
+
 /**
  * Bounds on `intervalDays`, exported so the DTO allowlist and the import schema
  * read the same numbers.
@@ -40,11 +43,31 @@ export interface Profile {
   startDate?: string;
   /** How the user likes to be addressed in milestone messages. Free text. */
   preferredName?: string;
-  /** Optional weekday for a celebratory "Happy shot day!" greeting, and — since
-   *  cadence landed — the day the shot schedule is aligned to. Absent means no
-   *  shot-day greeting at all, and no planned dates: there is no guessing from
-   *  logged shots, in either direction. */
-  shotDay?: Weekday;
+  /** Which weekdays the user injects on, and the days the shot schedule is
+   *  aligned to. Empty or absent means no shot-day greeting and no planned
+   *  dates: there is no guessing from logged shots, in either direction.
+   *
+   *  A SET rather than a single day, because twice-weekly TRT — Monday and
+   *  Thursday, to flatten peaks and troughs — is every 3.5 days, and
+   *  `intervalDays` is a whole number. That protocol simply could not be
+   *  expressed before. Paired with `intervalDays` this is RFC 5545's
+   *  decomposition: `shotDays` is BYDAY, `intervalDays / 7` is INTERVAL, under
+   *  FREQ=WEEKLY. `[mon, thu]` with 7 is twice weekly; `[wed]` with 14 is the
+   *  fortnightly behaviour a single `shotDay` used to carry. */
+  shotDays?: Weekday[];
+  /** Which rhythm the user said they were on, as opposed to one inferred from
+   *  which fields happen to be filled.
+   *
+   *  Stored because the choice carries information the values cannot. "Every 7
+   *  days, counting from my last shot" and "every Wednesday" store the same
+   *  `intervalDays: 7`, and inference resolves that collision by returning
+   *  `none` — so someone who picked a rhythm would get no planned dates at all
+   *  and no explanation. It also separates "I'd rather not track this" from
+   *  "never answered", which are the same absence and different facts.
+   *
+   *  Absent means a profile written before this existed (or an old backup), and
+   *  is inferred from the values — see `effectiveScheduleMode`. */
+  scheduleMode?: ScheduleMode;
   /** How many days the user normally leaves between shots. Optional, and
    *  deliberately NOT defaulted.
    *

@@ -161,11 +161,14 @@ describe("pickProfileFields", () => {
   });
 
   it("keeps a valid shot day and drops a bogus one", () => {
-    expect(pickProfileFields({ shotDay: "wednesday" })).toEqual({
-      shotDay: "wednesday",
+    expect(pickProfileFields({ shotDays: ["wednesday"] })).toEqual({
+      shotDays: ["wednesday"],
     });
+    // The retired name returned {} because it is not read AT ALL, not because a
+    // weekday was rejected — a pass that proved nothing. The live field, with a
+    // bogus day in it, is the actual question.
     expect(
-      pickProfileFields({ shotDay: "someday" } as unknown as Profile),
+      pickProfileFields({ shotDays: ["someday"] } as unknown as Profile),
     ).toEqual({});
   });
 
@@ -198,7 +201,7 @@ describe("pickProfileFields", () => {
     const widest = pickProfileFields({
       startDate: "2025-01-15",
       preferredName: "Lou",
-      shotDay: "wednesday",
+      shotDays: ["wednesday"],
       intervalDays: MAX_INTERVAL_DAYS,
       scheduleAnchor: "2026-08-05",
     });
@@ -442,3 +445,23 @@ describe("a dismissal alone is not user data", () => {
     expect(hasProfileData({})).toBe(false);
   });
 });
+
+describe("pickProfileFields — shot days are canonical", () => {
+  it("orders a day set by week, so an unchanged import says nothing changed", () => {
+    // `profileDataFields` compares serialized profiles, so the same schedule
+    // written in a different order compared unequal and the import reported
+    // "Your profile was updated" when nothing had.
+    expect(
+      pickProfileFields({ shotDays: ["thursday", "monday"] }).shotDays,
+    ).toEqual(["monday", "thursday"]);
+  });
+
+  it("still drops what is not a weekday, and de-duplicates", () => {
+    expect(
+      pickProfileFields({
+        shotDays: ["monday", "someday", "monday"] as never,
+      }).shotDays,
+    ).toEqual(["monday"]);
+  });
+});
+

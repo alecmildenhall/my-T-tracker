@@ -21,7 +21,7 @@ import { currentMilestone } from "./milestones";
 import { todayLocalISO } from "./datetime";
 import { toCivilDate, type CivilDate } from "./civilDate";
 import { weekdayOf } from "./weekday";
-import { shotDayInEffect } from "./schedule";
+import { shotDaysInEffect } from "./schedule";
 
 /**
  * The greeting to show right now. `hasLoggedShots` distinguishes a brand-new user
@@ -55,14 +55,17 @@ export function resolveGreeting(
       : `Congrats on ${milestone.label} on T!`;
   }
 
-  // `shotDayInEffect`, not `profile.shotDay`. A non-weekly interval greys the
-  // shot-day control out — the grid would walk across the week, so the weekday
-  // means nothing — and a disabled control that still fired a greeting every
-  // Wednesday would be the one place the setting was not actually off. The
-  // stored value is untouched, so both come back together when the interval
-  // returns to a whole number of weeks.
-  const shotDay = shotDayInEffect(profile);
-  if (shotDay && weekdayOf(today) === shotDay) {
+  // `shotDaysInEffect`, not `profile.shotDays`. The days mean nothing outside
+  // the grid rhythm — a cadence counted from the last shot has no weekday, and
+  // someone who chose not to track timing has switched this off — and a stored
+  // value that still fired a greeting every Wednesday would be the one place
+  // the setting was not actually off. The stored value is untouched, so the
+  // days come back if the rhythm does.
+  //
+  // Any day in the set greets, which is what makes a Mon/Thu user greeted
+  // twice a week rather than on whichever day happens to sort first.
+  const shotDays = shotDaysInEffect(profile);
+  if (shotDays.some((d) => weekdayOf(today) === d)) {
     return name ? `Happy shot day, ${name}!` : "Happy shot day!";
   }
 

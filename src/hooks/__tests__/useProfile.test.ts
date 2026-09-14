@@ -2,6 +2,10 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useProfile } from "../useProfile";
 import { STORAGE_KEYS } from "../../storageKeys";
+import {
+  pickProfileFields,
+  profileDataFields,
+} from "../../utils/backupDto";
 
 beforeEach(() => localStorage.clear());
 
@@ -52,20 +56,40 @@ describe("useProfile", () => {
 
   it("sets, persists, and clears the shot day", () => {
     const { result } = renderHook(() => useProfile());
-    act(() => result.current.setShotDay("wednesday"));
-    expect(result.current.profile.shotDay).toBe("wednesday");
-    expect(stored()).toEqual({ shotDay: "wednesday" });
-    act(() => result.current.setShotDay(undefined));
-    expect(result.current.profile.shotDay).toBeUndefined();
+    act(() => result.current.setSchedule({ shotDays: ["wednesday"] }));
+    expect(result.current.profile.shotDays).toEqual(["wednesday"]);
+    expect(stored()).toEqual({ shotDays: ["wednesday"] });
+    act(() => result.current.setSchedule({ shotDays: undefined }));
+    expect(result.current.profile.shotDays).toBeUndefined();
   });
 
-  it("drops an invalid shot day from storage (enum, not free text)", () => {
+  it.each([
+    ["a bad weekday in the list", { shotDays: ["someday"] }],
+    ["a STRING where a list belongs", { shotDays: "wednesday" }],
+    ["an object", { shotDays: {} }],
+    ["an empty list", { shotDays: [] }],
+    ["a rhythm that is not one", { scheduleMode: "sometimes" }],
+  ])("drops %s from storage", (_name, bad) => {
+    // This fed the RETIRED `shotDay` after the rename, so it guarded a field
+    // that no longer existed and passed vacuously. A string is the dangerous
+    // one: it is close enough to an array to get a long way, since
+    // `"wednesday".includes("wednesday")` is true, so the toggle renders
+    // pressed and the first tap throws `days.filter is not a function`.
     localStorage.setItem(
       STORAGE_KEYS.profile,
-      JSON.stringify({ shotDay: "someday", preferredName: "Lou" }),
+      JSON.stringify({ ...bad, preferredName: "Lou" }),
     );
     const { result } = renderHook(() => useProfile());
     expect(result.current.profile).toEqual({ preferredName: "Lou" });
+  });
+
+  it("keeps a valid set, de-duplicated", () => {
+    localStorage.setItem(
+      STORAGE_KEYS.profile,
+      JSON.stringify({ shotDays: ["monday", "monday", "thursday"] }),
+    );
+    const { result } = renderHook(() => useProfile());
+    expect(result.current.profile.shotDays).toEqual(["monday", "thursday"]);
   });
 
   it("coerces a corrupt (non-object) stored value to empty", () => {
@@ -160,17 +184,43 @@ describe("useProfile — re-declaring the schedule clears its anchor", () => {
     act(() => result.current.setScheduleAnchor("2026-08-05"));
     expect(result.current.profile.scheduleAnchor).toBe("2026-08-05");
 
-    act(() => result.current.setShotDay("friday"));
+    act(() => result.current.setSchedule({ shotDays: ["friday"] }));
     expect(result.current.profile.scheduleAnchor).toBeUndefined();
-    expect(result.current.profile.shotDay).toBe("friday");
+    expect(result.current.profile.shotDays).toEqual(["friday"]);
   });
 
   it("clears it when the interval changes", () => {
     const { result } = renderHook(() => useProfile());
     act(() => result.current.setScheduleAnchor("2026-08-05"));
 
-    act(() => result.current.setIntervalDays(14));
+    act(() => result.current.setSchedule({ intervalDays: 14 }));
     expect(result.current.profile.scheduleAnchor).toBeUndefined();
     expect(result.current.profile.intervalDays).toBe(14);
   });
 });
+
+describe("useProfile — the store and the backup agree on day order", () => {
+  it("reads an insertion-ordered set back canonical, matching its own backup", () => {
+    // The invariant `pickProfileFields`' comment claims, which no single test
+    // covered: it lives on ONE side of a boundary each existing test checks
+    // alone. Before sorting on read, the store held insertion order (the UI
+    // writes `[...days, day]`) while the DTO sorted — so a profile compared
+    // unequal to its own backup and an import that changed nothing reported
+    // "Your profile was updated".
+    //
+    // This also covers profiles already written by earlier builds of this
+    // branch: they are normalised on read, so nothing needs migrating.
+    localStorage.setItem(
+      STORAGE_KEYS.profile,
+      JSON.stringify({ shotDays: ["thursday", "monday"], intervalDays: 7 }),
+    );
+    const { result } = renderHook(() => useProfile());
+    const stored = result.current.profile;
+
+    expect(stored.shotDays).toEqual(["monday", "thursday"]);
+    expect(JSON.stringify(profileDataFields(stored))).toBe(
+      JSON.stringify(profileDataFields(pickProfileFields(stored))),
+    );
+  });
+});
+

@@ -5,6 +5,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { ShotForm, type ShotDraft } from "../ShotForm";
 import { OFF_DAYS_PATTERNS, type ShotEntry } from "../../types/shot";
 import type { SaveOutcome } from "../ShotForm";
+import type { Profile } from "../../types/profile";
 import { todayLocalISO } from "../../utils/datetime";
 import { expectFocusSomewhereUseful } from "../../test/focus";
 import { expectVisibleFocusRing } from "../../test/focusRing";
@@ -18,6 +19,14 @@ import { addDaysCivil } from "../../utils/schedule";
 beforeEach(() => {
   localStorage.clear();
 });
+
+/** The message beside the field, as opposed to the summary above Save — both
+ *  are alerts now, so "the alert on the page" stopped being a unique query. */
+const fieldError = () => {
+  const el = document.querySelector("#date-error, #dose-error, #planned-error");
+  if (!el) throw new Error("no field error rendered");
+  return el;
+};
 
 const history: ShotEntry[] = [
   {
@@ -277,7 +286,7 @@ describe("ShotForm field mapping", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
 
     expect(onAddShot).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toHaveTextContent(
+    expect(fieldError()).toHaveTextContent(
       "Add the date this shot was taken.",
     );
     expect(screen.getByLabelText("Date")).toHaveAttribute(
@@ -290,6 +299,274 @@ describe("ShotForm field mapping", () => {
       target: { value: "2026-06-15" },
     });
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("adopts the value the ELEMENT holds when change never fired", () => {
+    // WebKit fires `change` unreliably on a date input — the picker's Reset
+    // fires none at all, and a picked date can arrive carrying the previous
+    // value — so React state can lag what the element shows. jsdom fires it
+    // reliably, so the divergence has to be staged: set the value through the
+    // native setter without dispatching, which is exactly "the picker changed
+    // it and told nobody".
+    //
+    // Validating the live value while SAVING the stale one stored a shot on a
+    // different day from the one on screen. Both sibling date fields already
+    // read the element on blur for this reason.
+    // Typed through the generic rather than by naming an unused parameter: the
+    // call keeps its type for the assertion below, and there is no `_shot` for
+    // no-unused-vars to object to.
+    const onAddShot = vi.fn<(shot: ShotEntry) => "saved">(() => "saved");
+    render(<ShotForm onAddShot={onAddShot} />);
+    const date = screen.getByLabelText("Date") as HTMLInputElement;
+
+    const native = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      "value",
+    )!.set!;
+    native.call(date, "2026-05-04");
+    fireEvent.blur(date);
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+
+    expect(onAddShot).toHaveBeenCalledTimes(1);
+    expect(onAddShot.mock.calls[0][0].date).toBe("2026-05-04");
+  });
+
+  it("says the date is wrong when you LEAVE the field, not at submit", () => {
+    // Waiting for Save meant typing a future date, filling in six more fields,
+    // and only then being told the first one was wrong.
+    render(<ShotForm onAddShot={vi.fn()} />);
+    const date = screen.getByLabelText("Date");
+    fireEvent.change(date, {
+      target: { value: addDaysCivil(takenDateRange().max, 1) },
+    });
+    expect(screen.queryByRole("alert")).toBeNull(); // nothing yet
+    fireEvent.blur(date);
+    expect(fieldError()).toHaveTextContent(/later than today/);
+  });
+
+  it("stays quiet while a year is still being typed", () => {
+    // Why blur and not change. A date input reports a COMPLETE value the moment
+    // three segments are filled, and typing a year fills them again and again on
+    // the way — 0002, 0020, 0202, then 2026 — so a per-keystroke check would
+    // flash "Check the year" three times at someone typing one correctly.
+    render(<ShotForm onAddShot={vi.fn()} />);
+    const date = screen.getByLabelText("Date");
+    for (const partial of ["0002-03-15", "0020-03-15", "0202-03-15"]) {
+      fireEvent.change(date, { target: { value: partial } });
+      expect(screen.queryByRole("alert")).toBeNull();
+    }
+    fireEvent.change(date, { target: { value: "2026-03-15" } });
+    fireEvent.blur(date);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("does not nag about an unchanged stored date on blur either", () => {
+    // The edit escape hatch reaches the blur check too, or tabbing through a
+    // restored future-dated shot would raise an error about a field the person
+    // never touched.
+    const future = addDaysCivil(takenDateRange().max, 30);
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        onUpdateShot={vi.fn()}
+        editingShot={{ id: "e1", date: future, notes: "orig" }}
+      />,
+    );
+    fireEvent.blur(screen.getByLabelText("Date"));
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("still says so when a refused draft is reopened", () => {
+    // Dismissing keeps everything you typed, so reopening brought back a date
+    // the form had already refused with nothing left saying so — the message
+    // gone, the field looking ordinary, the refusal waiting to be rediscovered
+    // at Save. Derived from the restored value, so it cannot go missing.
+    const future = addDaysCivil(takenDateRange().max, 1);
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        draft={{
+          date: future,
+          dateBaseline: takenDateRange().max,
+          time: "",
+          doseMg: "",
+          injectionSite: "",
+          injectionSitePosition: "",
+          testosteroneEster: "",
+          carrierOil: "",
+          pain: "",
+          offDays: "",
+          notes: "",
+          plannedFor: "",
+          plannedBaseline: "",
+        }}
+      />,
+    );
+    expect(fieldError()).toHaveTextContent(/later than today/);
+  });
+
+  it("opens silent on a fresh sheet", () => {
+    // The mirror: today is pre-filled and valid, so a new sheet must not greet
+    // anyone with an error about a field they have not touched.
+    render(<ShotForm onAddShot={vi.fn()} />);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("does NOT claim 'not saved yet' before you have tried to save", () => {
+    // Caught on the real build after blur validation landed. The summary was
+    // derived from "is an error showing", which had meant "a save was refused"
+    // right up until blur could raise one — so leaving the date field greeted
+    // you with "Not saved yet" about a save you had never attempted.
+    render(<ShotForm onAddShot={vi.fn()} />);
+    const date = screen.getByLabelText("Date");
+    fireEvent.change(date, {
+      target: { value: addDaysCivil(takenDateRange().max, 1) },
+    });
+    fireEvent.blur(date);
+
+    expect(fieldError()).toHaveTextContent(/later than today/);
+    expect(screen.queryByText(/Not saved yet/)).toBeNull();
+  });
+
+  it("says the save was refused, above the button you pressed", () => {
+    // The defect: reaching Save means scrolling past the field message, so
+    // pressing it changed nothing the user could see and the button read as
+    // broken. The summary lives in the pinned footer, which is the one region
+    // that is always on screen — so nothing has to move to show it.
+    const onAddShot = vi.fn();
+    render(<ShotForm onAddShot={onAddShot} />);
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: addDaysCivil(takenDateRange().max, 1) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+
+    expect(screen.getByText(/Not saved yet/)).toBeInTheDocument();
+    // The field names are a real button, so a keyboard and a screen reader get
+    // the same route to the problem that a thumb does.
+    expect(screen.getByRole("button", { name: "date" })).toBeInTheDocument();
+  });
+
+  it("names the problem rather than setting a chore", () => {
+    // "Check the date" asked you to go and look without saying what you would
+    // find. It also matches the field's own wording now, so the two describe
+    // one fault in one vocabulary.
+    render(<ShotForm onAddShot={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: addDaysCivil(takenDateRange().max, 1) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+
+    expect(
+      screen.getByText((_, el) => el?.textContent === "Not saved yet. The date is invalid."),
+    ).toBeInTheDocument();
+  });
+
+  it("agrees in number when two fields are wrong", () => {
+    // The easy thing to get wrong, and nothing else would catch it: with two
+    // fields the sentence needs "are", not "is".
+    render(<ShotForm onAddShot={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: addDaysCivil(takenDateRange().max, 1) },
+    });
+    fireEvent.change(screen.getByLabelText("Dose (mg)"), {
+      target: { value: "-5" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+
+    expect(
+      screen.getByText((_, el) =>
+        el?.textContent === "Not saved yet. The date and the dose are invalid.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("stops naming a field once it has been fixed", () => {
+    // The summary's own comment calls the list live. It was live for the date
+    // and the planned date and NOT for the dose, so correcting a dose left a
+    // standing "Not saved yet. The dose is invalid." about a problem that was
+    // already gone, until Save was pressed a second time.
+    render(<ShotForm onAddShot={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Dose (mg)"), {
+      target: { value: "-5" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+    expect(screen.getByText(/Not saved yet/)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Dose (mg)"), {
+      target: { value: "50" },
+    });
+    expect(screen.queryByText(/Not saved yet/)).toBeNull();
+    expect(screen.getByLabelText("Dose (mg)")).not.toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
+  });
+
+  it("sends you to the field you NAMED, not whichever is first", () => {
+    // One button spanning "date and the dose" always jumped to the date, so
+    // tapping the word "dose" took you somewhere else — worse than offering no
+    // jump at all.
+    render(<ShotForm onAddShot={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: addDaysCivil(takenDateRange().max, 1) },
+    });
+    fireEvent.change(screen.getByLabelText("Dose (mg)"), {
+      target: { value: "-5" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+    fireEvent.click(screen.getByRole("button", { name: "dose" }));
+
+    expect(document.activeElement).toBe(screen.getByLabelText("Dose (mg)"));
+  });
+
+  it("takes you to the offending field when you ask", () => {
+    render(<ShotForm onAddShot={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: addDaysCivil(takenDateRange().max, 1) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+    fireEvent.click(screen.getByRole("button", { name: "date" }));
+
+    expect(document.activeElement).toBe(screen.getByLabelText("Date"));
+  });
+
+  it("announces the refusal even when the field already said it", () => {
+    // This was "keeps ONE alert", which counted live regions instead of asking
+    // whether the refusal was announced — and it only ever pressed Save after a
+    // `change`, the one path where the field alert does fire. Measured on the
+    // path it skipped: blur with a bad date (the field announces once), then
+    // press Save. `setDateError` writes the IDENTICAL string, React mutates
+    // nothing, and nothing announces — so the button was silent for a
+    // screen-reader user. The summary appearing is what answers it.
+    render(<ShotForm onAddShot={vi.fn()} />);
+    const date = screen.getByLabelText("Date");
+    fireEvent.change(date, {
+      target: { value: addDaysCivil(takenDateRange().max, 1) },
+    });
+    fireEvent.blur(date);
+    const before = screen.getAllByRole("alert").map((n) => n.textContent);
+
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+    const after = screen.getAllByRole("alert").map((n) => n.textContent);
+
+    expect(before).not.toContainEqual(
+      expect.stringContaining("Not saved yet"),
+    );
+    expect(after).toContainEqual(expect.stringContaining("Not saved yet"));
+  });
+
+  it("takes the summary away when the field is fixed", () => {
+    render(<ShotForm onAddShot={vi.fn()} />);
+    const date = screen.getByLabelText("Date");
+    fireEvent.change(date, {
+      target: { value: addDaysCivil(takenDateRange().max, 1) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+    expect(screen.getByText(/Not saved yet/)).toBeInTheDocument();
+
+    fireEvent.change(date, { target: { value: takenDateRange().max } });
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+    expect(screen.queryByText(/Not saved yet/)).toBeNull();
   });
 
   it("refuses a shot dated tomorrow, in its own words", () => {
@@ -307,8 +584,8 @@ describe("ShotForm field mapping", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
 
     expect(onAddShot).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toHaveTextContent(/after taking it/);
-    expect(screen.getByRole("alert")).toHaveTextContent(takenDateRange().max);
+    expect(fieldError()).toHaveTextContent(/later than today/);
+    expect(fieldError()).toHaveTextContent(takenDateRange().max);
     expect(screen.getByLabelText("Date")).toHaveAttribute(
       "aria-invalid",
       "true",
@@ -328,7 +605,7 @@ describe("ShotForm field mapping", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
 
     expect(onAddShot).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toHaveTextContent(/Check the year/);
+    expect(fieldError()).toHaveTextContent(/Check the year/);
   });
 
   it("still accepts TODAY, which is what logging just before injecting is", () => {
@@ -360,7 +637,7 @@ describe("ShotForm field mapping", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
 
     expect(onAddShot).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toHaveTextContent(/Check the year/);
+    expect(fieldError()).toHaveTextContent(/Check the year/);
     expect(screen.getByLabelText("Date")).toHaveAttribute(
       "aria-invalid",
       "true",
@@ -374,8 +651,8 @@ describe("ShotForm field mapping", () => {
     // today, and naming the wider planned-date bound would recreate the very
     // bug this comment describes — a message listing a date the form refuses.
     const { min, max } = takenDateRange();
-    expect(screen.getByRole("alert")).toHaveTextContent(min);
-    expect(screen.getByRole("alert")).toHaveTextContent(max);
+    expect(fieldError()).toHaveTextContent(min);
+    expect(fieldError()).toHaveTextContent(max);
 
     // No sibling assertion for the "not a real calendar date" message here: an
     // `input[type=date]` cannot hold one. Setting "2026-02-30" leaves the value
@@ -535,7 +812,7 @@ describe("ShotForm field mapping", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
 
     expect(onAddShot).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toHaveTextContent(
+    expect(fieldError()).toHaveTextContent(
       "Dose must be a positive number.",
     );
   });
@@ -970,7 +1247,7 @@ describe("ShotForm draft publishing", () => {
     fireEvent.click(screen.getByRole("button", { name: /Update shot/i }));
 
     expect(onUpdateShot).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toHaveTextContent(/after taking it/);
+    expect(fieldError()).toHaveTextContent(/later than today/);
   });
 
   it("lets an edit's date be put back without leaving the form dirty", () => {
@@ -1157,7 +1434,7 @@ describe("the in-sheet export button", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
     fireEvent.click(screen.getByRole("button", { name: "Export a backup" }));
 
-    expect(screen.getByRole("alert")).toHaveTextContent(
+    expect(document.querySelector(".shot-form__save-error")).toHaveTextContent(
       /download didn.t start/i,
     );
   });
@@ -1211,12 +1488,17 @@ describe("the confirm beat", () => {
 });
 
 describe("ShotForm — the planned date", () => {
-  const grid = {
-    shotDay: "wednesday" as const,
+  const grid: Pick<
+    Profile,
+    "shotDays" | "intervalDays" | "scheduleAnchor" | "scheduleMode"
+  > = {
+    shotDays: ["wednesday"],
     intervalDays: 7,
     scheduleAnchor: "2026-08-05",
+    // Explicit now that the rhythm is stored rather than inferred.
+    scheduleMode: "grid",
   };
-  const planned = () =>
+const planned = () =>
     screen.getByLabelText(/Planned for/i) as HTMLInputElement;
 
   it("keeps a stored planned date instead of repainting it", () => {
@@ -1261,7 +1543,7 @@ describe("ShotForm — the planned date", () => {
     fireEvent.click(screen.getByRole("button", { name: /Update shot/i }));
 
     expect(onUpdateShot).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toHaveTextContent(/Check the year/i);
+    expect(fieldError()).toHaveTextContent(/Check the year/i);
     // And it must name the PLANNED bound, which runs a year ahead -- not the
     // date-taken bound, which stops at today. Asserting only "Check the year"
     // passed happily while the message claimed a planned date could not be
@@ -1269,10 +1551,8 @@ describe("ShotForm — the planned date", () => {
     // in fact saves. A message naming the wrong boundary is the defect this
     // whole family of messages exists to avoid.
     const plannedMax = shotDateRange().max;
-    expect(screen.getByRole("alert")).toHaveTextContent(plannedMax);
-    expect(screen.getByRole("alert")).not.toHaveTextContent(
-      takenDateRange().max,
-    );
+    expect(fieldError()).toHaveTextContent(plannedMax);
+    expect(fieldError()).not.toHaveTextContent(takenDateRange().max);
   });
 
   it("does not freeze the grid when the write was refused", () => {
@@ -1285,7 +1565,7 @@ describe("ShotForm — the planned date", () => {
         onAddShot={() => "refused" as const}
         onAnchorEstablished={onAnchorEstablished}
         shots={[]}
-        profile={{ shotDay: "wednesday", intervalDays: 7 }}
+        profile={{ shotDays: ["wednesday"], intervalDays: 7 }}
       />,
     );
     fireEvent.change(screen.getByLabelText("Date"), {
@@ -1302,7 +1582,7 @@ describe("ShotForm — the planned date", () => {
         onAddShot={() => "saved" as const}
         onAnchorEstablished={onAnchorEstablished}
         shots={[]}
-        profile={{ shotDay: "wednesday", intervalDays: 7 }}
+        profile={{ shotDays: ["wednesday"], intervalDays: 7 }}
       />,
     );
     fireEvent.change(screen.getByLabelText("Date"), {
@@ -1437,7 +1717,7 @@ describe("ShotForm — the planned date", () => {
         shots={[]}
         // No stored anchor, so this save is the one that establishes it — which
         // is the half of the incoherence that mattered.
-        profile={{ shotDay: "wednesday", intervalDays: 7 }}
+        profile={{ shotDays: ["wednesday"], intervalDays: 7 }}
         draft={parked}
         onAnchorEstablished={onAnchorEstablished}
       />,
@@ -1464,7 +1744,8 @@ describe("ShotForm — the planned date", () => {
       { id: "a", date: "2026-07-08" },
       { id: "b", date: "2026-08-19" },
     ];
-    const profile = { shotDay: "wednesday" as const, intervalDays: 14 };
+    const profile: Pick<Profile, "shotDays" | "intervalDays" | "scheduleMode"> =
+      { shotDays: ["wednesday"], intervalDays: 14, scheduleMode: "grid" };
 
     const onEdit = vi.fn();
     const edit = render(
@@ -2139,7 +2420,7 @@ describe("ShotForm — off days", () => {
         target: { value: "2026-08-25" },
       });
       expect(
-        screen.getByText("Since your previous shot · 13 days"),
+        screen.getByText("Since your previous shot, taken 13 days before this one"),
       ).toBeInTheDocument();
     });
 
@@ -2154,13 +2435,13 @@ describe("ShotForm — off days", () => {
         target: { value: "2026-08-19" },
       });
       expect(
-        screen.getByText("Since your previous shot · 7 days"),
+        screen.getByText("Since your previous shot, taken 7 days before this one"),
       ).toBeInTheDocument();
       fireEvent.change(screen.getByLabelText("Date"), {
         target: { value: "2026-08-13" },
       });
       expect(
-        screen.getByText("Since your previous shot · 1 day"),
+        screen.getByText("Since your previous shot, taken the day before this one"),
       ).toBeInTheDocument();
     });
 
@@ -2182,7 +2463,7 @@ describe("ShotForm — off days", () => {
         />,
       );
       expect(
-        screen.getByText("Since your previous shot · 7 days"),
+        screen.getByText("Since your previous shot, taken 7 days before this one"),
       ).toBeInTheDocument();
     });
 
@@ -2207,7 +2488,7 @@ describe("ShotForm — off days", () => {
       // Verified against the browser's own accname computation, which is what
       // this string is a stand-in for.
       const group = screen.getByRole("group", {
-        name: "Any days you felt off? Since your previous shot · 13 days",
+        name: "Any days you felt off? Since your previous shot, taken 13 days before this one",
       });
       expect(group).toBeInTheDocument();
       // And nothing hangs off a description that may never be read.
@@ -2233,7 +2514,7 @@ describe("ShotForm — off days", () => {
         target: { value: "2026-08-25" },
       });
       expect(
-        screen.getByText("Since your previous shot · 13 days"),
+        screen.getByText("Since your previous shot, taken 13 days before this one"),
       ).toBeInTheDocument();
 
       // What App does at save: the new shot lands in `shots` and the ✓ starts.
@@ -2245,7 +2526,7 @@ describe("ShotForm — off days", () => {
         />,
       );
       expect(
-        screen.getByText("Since your previous shot · 13 days"),
+        screen.getByText("Since your previous shot, taken 13 days before this one"),
       ).toBeInTheDocument();
     });
 
