@@ -62,7 +62,7 @@ describe("offDaysWindowLabel", () => {
     // Both are true; only one is readable at a sharps bin. Same instinct as
     // "first shot" rather than "0 days late". It says "the same day" rather
     // than "today" for accuracy — see the relative-to-the-shot block below.
-    expect(offDaysWindowLabel(0)).toBe("Since your previous shot, the same day");
+    expect(offDaysWindowLabel(0)).toBe("Since your previous shot, the same day as this one");
   });
 
   it("names the window relative to THIS shot, not to your latest one", () => {
@@ -70,12 +70,12 @@ describe("offDaysWindowLabel", () => {
     // matters: editing an entry from months ago measures the gap before IT,
     // correctly, while "your last shot" means the recent one — so the words and
     // the number described different things.
-    expect(offDaysWindowLabel(13)).toBe("Since your previous shot, 13 days earlier");
+    expect(offDaysWindowLabel(13)).toBe("Since your previous shot, 13 days before this one");
     expect(offDaysWindowLabel(13)).not.toContain("last shot");
   });
 
   it("says 'day' for one", () => {
-    expect(offDaysWindowLabel(1)).toBe("Since your previous shot, the day before");
+    expect(offDaysWindowLabel(1)).toBe("Since your previous shot, the day before this one");
   });
 
   it("still names the window when it cannot measure it", () => {
@@ -94,7 +94,7 @@ describe("offDaysWindowLabel", () => {
 });
 
 describe("offDaysWindowLabel — relative to the SHOT, never to now", () => {
-  it("says 'the same day', not 'today', for a zero-length window", () => {
+  it("says 'the same day as this one', not 'today', for a zero-length window", () => {
     // The accuracy rule behind the wording. "today" and "ago" are relative to
     // NOW; this window is relative to the shot being logged. Measured before
     // the change: a shot dated 1 June with a previous shot that same day
@@ -102,14 +102,14 @@ describe("offDaysWindowLabel — relative to the SHOT, never to now", () => {
     // have inherited the error the moment "N days ago" replaced "N days".
     const backdated = offDaysWindowDays([shot("a", "2026-06-01")], "2026-06-01");
     expect(offDaysWindowLabel(backdated)).toBe(
-      "Since your previous shot, the same day",
+      "Since your previous shot, the same day as this one",
     );
   });
 
-  it("says 'earlier', not 'ago', for a real span", () => {
+  it("names the reference shot, not a time before now", () => {
     const backdated = offDaysWindowDays([shot("a", "2026-05-28")], "2026-06-01");
     expect(offDaysWindowLabel(backdated)).toBe(
-      "Since your previous shot, 4 days earlier",
+      "Since your previous shot, 4 days before this one",
     );
   });
 

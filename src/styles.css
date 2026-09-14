@@ -1182,6 +1182,20 @@ select {
      group's accessible NAME rather than a description hung off it — see the
      note in ShotForm. Inline it would run on after the question. */
   display: block;
+  /* This line WILL wrap on a phone, and that is accepted rather than fixed.
+     Measured at 390px: it needs 298px and has exactly 298 — zero slack, which
+     this project has been caught by before ("1.8px of slack at 390px, which
+     would have wrapped on a real device where font rendering differs from
+     Chromium's"). Naming the reference shot is worth a second line; the
+     alternative was a shorter line that left "earlier than what?" open, which
+     is the ambiguity the wording exists to close.
+
+     `pretty` asks the engine to avoid a ragged last line where it can. Measured
+     honestly: at 320px it does NOT change this break — "this one" still lands on
+     the second line, because Chromium applies `pretty` narrowly and that is two
+     words rather than a single-word orphan. Kept because it costs nothing and
+     helps at other widths, NOT because it solved this one. */
+  text-wrap: pretty;
   margin-top: 0.25rem;
   font-size: 0.75rem;
   font-weight: 400;

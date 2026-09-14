@@ -78,17 +78,21 @@ export function offDaysWindowDays(
  * own content, and the guidance on relative time says the same: it belongs
  * "within a sentence, following the action that it's relative to".
  *
- * "EARLIER", never "ago", and "the same day", never "today". That is an
- * accuracy rule, not a style one, and the obvious wording is wrong: "ago" and
- * "today" are relative to NOW, while this window is relative to THE SHOT BEING
- * LOGGED. Measured before the change — logging a shot dated 1 June with a
- * previous shot that same day reported "today", months after the fact. Every
- * backdated entry would have inherited the error the moment "N days ago"
- * replaced "N days".
+ * "BEFORE THIS ONE", never "ago", and never "today". That is an accuracy rule
+ * rather than a style one, and the obvious wording is wrong: "ago" and "today"
+ * are relative to NOW, while this window is relative to THE SHOT BEING LOGGED.
+ * Measured before the change — logging a shot dated 1 June with a previous shot
+ * that same day reported "today", months after the fact. Every backdated entry
+ * would have inherited the error the moment "N days ago" replaced "N days".
  *
- * "the day before" for one day, on the same reasoning that rules out
- * "yesterday": the relative-time guidance prefers a named day at that distance,
- * and every name it offers is anchored to now.
+ * Naming the reference out loud is what makes that safe rather than merely
+ * true. "4 days earlier" was accurate and left the question open — earlier than
+ * what? — so the reader supplies "than now", which is the very error being
+ * avoided. "4 days before this one" cannot be read that way.
+ *
+ * "the day before this one" for a one-day gap, on the same reasoning that rules
+ * out "yesterday": the relative-time guidance prefers a named day at that
+ * distance, and every name it offers is anchored to now.
  *
  * The dates themselves stay out of it. Every date this app displays is the
  * stored ISO string, and ShotListItem's comment warns against inventing a
@@ -97,7 +101,7 @@ export function offDaysWindowDays(
 export function offDaysWindowLabel(days: number | null): string {
   const anchor = "Since your previous shot";
   if (days === null) return anchor;
-  if (days === 0) return `${anchor}, the same day`;
-  if (days === 1) return `${anchor}, the day before`;
-  return `${anchor}, ${days} days earlier`;
+  if (days === 0) return `${anchor}, the same day as this one`;
+  if (days === 1) return `${anchor}, the day before this one`;
+  return `${anchor}, ${days} days before this one`;
 }

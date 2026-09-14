@@ -2381,7 +2381,7 @@ describe("ShotForm — off days", () => {
         target: { value: "2026-08-25" },
       });
       expect(
-        screen.getByText("Since your previous shot, 13 days earlier"),
+        screen.getByText("Since your previous shot, 13 days before this one"),
       ).toBeInTheDocument();
     });
 
@@ -2396,13 +2396,13 @@ describe("ShotForm — off days", () => {
         target: { value: "2026-08-19" },
       });
       expect(
-        screen.getByText("Since your previous shot, 7 days earlier"),
+        screen.getByText("Since your previous shot, 7 days before this one"),
       ).toBeInTheDocument();
       fireEvent.change(screen.getByLabelText("Date"), {
         target: { value: "2026-08-13" },
       });
       expect(
-        screen.getByText("Since your previous shot, the day before"),
+        screen.getByText("Since your previous shot, the day before this one"),
       ).toBeInTheDocument();
     });
 
@@ -2424,7 +2424,7 @@ describe("ShotForm — off days", () => {
         />,
       );
       expect(
-        screen.getByText("Since your previous shot, 7 days earlier"),
+        screen.getByText("Since your previous shot, 7 days before this one"),
       ).toBeInTheDocument();
     });
 
@@ -2449,7 +2449,7 @@ describe("ShotForm — off days", () => {
       // Verified against the browser's own accname computation, which is what
       // this string is a stand-in for.
       const group = screen.getByRole("group", {
-        name: "Any days you felt off? Since your previous shot, 13 days earlier",
+        name: "Any days you felt off? Since your previous shot, 13 days before this one",
       });
       expect(group).toBeInTheDocument();
       // And nothing hangs off a description that may never be read.
@@ -2475,7 +2475,7 @@ describe("ShotForm — off days", () => {
         target: { value: "2026-08-25" },
       });
       expect(
-        screen.getByText("Since your previous shot, 13 days earlier"),
+        screen.getByText("Since your previous shot, 13 days before this one"),
       ).toBeInTheDocument();
 
       // What App does at save: the new shot lands in `shots` and the ✓ starts.
@@ -2487,7 +2487,7 @@ describe("ShotForm — off days", () => {
         />,
       );
       expect(
-        screen.getByText("Since your previous shot, 13 days earlier"),
+        screen.getByText("Since your previous shot, 13 days before this one"),
       ).toBeInTheDocument();
     });
 
