@@ -1168,7 +1168,17 @@ export const ShotForm: React.FC<ShotFormProps> = ({
                 step="any"
                 inputMode="decimal"
                 value={doseMg}
-                onChange={(e) => setDoseMg(e.target.value)}
+                onChange={(e) => {
+                  setDoseMg(e.target.value);
+                  // Like the date and planned fields beside it. Without this the
+                  // dose error outlived its cause: type -5, press Save, correct
+                  // it to 50, and the red message, `aria-invalid` AND the
+                  // footer summary all kept naming a field already fixed —
+                  // a standing "Not saved yet" about a problem that was gone.
+                  // The summary's own comment calls the list live; this is what
+                  // makes that true rather than true of two fields out of three.
+                  if (doseError) setDoseError(null);
+                }}
                 placeholder="e.g. 50"
                 aria-invalid={doseError ? true : undefined}
                 aria-describedby={doseError ? "dose-error" : undefined}

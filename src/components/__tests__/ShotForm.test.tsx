@@ -304,10 +304,10 @@ describe("ShotForm field mapping", () => {
     // Validating the live value while SAVING the stale one stored a shot on a
     // different day from the one on screen. Both sibling date fields already
     // read the element on blur for this reason.
-    // The parameter is declared so the recorded call keeps its type; the other
-    // spies here cast at the read instead, which needs `ReturnType<typeof
-    // vi.fn>` and then does not satisfy the prop.
-    const onAddShot = vi.fn((_shot: ShotEntry) => "saved" as const);
+    // Typed through the generic rather than by naming an unused parameter: the
+    // call keeps its type for the assertion below, and there is no `_shot` for
+    // no-unused-vars to object to.
+    const onAddShot = vi.fn<(shot: ShotEntry) => "saved">(() => "saved");
     render(<ShotForm onAddShot={onAddShot} />);
     const date = screen.getByLabelText("Date") as HTMLInputElement;
 
@@ -470,6 +470,28 @@ describe("ShotForm field mapping", () => {
         el?.textContent === "Not saved yet. The date and the dose are invalid.",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("stops naming a field once it has been fixed", () => {
+    // The summary's own comment calls the list live. It was live for the date
+    // and the planned date and NOT for the dose, so correcting a dose left a
+    // standing "Not saved yet. The dose is invalid." about a problem that was
+    // already gone, until Save was pressed a second time.
+    render(<ShotForm onAddShot={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Dose (mg)"), {
+      target: { value: "-5" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+    expect(screen.getByText(/Not saved yet/)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Dose (mg)"), {
+      target: { value: "50" },
+    });
+    expect(screen.queryByText(/Not saved yet/)).toBeNull();
+    expect(screen.getByLabelText("Dose (mg)")).not.toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
   });
 
   it("sends you to the field you NAMED, not whichever is first", () => {

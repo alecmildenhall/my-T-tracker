@@ -115,6 +115,20 @@ describe("CadencePicker — choosing a rhythm", () => {
     expect(merged().intervalDays).toBe(10);
   });
 
+  it("tells the box what it is for, not only what is wrong with it", () => {
+    // On main this sentence was wired into the interval input and the shot-day
+    // select; the move here left its id referenced by nothing, so a
+    // screen-reader user focusing the box no longer heard what the field was
+    // for. The error is APPENDED rather than substituted — "what is this" does
+    // not stop being useful when something is also wrong with it.
+    setup({ scheduleMode: "rolling" });
+    expect(numberBox()).toHaveAccessibleDescription(/Track how on time/);
+
+    fireEvent.change(numberBox(), { target: { value: "0" } });
+    expect(numberBox()).toHaveAccessibleDescription(/Track how on time/);
+    expect(numberBox()).toHaveAccessibleDescription(/at least 1 day apart/);
+  });
+
   it("keeps the unit out of the accessible name of the box", () => {
     // The "week(s)" suffix is aria-hidden, so the accessible name is the only
     // place a screen reader can learn what the number means.
@@ -164,11 +178,16 @@ describe("CadencePicker — the sentence", () => {
     // and it was lost in the move.
     setup({ scheduleMode: "grid", shotDays: ["monday"] });
     expect(screen.getByText(/Add how many weeks/)).toBeInTheDocument();
+    // Neutral, not an error: days with no interval still gives the shot-day
+    // greeting, so it is a legitimate end state rather than a mistake.
+    expect(screen.getByText(/Add how many weeks/)).not.toHaveClass(
+      "cadence__summary--warn",
+    );
   });
 
   it("asks for a day when the rhythm is chosen but no day is", () => {
     setup({ scheduleMode: "grid", intervalDays: 7 });
-    expect(screen.getByText(/Pick at least one day/)).toBeInTheDocument();
+    expect(screen.getByText(/Pick a day to plan/)).toBeInTheDocument();
   });
 });
 
@@ -322,6 +341,29 @@ describe("CadencePicker — leaving without blurring", () => {
     fireEvent.change(numberBox(), { target: { value: "10" } });
     remove();
     expect(merged().intervalDays).toBe(10);
+  });
+
+  it("commits a typed interval when the app is BACKGROUNDED", () => {
+    // The other half of the escape hatch, and it came across from the deleted
+    // JourneySettings suite without its test. On a phone you can type a cadence
+    // and switch apps without ever blurring the field, and silent loss is the
+    // failure this app treats as severe — so `visibilitychange` commits too,
+    // not only unmount.
+    const { merged } = setup({ scheduleMode: "rolling" });
+    fireEvent.change(numberBox(), { target: { value: "12" } });
+
+    Object.defineProperty(document, "visibilityState", {
+      value: "hidden",
+      configurable: true,
+    });
+    fireEvent(document, new Event("visibilitychange"));
+
+    expect(merged().intervalDays).toBe(12);
+
+    Object.defineProperty(document, "visibilityState", {
+      value: "visible",
+      configurable: true,
+    });
   });
 
   it("does NOT wipe the cadence when the box holds garbage", () => {

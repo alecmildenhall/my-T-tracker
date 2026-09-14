@@ -6,7 +6,7 @@ import { isValidIntervalDays } from "../types/profile";
 import { isShotDateInRange } from "../utils/civilDate";
 import { STORAGE_KEYS } from "../storageKeys";
 import { isBlank } from "../utils/strings";
-import { isWeekday } from "../utils/weekday";
+import { WEEKDAYS, isWeekday } from "../utils/weekday";
 
 export interface UseProfile {
   profile: Profile;
@@ -50,7 +50,14 @@ function normalizeKnownFields(o: Record<string, unknown>): void {
   // true, so the toggle even rendered pressed, and the first tap threw
   // `days.filter is not a function`. An object threw on render.
   if (Array.isArray(o.shotDays)) {
-    const clean = [...new Set(o.shotDays.filter(isWeekday))];
+    // Week order, not insertion order. `pickProfileFields` already canonicalises
+    // on the import/export boundary and its comment claimed that made the STORE
+    // canonical too — which was false, because the UI writes straight through
+    // `toggleDay` as `[...days, day]`. Every consumer re-sorts, so nothing was
+    // broken; the claim was, and an invariant asserted in a comment but enforced
+    // on only one of two paths is the stale documentation this file warns about.
+    const present = new Set(o.shotDays.filter(isWeekday));
+    const clean = WEEKDAYS.filter((d) => present.has(d));
     if (clean.length > 0) o.shotDays = clean;
     else delete o.shotDays;
   } else {

@@ -281,6 +281,7 @@ export function CadencePicker({
             </div>
             <NumberRow
               idPrefix={idPrefix}
+              hintId={`${idPrefix}-cadence-hint`}
               inputRef={numRef}
               value={numDraft}
               unit="week(s)"
@@ -328,11 +329,17 @@ export function CadencePicker({
                 returning null rather than by re-testing the number here: one
                 statement of "is this a usable weekly rhythm", so the warning
                 and the sentence cannot disagree about it. */}
+            {/* Neutral, not red. These describe what you will GET, not what
+                you did wrong — and days with no interval is a legitimate
+                end state rather than a mistake: `shotDaysInEffect` keeps the
+                shot-day greeting working without any cadence at all. Styled as
+                an error, that state nagged on every visit about a choice
+                somebody had made. The information stays; the alarm goes. */}
             {!problem && !sentence && (
-              <p className="cadence__summary cadence__summary--warn">
+              <p className="cadence__summary">
                 {days.length === 0
-                  ? "Pick at least one day — otherwise there is nothing to plan your shots against."
-                  : "Add how many weeks — otherwise there is nothing to plan your shots against."}
+                  ? "Pick a day to plan your shots against."
+                  : "Add how many weeks to plan your shot dates."}
               </p>
             )}
           </div>
@@ -350,6 +357,7 @@ export function CadencePicker({
           <div className="cadence__reveal">
             <NumberRow
               idPrefix={idPrefix}
+              hintId={`${idPrefix}-cadence-hint`}
               inputRef={numRef}
               value={numDraft}
               unit="days"
@@ -430,6 +438,7 @@ function ModeRow({
 
 function NumberRow({
   idPrefix,
+  hintId,
   inputRef,
   value,
   unit,
@@ -439,6 +448,7 @@ function NumberRow({
   onCommit,
 }: {
   idPrefix: string;
+  hintId: string;
   inputRef: React.RefObject<HTMLInputElement | null>;
   value: string;
   unit: string;
@@ -464,7 +474,13 @@ function NumberRow({
           value={value}
           aria-label={`How many ${unit.replace("(s)", "s")} between your shots`}
           aria-invalid={problem ? true : undefined}
-          aria-describedby={problem ? errorId : undefined}
+          // BOTH ids, and the hint is not optional. On main this sentence was
+          // wired into the interval input and the shot-day select; the move
+          // here left its id referenced by nothing, so a screen-reader user
+          // focusing the box no longer heard what the field was for. The error
+          // is appended rather than substituted, because "what is this" does
+          // not stop being useful when something is also wrong with it.
+          aria-describedby={problem ? `${hintId} ${errorId}` : hintId}
           onChange={(e) => onChange(e.target.value)}
           onBlur={onCommit}
         />
