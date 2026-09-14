@@ -667,9 +667,50 @@ Worth knowing what this rule is suspending, since it stops being free the day so
     1. ~~**The Modal's Tab trap**~~ — **done** (PR #34). It went first because it was the only thing here that *blocked*: this slice adds grouped fields to the log sheet, a `fieldset disabled` is how one would be grouped, and that is precisely the case the old selector could not express. It left one constraint on the rest of this slice, recorded in the Short-Term item above and repeated here because it binds step 6 specifically: **a dialog opened from inside the sheet is still not supported** — `inert` and `--sheet-h` are per-instance and unrefcounted, and a second Back closes both dialogs. The soreness card must not open a confirm from the sheet until that is fixed.
     2. **Cadence** — `intervalDays` on the profile, with the planned date frozen onto each shot. **Landed** (`feat/cadence-planned-date`), pending the browser pass below. Three review rounds each found one HIGH, all in the seam between `schedule.ts` and `ShotForm`; the guard that came out of it is `scheduleAdherence.test.ts`, a 3060-case sweep of "does perfect adherence read 0?" across interval and shot-day changes.
     3. ~~**Pain chips**~~ — **done.** `painScore?: number` became `pain?: PainLevel`, renamed because `painScore: "moderate"` is a category wearing a number's name. Labelled **"Injection pain"**: the roadmap's "How the injection itself felt" contrasts correctly with the after-soreness question but never says *pain*, so the chips had to explain the label. `undefined` stays distinct from `"none"` — nobody answered versus it did not hurt — which is what the **Clear** control exists for, and it appears only once something is set. Native radios in a fieldset, so arrow keys work without hand-rolling them. Colour rises only as pain does, with None neutral rather than green (no pain is an absence, not a success, and green already means "that worked" here). The interim 0–10 validation went with the input: four chips cannot produce a value the schema would refuse.
-    4. **The cadence UI: weekday sets, asked rhythm-first** — `shotDay` becomes `shotDays`, and the two fields become the three named choices settled above. Its own PR, deliberately, and the reasoning generalises: it rewrites `plannedDateFor` from one slot per cycle to several, which means the adherence sweep is under construction at the same time as the thing it guards. Doing that on top of a branch whose last three reviews each found a HIGH *in that same seam* is how slice B happened. Nothing waits on it either — charts are slice D — and pre-GA means there is no migration cost to doing it later. That standing rule removes the urgency rather than creating it.
+    4. ~~**The cadence UI: weekday sets, asked rhythm-first**~~ — **done**
+       (PR #38). `shotDay` became `shotDays`, the two interacting fields became
+       three named rhythms, and one `CadencePicker` serves both surfaces —
+       FirstShotCard 743 → 475 lines, JourneySettings 594 → 316.
 
-       It also deletes an open question rather than answering it: **do not write an error message for a `3.5` interval in the meantime.** Today an invalid interval is silently discarded, which is the failure class this codebase treats as severe — but the twice-weekly user stops needing a number the model cannot hold the moment this lands, so any copy written now is copy written to be deleted. Accept one PR of silence.
+       **The rhythm is STORED, which this entry did not anticipate.** It assumed
+       `scheduleMode` could stay derived; the load path says otherwise. "Every 7
+       days, counting from my last shot" and "every Wednesday" store identical
+       values, and inference resolves that collision by returning `none` — so
+       someone who picked a rhythm would get no planned dates and no
+       explanation. It also separates "I'd rather not track this" from "never
+       answered", which are the same absence and different facts.
+
+       **The 3.5 message is written**, as this entry said it eventually would
+       be: the twice-weekly user now has somewhere to go, so it points there
+       rather than only refusing.
+
+       **What the sweep caught that six review rounds did not.** `snapToWeekday`
+       moves to the NEAREST match — right for establishing an anchor, wrong for
+       locating the other days of a set. Anchored on Monday, Friday is 4 days
+       forward, so "nearest" jumped to the PREVIOUS Friday and put that day's
+       grid a week out of phase: Mon/Wed/Fri read "2 days later" on every Friday,
+       forever, frozen at log time. Invisible at a one-week interval, where every
+       Friday is a slot. A second round found the anchor could also snap forward
+       PAST the first shot, putting that shot in the next grid week — Sun+Thu
+       fortnightly read −3 on every perfectly adhered shot.
+
+       Both came from extending `scheduleAdherence.test.ts`, and the second
+       exposed that the sweep itself was blind: it always began the history on
+       the week-order-first day, the one arrangement where the snap cannot
+       overshoot. **Which day the history starts on is now an axis of it.** A
+       sweep that samples one corner of its own space is the vacuous-guard
+       pattern with arithmetic in front of it.
+
+       **The two-row question was answered: one row.** Seven toggles at 27.7px
+       (320px) and 38.3px (390px), 44px tall throughout — past WCAG 2.5.8,
+       under Apple's 44×44, which is the trade Google Clock also makes. Capped at
+       56px so they do not stretch into pills on a desktop.
+
+       **`role="radiogroup"` was wrong and is now a `<fieldset>`.** ARIA permits
+       a radiogroup only radios as children, and the revealed blocks put seven
+       `aria-pressed` buttons, a number input, a chip group and an error inside
+       it.
+
     5. ~~**"Any days you felt off?"**~~ — **done.** `mood?: string` became
        `offDays?: OffDaysPattern`, renamed rather than retyped for the reason
        `painScore` became `pain`: the stored value is a distribution across an
