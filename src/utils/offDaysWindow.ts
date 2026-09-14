@@ -88,7 +88,12 @@ export function offDaysWindowDays(
  * Naming the reference out loud is what makes that safe rather than merely
  * true. "4 days earlier" was accurate and left the question open — earlier than
  * what? — so the reader supplies "than now", which is the very error being
- * avoided. "4 days before this one" cannot be read that way.
+ * avoided. "taken 4 days before this one" cannot be read that way.
+ *
+ * "taken" earns its five characters by making the clause grammatical rather
+ * than elliptical: it is a participle modifying the shot ("your previous shot,
+ * TAKEN 4 days before this one"), where the bare "4 days before this one" hung
+ * off the comma as a fragment the reader had to attach for themselves.
  *
  * "the day before this one" for a one-day gap, on the same reasoning that rules
  * out "yesterday": the relative-time guidance prefers a named day at that
@@ -101,7 +106,7 @@ export function offDaysWindowDays(
 export function offDaysWindowLabel(days: number | null): string {
   const anchor = "Since your previous shot";
   if (days === null) return anchor;
-  if (days === 0) return `${anchor}, the same day as this one`;
-  if (days === 1) return `${anchor}, the day before this one`;
-  return `${anchor}, ${days} days before this one`;
+  if (days === 0) return `${anchor}, taken the same day as this one`;
+  if (days === 1) return `${anchor}, taken the day before this one`;
+  return `${anchor}, taken ${days} days before this one`;
 }
