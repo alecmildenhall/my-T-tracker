@@ -25,6 +25,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useProfileContext } from "../context/ProfileContext";
 import { handOffFocus } from "../utils/focus";
 import { CadencePicker } from "./CadencePicker";
+import { effectiveScheduleMode } from "../utils/schedule";
 import { CONFIRM_MS } from "../utils/timing";
 import { SHEET_EXIT_MS } from "./Modal";
 import { isRealDate } from "../utils/civilDate";
@@ -73,7 +74,18 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
     () =>
       profile.preferredName !== undefined &&
       profile.startDate !== undefined &&
-      profile.scheduleMode !== undefined,
+      // ANSWERED, not merely started. `pickMode` stores `scheduleMode` the
+      // instant a rhythm is tapped, before the days or the weeks exist — so
+      // "a mode string is present" was true of a cadence that plans nothing.
+      // Tap "On certain days", leave, and the card hid itself forever over an
+      // answer it had only half received, taking with it the very line that
+      // would have said so ("Add how many weeks to plan your shot dates") and
+      // leaving Settings as the only way back.
+      //
+      // "I'd rather not track this" is a complete answer with no fields to
+      // fill, which is why it is named rather than inferred from the values.
+      (profile.scheduleMode === "none" ||
+        effectiveScheduleMode(profile) !== "none"),
   );
 
 

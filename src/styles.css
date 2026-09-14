@@ -2847,8 +2847,15 @@ select {
   color: #d9f5e3;
 }
 
-.cadence__summary--warn {
-  background: rgba(249, 115, 115, 0.09);
-  border-color: rgba(249, 115, 115, 0.32);
-  color: #f6d5d5;
+/* Neither confirmation nor problem: the rhythm is chosen and something is
+   still missing, which is a fact about what you will get rather than a success
+   or a fault. The base rule is the app's SUCCESS wash, so falling through to it
+   painted "Pick a day to plan your shots against." in the same green as the
+   confirmed schedule sentence — while the identical state one rhythm down was
+   painted red. Same state, two opposite signals, and neither of them neutral. */
+.cadence__summary--info {
+  background: var(--bg-card-soft);
+  border-color: var(--border-subtle);
+  color: var(--text-muted);
 }
+

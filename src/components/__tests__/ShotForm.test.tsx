@@ -20,6 +20,14 @@ beforeEach(() => {
   localStorage.clear();
 });
 
+/** The message beside the field, as opposed to the summary above Save — both
+ *  are alerts now, so "the alert on the page" stopped being a unique query. */
+const fieldError = () => {
+  const el = document.querySelector("#date-error, #dose-error, #planned-error");
+  if (!el) throw new Error("no field error rendered");
+  return el;
+};
+
 const history: ShotEntry[] = [
   {
     id: "1",
@@ -278,7 +286,7 @@ describe("ShotForm field mapping", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
 
     expect(onAddShot).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toHaveTextContent(
+    expect(fieldError()).toHaveTextContent(
       "Add the date this shot was taken.",
     );
     expect(screen.getByLabelText("Date")).toHaveAttribute(
@@ -333,7 +341,7 @@ describe("ShotForm field mapping", () => {
     });
     expect(screen.queryByRole("alert")).toBeNull(); // nothing yet
     fireEvent.blur(date);
-    expect(screen.getByRole("alert")).toHaveTextContent(/later than today/);
+    expect(fieldError()).toHaveTextContent(/later than today/);
   });
 
   it("stays quiet while a year is still being typed", () => {
@@ -394,7 +402,7 @@ describe("ShotForm field mapping", () => {
         }}
       />,
     );
-    expect(screen.getByRole("alert")).toHaveTextContent(/later than today/);
+    expect(fieldError()).toHaveTextContent(/later than today/);
   });
 
   it("opens silent on a fresh sheet", () => {
@@ -416,7 +424,7 @@ describe("ShotForm field mapping", () => {
     });
     fireEvent.blur(date);
 
-    expect(screen.getByRole("alert")).toHaveTextContent(/later than today/);
+    expect(fieldError()).toHaveTextContent(/later than today/);
     expect(screen.queryByText(/Not saved yet/)).toBeNull();
   });
 
@@ -522,18 +530,29 @@ describe("ShotForm field mapping", () => {
     expect(document.activeElement).toBe(screen.getByLabelText("Date"));
   });
 
-  it("keeps ONE alert, so the refusal is announced once", () => {
-    // The summary is deliberately not an alert. The field message already is,
-    // and role=alert announces wherever the element sits — so a screen-reader
-    // user was always told why. The defect was positional, and a second alert
-    // would announce the same refusal twice to the people it never affected.
+  it("announces the refusal even when the field already said it", () => {
+    // This was "keeps ONE alert", which counted live regions instead of asking
+    // whether the refusal was announced — and it only ever pressed Save after a
+    // `change`, the one path where the field alert does fire. Measured on the
+    // path it skipped: blur with a bad date (the field announces once), then
+    // press Save. `setDateError` writes the IDENTICAL string, React mutates
+    // nothing, and nothing announces — so the button was silent for a
+    // screen-reader user. The summary appearing is what answers it.
     render(<ShotForm onAddShot={vi.fn()} />);
-    fireEvent.change(screen.getByLabelText("Date"), {
+    const date = screen.getByLabelText("Date");
+    fireEvent.change(date, {
       target: { value: addDaysCivil(takenDateRange().max, 1) },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+    fireEvent.blur(date);
+    const before = screen.getAllByRole("alert").map((n) => n.textContent);
 
-    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
+    const after = screen.getAllByRole("alert").map((n) => n.textContent);
+
+    expect(before).not.toContainEqual(
+      expect.stringContaining("Not saved yet"),
+    );
+    expect(after).toContainEqual(expect.stringContaining("Not saved yet"));
   });
 
   it("takes the summary away when the field is fixed", () => {
@@ -565,8 +584,8 @@ describe("ShotForm field mapping", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
 
     expect(onAddShot).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toHaveTextContent(/later than today/);
-    expect(screen.getByRole("alert")).toHaveTextContent(takenDateRange().max);
+    expect(fieldError()).toHaveTextContent(/later than today/);
+    expect(fieldError()).toHaveTextContent(takenDateRange().max);
     expect(screen.getByLabelText("Date")).toHaveAttribute(
       "aria-invalid",
       "true",
@@ -586,7 +605,7 @@ describe("ShotForm field mapping", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
 
     expect(onAddShot).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toHaveTextContent(/Check the year/);
+    expect(fieldError()).toHaveTextContent(/Check the year/);
   });
 
   it("still accepts TODAY, which is what logging just before injecting is", () => {
@@ -618,7 +637,7 @@ describe("ShotForm field mapping", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
 
     expect(onAddShot).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toHaveTextContent(/Check the year/);
+    expect(fieldError()).toHaveTextContent(/Check the year/);
     expect(screen.getByLabelText("Date")).toHaveAttribute(
       "aria-invalid",
       "true",
@@ -632,8 +651,8 @@ describe("ShotForm field mapping", () => {
     // today, and naming the wider planned-date bound would recreate the very
     // bug this comment describes — a message listing a date the form refuses.
     const { min, max } = takenDateRange();
-    expect(screen.getByRole("alert")).toHaveTextContent(min);
-    expect(screen.getByRole("alert")).toHaveTextContent(max);
+    expect(fieldError()).toHaveTextContent(min);
+    expect(fieldError()).toHaveTextContent(max);
 
     // No sibling assertion for the "not a real calendar date" message here: an
     // `input[type=date]` cannot hold one. Setting "2026-02-30" leaves the value
@@ -793,7 +812,7 @@ describe("ShotForm field mapping", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
 
     expect(onAddShot).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toHaveTextContent(
+    expect(fieldError()).toHaveTextContent(
       "Dose must be a positive number.",
     );
   });
@@ -1228,7 +1247,7 @@ describe("ShotForm draft publishing", () => {
     fireEvent.click(screen.getByRole("button", { name: /Update shot/i }));
 
     expect(onUpdateShot).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toHaveTextContent(/later than today/);
+    expect(fieldError()).toHaveTextContent(/later than today/);
   });
 
   it("lets an edit's date be put back without leaving the form dirty", () => {
@@ -1415,7 +1434,7 @@ describe("the in-sheet export button", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save shot" }));
     fireEvent.click(screen.getByRole("button", { name: "Export a backup" }));
 
-    expect(screen.getByRole("alert")).toHaveTextContent(
+    expect(document.querySelector(".shot-form__save-error")).toHaveTextContent(
       /download didn.t start/i,
     );
   });
@@ -1479,7 +1498,7 @@ describe("ShotForm — the planned date", () => {
     // Explicit now that the rhythm is stored rather than inferred.
     scheduleMode: "grid",
   };
-  const planned = () =>
+const planned = () =>
     screen.getByLabelText(/Planned for/i) as HTMLInputElement;
 
   it("keeps a stored planned date instead of repainting it", () => {
@@ -1524,7 +1543,7 @@ describe("ShotForm — the planned date", () => {
     fireEvent.click(screen.getByRole("button", { name: /Update shot/i }));
 
     expect(onUpdateShot).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toHaveTextContent(/Check the year/i);
+    expect(fieldError()).toHaveTextContent(/Check the year/i);
     // And it must name the PLANNED bound, which runs a year ahead -- not the
     // date-taken bound, which stops at today. Asserting only "Check the year"
     // passed happily while the message claimed a planned date could not be
@@ -1532,10 +1551,8 @@ describe("ShotForm — the planned date", () => {
     // in fact saves. A message naming the wrong boundary is the defect this
     // whole family of messages exists to avoid.
     const plannedMax = shotDateRange().max;
-    expect(screen.getByRole("alert")).toHaveTextContent(plannedMax);
-    expect(screen.getByRole("alert")).not.toHaveTextContent(
-      takenDateRange().max,
-    );
+    expect(fieldError()).toHaveTextContent(plannedMax);
+    expect(fieldError()).not.toHaveTextContent(takenDateRange().max);
   });
 
   it("does not freeze the grid when the write was refused", () => {

@@ -43,6 +43,43 @@ describe("FirstShotCard — when it should not appear at all", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it("still appears when a rhythm was picked but never completed", () => {
+    // `pickMode` stores `scheduleMode` the instant a rhythm is tapped, so "a
+    // mode string is present" was true of a cadence that plans nothing. Tapping
+    // "On certain days" and leaving hid the card forever over a half-received
+    // answer — taking with it the line that would have said so, and leaving
+    // Settings as the only way back.
+    seedProfile({
+      preferredName: "Lou",
+      startDate: "2024-03-15",
+      scheduleMode: "grid", // no days, no interval
+    });
+    render(
+      <ProfileProvider>
+        <FirstShotCard onGoToSettings={vi.fn()} onDone={vi.fn()} />
+      </ProfileProvider>,
+    );
+    expect(
+      screen.getByRole("heading", { name: "Before your first shot" }),
+    ).toBeInTheDocument();
+  });
+
+  it("stays away when the rhythm is a complete answer of 'not tracking'", () => {
+    // The mirror: "I'd rather not track this" has no fields to fill, so it IS
+    // answered. Inferring that from the values alone would call it incomplete.
+    seedProfile({
+      preferredName: "Lou",
+      startDate: "2024-03-15",
+      scheduleMode: "none",
+    });
+    const { container } = render(
+      <ProfileProvider>
+        <FirstShotCard onGoToSettings={vi.fn()} onDone={vi.fn()} />
+      </ProfileProvider>,
+    );
+    expect(container).toBeEmptyDOMElement();
+  });
+
   it("still appears when only SOME of it is answered", () => {
     // `hasProfileData` was the obvious check and would regress this: a name
     // typed into the card is profile data, so wandering to History and back

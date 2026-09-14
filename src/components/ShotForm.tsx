@@ -1602,17 +1602,29 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             field: the moment the dose was the problem, the top showed a summary
             and not the field, and you were hunting anyway.
 
-            NOT `role="alert"`. The field messages already carry one, and
-            role=alert announces wherever the element sits, so a screen-reader
-            user has always been told why. The defect was positional; a second
-            alert would announce the same refusal twice to people it never
-            affected.
+            `role="alert"`, and it was NOT — on the reasoning that the field
+            messages already carry one, so a screen-reader user had always been
+            told why. That was true while errors could only originate at submit.
+            BLUR VALIDATION BROKE IT, and this is the same equivalence the
+            `saveAttempted` comment above records as broken; I applied the
+            insight there and not here.
+
+            Measured: blur with a bad date (the field alert announces once),
+            then press Save. `setDateError` writes the IDENTICAL string, so
+            React mutates nothing and no announcement fires — and the summary
+            was a plain paragraph. The button produced no audible feedback at
+            all, which is the same "did that do anything?" the summary exists to
+            answer, for the people who cannot see it appear.
+
+            The cost is that both can announce when a save is refused without a
+            blur first. That is the right way round: a headline and its detail
+            said twice beats a button that says nothing.
 
             This slot is shared with the storage banner below, and they cannot
             collide: a validation failure means the save never ran, a storage
             failure means it ran and the device refused. */}
         {saveAttempted && blockedFields.length > 0 && (
-          <p className="shot-form__blocked">
+          <p className="shot-form__blocked" role="alert">
             {/* Names the PROBLEM, not a chore. "Check the date" asks you to go
                 and look; it does not say what you would find, so the summary
                 read as an errand while the reason sat elsewhere. Saying the

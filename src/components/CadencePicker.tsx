@@ -314,7 +314,7 @@ export function CadencePicker({
               ))}
             </div>
             {sentence && !problem && (
-              <p className="cadence__summary">{sentence}</p>
+              <p className="cadence__summary cadence__summary--info">{sentence}</p>
             )}
             {/* Both halves of an incomplete grid, not just the days. A grid
                 needs days AND a whole number of weeks; with either missing,
@@ -336,7 +336,7 @@ export function CadencePicker({
                 an error, that state nagged on every visit about a choice
                 somebody had made. The information stays; the alarm goes. */}
             {!problem && !sentence && (
-              <p className="cadence__summary">
+              <p className="cadence__summary cadence__summary--info">
                 {days.length === 0
                   ? "Pick a day to plan your shots against."
                   : "Add how many weeks to plan your shot dates."}
@@ -374,7 +374,7 @@ export function CadencePicker({
                 Writing the lesson down for one branch and not the other is how
                 it stayed half-learned. */}
             {!problem && numDraft.trim() === "" && (
-              <p className="cadence__summary cadence__summary--warn">
+              <p className="cadence__summary cadence__summary--info">
                 Add how many days — otherwise there is nothing to plan your
                 shots against.
               </p>

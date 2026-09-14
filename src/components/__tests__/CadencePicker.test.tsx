@@ -178,16 +178,21 @@ describe("CadencePicker — the sentence", () => {
     // and it was lost in the move.
     setup({ scheduleMode: "grid", shotDays: ["monday"] });
     expect(screen.getByText(/Add how many weeks/)).toBeInTheDocument();
-    // Neutral, not an error: days with no interval still gives the shot-day
-    // greeting, so it is a legitimate end state rather than a mistake.
-    expect(screen.getByText(/Add how many weeks/)).not.toHaveClass(
-      "cadence__summary--warn",
+    // Neutral: days with no interval still gives the shot-day greeting, so it is
+    // a legitimate end state rather than a mistake OR a success. Asserted as
+    // "carries the neutral modifier", because the bare class is the app's
+    // SUCCESS wash — falling through to it painted this in the same green as a
+    // confirmed schedule, while the identical state one rhythm down was red.
+    expect(screen.getByText(/Add how many weeks/)).toHaveClass(
+      "cadence__summary--info",
     );
   });
 
   it("asks for a day when the rhythm is chosen but no day is", () => {
     setup({ scheduleMode: "grid", intervalDays: 7 });
-    expect(screen.getByText(/Pick a day to plan/)).toBeInTheDocument();
+    expect(screen.getByText(/Pick a day to plan/)).toHaveClass(
+      "cadence__summary--info",
+    );
   });
 });
 
