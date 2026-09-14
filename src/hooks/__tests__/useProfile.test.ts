@@ -2,6 +2,10 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useProfile } from "../useProfile";
 import { STORAGE_KEYS } from "../../storageKeys";
+import {
+  pickProfileFields,
+  profileDataFields,
+} from "../../utils/backupDto";
 
 beforeEach(() => localStorage.clear());
 
@@ -194,3 +198,29 @@ describe("useProfile — re-declaring the schedule clears its anchor", () => {
     expect(result.current.profile.intervalDays).toBe(14);
   });
 });
+
+describe("useProfile — the store and the backup agree on day order", () => {
+  it("reads an insertion-ordered set back canonical, matching its own backup", () => {
+    // The invariant `pickProfileFields`' comment claims, which no single test
+    // covered: it lives on ONE side of a boundary each existing test checks
+    // alone. Before sorting on read, the store held insertion order (the UI
+    // writes `[...days, day]`) while the DTO sorted — so a profile compared
+    // unequal to its own backup and an import that changed nothing reported
+    // "Your profile was updated".
+    //
+    // This also covers profiles already written by earlier builds of this
+    // branch: they are normalised on read, so nothing needs migrating.
+    localStorage.setItem(
+      STORAGE_KEYS.profile,
+      JSON.stringify({ shotDays: ["thursday", "monday"], intervalDays: 7 }),
+    );
+    const { result } = renderHook(() => useProfile());
+    const stored = result.current.profile;
+
+    expect(stored.shotDays).toEqual(["monday", "thursday"]);
+    expect(JSON.stringify(profileDataFields(stored))).toBe(
+      JSON.stringify(profileDataFields(pickProfileFields(stored))),
+    );
+  });
+});
+
