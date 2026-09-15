@@ -14,6 +14,11 @@
 // tabbability question where a CSS selector used to approximate one.
 import { useEffect, useLayoutEffect, useRef } from "react";
 import type { RefObject } from "react";
+import {
+  isRegisteredDialog,
+  isTopmostDialog,
+  registerDialog,
+} from "../utils/dialogStack";
 import { handOffFocus } from "../utils/focus";
 import type { FocusableElement } from "../utils/focus";
 import { tabbablesIn } from "../utils/tabbing";
@@ -43,62 +48,10 @@ const SEGMENTED_INPUT =
   'input[type="date"], input[type="time"], input[type="datetime-local"], ' +
   'input[type="month"], input[type="week"]';
 
-/**
- * Every dialog currently mounted. An unordered registry, deliberately.
- *
- * Only the topmost may act. Before this, two mounted Modals both listened on
- * the window: the outer one measured focus as "outside" — because it was
- * outside *its* dialog — and hauled it back out of the inner dialog, and both
- * closed on a single Escape. That was recorded as latent rather than fixed
- * because today's dialogs are mutually exclusive. It stops being latent as soon
- * as anything opens a confirm from inside a sheet, which is on the way in B½.
- *
- * SCOPE, because this registry is easy to mistake for more than it is: it makes
- * the KEYBOARD and FOCUS obey the topmost dialog, and nothing else. `Modal`'s
- * modality is still per-instance and unrefcounted — closing an inner dialog
- * lifts `inert` off `#root` and removes `--sheet-h` while the outer is still
- * open — and `useBackToClose` pushes an entry per dialog, so a second Back
- * closes both. A confirm inside a sheet is therefore not supported yet; see the
- * Tab-trap item in README.md for the measurements and why the rest was left.
- */
-const mounted: HTMLElement[] = [];
-
-/**
- * Is this dialog the one the keyboard belongs to right now?
- *
- * Asked of the DOM, not of the order things registered in. The first version of
- * this was a stack whose last entry was "topmost", and it was **backwards**:
- * React runs a child's effects before its parent's, so a dialog opened from
- * inside another one registers FIRST and the outer dialog ended up claiming the
- * keyboard. Escape closed the wrong dialog and the outer trap pulled focus out
- * of the inner one — the precise bug the stack was added to prevent, rebuilt
- * inside the fix.
- *
- * Document position answers it for both shapes this can take, without knowing
- * which shape it is looking at: real Modals portal to `<body>` and are
- * SIBLINGS, where later in the document is painted on top; a nested dialog is
- * contained by its parent, and containment reports as FOLLOWING too. So
- * "topmost" is simply "no other live dialog comes after me".
- */
-const isTopmost = (dialog: HTMLElement | null): boolean =>
-  dialog !== null &&
-  // Registered, not merely non-null. `isTopmost` otherwise asks only "is any
-  // REGISTERED dialog after me", which an unregistered one passes vacuously —
-  // and so does the registered dialog beneath it, since the unregistered one is
-  // not in the list to be seen. Both would then trap, which is the fight the
-  // registry exists to prevent, arrived at through a hole in the registry.
-  // Failing closed means an unregistered dialog does not trap at all, which is
-  // recoverable; two dialogs fighting over focus is not. Not reachable through
-  // `Modal`, whose element always renders, but this is a shared hook now.
-  mounted.includes(dialog) &&
-  mounted.every(
-    (other) =>
-      other === dialog ||
-      !other.isConnected ||
-      !(
-        dialog.compareDocumentPosition(other) & Node.DOCUMENT_POSITION_FOLLOWING
-      ),
-  );
+/** The registry moved to `src/utils/dialogStack.ts` when `Modal`'s modality
+ *  started needing the same question — see that file for why it is one owner
+ *  and not a refcount. Aliased so the guards below read as they always did. */
+const isTopmost = isTopmostDialog;
 
 interface Options {
   /** Escape, and the Back gesture's equivalent, ask the parent to close. */
@@ -133,11 +86,7 @@ export function useFocusTrap(
   useLayoutEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
-    mounted.push(dialog);
-    return () => {
-      const at = mounted.indexOf(dialog);
-      if (at !== -1) mounted.splice(at, 1);
-    };
+    return registerDialog(dialog);
   }, [dialogRef]);
 
   useEffect(() => {
@@ -164,7 +113,7 @@ export function useFocusTrap(
       // `variant="sheet"` backdrop-click is disabled too, which would leave no
       // keyboard dismissal at all (WCAG 2.1.2). Unreachable through `Modal`,
       // whose element always renders, but this is a shared hook.
-      if (mounted.includes(dialog) && !isTopmost(dialog)) return;
+      if (isRegisteredDialog(dialog) && !isTopmost(dialog)) return;
 
       // Ctrl/Alt/Cmd combinations belong to the browser and the OS, and this
       // guard covers the WHOLE handler — it used to sit below the Escape branch

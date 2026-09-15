@@ -8,6 +8,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useBackToClose } from "../hooks/useBackToClose";
 import { useFocusTrap } from "../hooks/useFocusTrap";
+import { syncModality } from "../utils/dialogStack";
 import { handOffFocus } from "../utils/focus";
 import { tabbablesIn } from "../utils/tabbing";
 
@@ -93,16 +94,16 @@ export const Modal: React.FC<ModalProps> = ({
   // exit the app outright — from one tap away from a destructive restore. A
   // mounted Modal *is* an open overlay, so wiring it here means no caller can
   // forget. Escape (below) and Back now agree on what dismissal means.
-  useBackToClose(onClose);
+  useBackToClose(onClose, dialogRef);
 
-  // Focus management and the page lock live in ONE effect, deliberately.
+  // Focus and modality live in ONE effect, deliberately.
   //
-  // `aria-modal` is advisory and the Tab trap only intercepts Tab, so without
-  // `inert` a screen-reader or voice-control user can still reach and activate
-  // the tab bar rendered after this dialog — switching views underneath an open
-  // sheet. `inert` blocks focus, clicks, and AT access in one attribute. The
-  // scroll lock stops the list behind a long sheet scrolling away when the
-  // form's own scroll reaches its end, leaving the user somewhere else on close.
+  // Everything the page-level lock covers — `inert`, `--sheet-h`, the body
+  // scroll lock — is now DERIVED from the dialog registry rather than owned
+  // here. The scroll lock was the last holdout and looked like the safe one,
+  // because capturing and restoring the previous value means each instance puts
+  // back exactly what it found. That is safe only while dialogs close one at a
+  // time; see `dialogStack.ts` for what it did when two closed together.
   //
   // They are combined because the ORDER of the teardown matters: `inert` makes
   // its whole subtree unfocusable, so restoring focus to the opener before
@@ -126,7 +127,6 @@ export const Modal: React.FC<ModalProps> = ({
   // it is why tests must wait for focus to SETTLE rather than for the dialog to
   // disappear — see `expectFocusSettled` in src/test/focus.ts.
   useEffect(() => {
-    const root = document.getElementById("root");
     const previouslyFocused = document.activeElement as HTMLElement | null;
     // The restore target (a persistent opener like the Import button, or else
     // whatever had focus) is captured now, at open, so the cleanup doesn't read
@@ -134,9 +134,13 @@ export const Modal: React.FC<ModalProps> = ({
     const restoreTarget = restoreFocusRef?.current ?? previouslyFocused;
     const fallbackTarget = fallbackFocusRef?.current ?? null;
 
-    const { overflow } = document.body.style;
-    document.body.style.overflow = "hidden";
-    root?.setAttribute("inert", "");
+    // Everything stack-scoped — `inert` on `#root`, `inert` on any dialog now
+    // underneath this one, the `--sheet-h` viewport track, the body scroll lock — is recomputed from
+    // the registry rather than set by this instance, so a second dialog
+    // composes instead of overwriting. This dialog is already registered:
+    // `useFocusTrap` joins the stack in a LAYOUT effect, which the whole tree's
+    // layout phase runs before any passive effect, including this one.
+    syncModality();
 
     // Opening is a hand-off too: the element that had focus is inside the root
     // just marked inert, so anything short of landing INSIDE the dialog drops
@@ -157,9 +161,12 @@ export const Modal: React.FC<ModalProps> = ({
     );
 
     return () => {
-      // Lift inert FIRST, or the focus calls below hit an unfocusable subtree.
-      root?.removeAttribute("inert");
-      document.body.style.overflow = overflow;
+      // Re-derive FIRST, or the focus calls below hit an unfocusable subtree.
+      // By now this dialog has already LEFT the registry — layout cleanups run
+      // during the commit, passive ones after — so the recomputation sees the
+      // stack as it will be: `#root` goes live again only if nothing is left,
+      // and the dialog beneath loses its `inert` in time to receive focus back.
+      syncModality();
       // The opener, then a logical location if it is gone — a confirm dialog
       // routinely deletes the row that opened it, and on Safari the "opener" is
       // often <body> to begin with, since tapping a <button> there doesn't focus
@@ -168,32 +175,6 @@ export const Modal: React.FC<ModalProps> = ({
     };
     // Mount/unmount only — the refs are read at open and close respectively.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Track the *visual* viewport while a dialog is open, exposed as `--sheet-h`.
-  //
-  // iOS Safari does not shrink the layout viewport when the on-screen keyboard
-  // opens, so a `height: 100%` sheet keeps its full height and the keyboard
-  // covers the bottom — which is the pinned Save button, the one thing the
-  // three-region layout exists to keep reachable. `visualViewport.height` is the
-  // space actually visible, so sizing to it lifts the bar above the keyboard.
-  // Android resizes the layout viewport itself, where this is a no-op.
-  //
-  // Height only, deliberately: the overlay is `position: fixed; inset: 0` and
-  // body scroll is locked, so `offsetTop` stays ~0 and reading it would add
-  // jitter for no gain. NOTE: verified in Chrome and by unit test, but not yet on
-  // real iOS hardware — see the mobile checklist in README.
-  useEffect(() => {
-    const vv = window.visualViewport;
-    if (!vv) return;
-    const apply = () =>
-      document.documentElement.style.setProperty("--sheet-h", `${vv.height}px`);
-    apply();
-    vv.addEventListener("resize", apply);
-    return () => {
-      vv.removeEventListener("resize", apply);
-      document.documentElement.style.removeProperty("--sheet-h");
-    };
   }, []);
 
   // Tab containment and Escape both live in useFocusTrap: they share the same
