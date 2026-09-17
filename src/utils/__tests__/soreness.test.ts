@@ -31,12 +31,21 @@ describe("previousShotQuestions", () => {
     });
   });
 
+  it("asks nothing at all about a same-day shot", () => {
+    // A split dose is a real protocol, so this is reachable. "Has it absorbed?"
+    // about a depot injected hours ago answers itself, and "yes" would chart as
+    // a finding rather than the non-event it is.
+    expect(previousShotQuestions(0)).toEqual({ durations: [], lump: false });
+    // One day on it is a fair question again.
+    expect(previousShotQuestions(1)).toEqual({ durations: [], lump: true });
+  });
+
   it("asks only about the lump below the floor", () => {
     // Every duration needs three days before it can be judged — including
     // "Not sore", because soreness can start on day 2. The lump question has no
     // floor at all: "is there one now?" is answerable on any day, so a short
     // cadence still gets asked that one.
-    for (let gap = 0; gap < SORENESS_FLOOR_DAYS; gap += 1) {
+    for (let gap = 1; gap < SORENESS_FLOOR_DAYS; gap += 1) {
       expect(previousShotQuestions(gap)).toEqual({ durations: [], lump: true });
     }
   });

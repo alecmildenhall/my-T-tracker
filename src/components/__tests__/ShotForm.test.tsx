@@ -2658,6 +2658,106 @@ describe("how the previous shot settled", () => {
     expect(previous).toBeUndefined();
   });
 
+  it("keeps an answer already on record when only the other question is answered", () => {
+    // Without seeding, "untouched" and "cleared" both reach the store as
+    // `undefined`, so answering the lump DELETED a soreness answer the shot
+    // already had — and nothing on screen ever showed there was one to lose.
+    const onAddShot = vi.fn();
+    const previous: ShotEntry[] = [
+      {
+        id: "prev",
+        date: daysAgo(9),
+        injectionSite: "glute",
+        afterSoreness: "week-plus",
+      },
+    ];
+    render(<ShotForm onAddShot={onAddShot} shots={previous} />);
+
+    // It is visible, which is the other half of the fix.
+    expect(
+      (screen.getByRole("radio", { name: "A week or more" }) as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+
+    fireEvent.click(screen.getByRole("radio", { name: "Yes" }));
+    fireEvent.click(screen.getByRole("button", { name: /save shot/i }));
+
+    expect(onAddShot.mock.calls[0][1]).toEqual({
+      id: "prev",
+      afterSoreness: "week-plus",
+      afterLump: true,
+    });
+  });
+
+  it("does not carry an answer onto a different shot when the date moves", () => {
+    // The subject can MOVE: backdating a new entry changes which shot "the
+    // previous one" is. Measured before the fix — an answer about the recent
+    // glute shot was written onto a thigh shot from a month earlier, which is
+    // exactly the row a rotation chart reads.
+    const onAddShot = vi.fn();
+    const shots: ShotEntry[] = [
+      { id: "old", date: daysAgo(30), injectionSite: "thigh" },
+      { id: "recent", date: daysAgo(5), injectionSite: "glute" },
+    ];
+    render(<ShotForm onAddShot={onAddShot} shots={shots} />);
+
+    fireEvent.click(screen.getByRole("radio", { name: "Several days" }));
+    // Backdate between the two, so "the previous shot" becomes the older one.
+    fireEvent.change(screen.getByLabelText(/^Date$/), {
+      target: { value: daysAgo(10) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /save shot/i }));
+
+    // Re-seeded from the new subject, which has nothing on record — so there is
+    // nothing to say about it, and no patch at all.
+    expect(onAddShot.mock.calls[0]).toHaveLength(1);
+  });
+
+  it("drops a pick the gap can no longer settle", () => {
+    // Re-dating from a 10-day gap to a 2-day one withdraws the duration group.
+    // The "week or more" tapped a moment earlier must not still be saved: it is
+    // the one answer previousShotQuestions exists to withhold.
+    const onAddShot = vi.fn();
+    const shots: ShotEntry[] = [{ id: "prev", date: daysAgo(10) }];
+    render(<ShotForm onAddShot={onAddShot} shots={shots} />);
+
+    fireEvent.click(screen.getByRole("radio", { name: "A week or more" }));
+    fireEvent.change(screen.getByLabelText(/^Date$/), {
+      target: { value: daysAgo(8) },
+    });
+
+    expect(
+      screen.queryByRole("group", { name: /How long was it sore/i }),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /save shot/i }));
+    expect(onAddShot.mock.calls[0]).toHaveLength(1);
+  });
+
+  it("does not change under its own ✓ confirmation", () => {
+    // The sheet must not mutate while it is confirming a save — the same rule
+    // `offDaysSpan` is frozen for. Measured before the fix: the sub-line flipped
+    // to the shot just logged and the duration group vanished, taking the chip
+    // the user had tapped with it, while "✓ Saved" was still on screen.
+    const shots: ShotEntry[] = [{ id: "prev", date: daysAgo(9), injectionSite: "glute" }];
+    const { rerender } = render(<ShotForm onAddShot={vi.fn()} shots={shots} />);
+    const before = document.querySelector(".prev-shot__sub")?.textContent;
+
+    // What App does on a successful save: the new shot joins the list and the
+    // form is told it is confirming.
+    rerender(
+      <ShotForm
+        onAddShot={vi.fn()}
+        confirming
+        shots={[...shots, { id: "just-logged", date: todayLocalISO() }]}
+      />,
+    );
+
+    expect(document.querySelector(".prev-shot__sub")?.textContent).toBe(before);
+    expect(
+      screen.queryByRole("group", { name: /How long was it sore/i }),
+    ).not.toBeNull();
+  });
+
   it("leaves a visible ring on the chip Clear hands focus to", () => {
     // Clear removes ITSELF — the condition rendering it is the value it just
     // cleared — so without a hand-off focus drops to <body> inside an open

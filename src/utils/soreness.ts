@@ -33,6 +33,12 @@ export function previousShotQuestions(gapDays: number | null): {
   if (gapDays === null || gapDays > SORENESS_STALE_DAYS) {
     return { durations: [], lump: false };
   }
+  // A SAME-DAY second shot is asked nothing at all. The lump question is
+  // present tense, which is why it has no three-day floor — but "has it
+  // absorbed?" about a depot injected hours ago answers itself, and "yes"
+  // would chart as a finding rather than as the non-event it is. A split dose
+  // is a real protocol, so this is reachable rather than theoretical.
+  if (gapDays < 1) return { durations: [], lump: false };
   if (gapDays < SORENESS_FLOOR_DAYS) return { durations: [], lump: true };
   return {
     durations: SORENESS_DURATIONS.filter(
@@ -77,4 +83,27 @@ export function settledSummary(
   if (soreness !== undefined) parts.push(STANDALONE[soreness]);
   if (typeof lump === "boolean") parts.push(lump ? "lump" : "no lump");
   return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+/**
+ * The form's view of what a shot already has on record.
+ *
+ * The block seeds from these, which is what makes a cleared answer mean
+ * something: without seeding, "the user did not touch this question" and "the
+ * user cleared it" both arrive as `undefined`, and the store cannot tell them
+ * apart — so answering one question wiped the other one's stored answer, and
+ * nothing on screen ever showed that an answer existed to lose.
+ */
+export function storedSoreness(
+  shot: { afterSoreness?: SorenessDuration } | null | undefined,
+): SorenessDuration | "" {
+  const value = shot?.afterSoreness;
+  return value !== undefined && SORENESS_DURATIONS.includes(value) ? value : "";
+}
+
+export function storedLump(
+  shot: { afterLump?: boolean } | null | undefined,
+): "" | "yes" | "no" {
+  if (typeof shot?.afterLump !== "boolean") return "";
+  return shot.afterLump ? "yes" : "no";
 }

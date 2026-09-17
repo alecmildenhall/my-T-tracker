@@ -24,7 +24,12 @@ import {
   offDaysStrip,
 } from "../utils/offDaysLabel";
 import { offDaysWindowDays, offDaysWindowLabel } from "../utils/offDaysWindow";
-import { previousShotQuestions, sorenessShortLabel } from "../utils/soreness";
+import {
+  previousShotQuestions,
+  sorenessShortLabel,
+  storedLump,
+  storedSoreness,
+} from "../utils/soreness";
 import { daysBetweenCivil } from "../utils/milestones";
 import type { PreviousShotAnswers } from "../hooks/useShots";
 import type { Profile } from "../types/profile";
@@ -510,11 +515,12 @@ export const ShotForm: React.FC<ShotFormProps> = ({
    * work out how long it has been, from the previous shot to this one's date
    * when logging, and from the shot to today when editing.
    */
-  const settledAsk = useMemo(() => {
+  const liveSettledAsk = useMemo(() => {
     const none = {
       durations: [] as SorenessDuration[],
       lump: false,
       shotId: undefined as string | undefined,
+      subject: null as ShotEntry | null,
       heading: "",
       sub: "",
     };
@@ -534,6 +540,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     return {
       ...previousShotQuestions(subject.elapsed),
       shotId: subject.shot.id,
+      subject: subject.shot,
       heading: editingShot ? "How this shot settled" : "Your previous shot",
       sub: [
         subject.shot.date,
@@ -544,6 +551,19 @@ export const ShotForm: React.FC<ShotFormProps> = ({
         .join(" \u00b7 "),
     };
   }, [editingShot, date, shots]);
+
+  /**
+   * Frozen for the ✓ beat, for the same reason `offDaysSpan` is: the sheet must
+   * not change under its own confirmation. Measured before this — on a
+   * successful save the sub-line flipped to the shot just logged ("0 days
+   * before this one") and the duration group vanished, taking the chip the user
+   * had just tapped with it, while "✓ Saved" was still on screen.
+   */
+  const askBeforeConfirm = useRef(liveSettledAsk);
+  useEffect(() => {
+    if (!confirming) askBeforeConfirm.current = liveSettledAsk;
+  }, [confirming, liveSettledAsk]);
+  const settledAsk = confirming ? askBeforeConfirm.current : liveSettledAsk;
 
   /** What the app works out this shot was meant to be, given today's settings. */
   const plan = useMemo(
@@ -746,10 +766,55 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   const firstOffDaysChipRef = useRef<HTMLInputElement>(null);
   const [offDays, setOffDays] = useState<OffDaysPattern | "">(start.offDays);
   const firstSorenessChipRef = useRef<HTMLInputElement>(null);
+  // Seeded from what the subject shot already has on record, so an existing
+  // answer is visible and changeable rather than invisible and silently
+  // replaceable. A restored draft wins, because that is work the user did.
   const [afterSoreness, setAfterSoreness] = useState<SorenessDuration | "">(
-    start.afterSoreness,
+    () => start.afterSoreness || storedSoreness(settledAsk.subject),
   );
-  const [afterLump, setAfterLump] = useState<"" | "yes" | "no">(start.afterLump);
+  const [afterLump, setAfterLump] = useState<"" | "yes" | "no">(
+    () => start.afterLump || storedLump(settledAsk.subject),
+  );
+  /**
+   * The answers are about a subject that can MOVE — backdating a new entry
+   * changes which shot "the previous one" is. Without this, an answer tapped
+   * about Tuesday's glute shot was written onto a thigh shot from a month
+   * earlier: the sub-line updated, nothing re-asked, and the row a rotation
+   * chart reads was the wrong one.
+   *
+   * Adjusted during render, the way this codebase syncs state to props
+   * elsewhere, and keyed on the subject's id rather than on a boolean "has it
+   * changed" — the id IS the reference, and a derived flag is what drifts.
+   */
+  const [lastSubjectId, setLastSubjectId] = useState(settledAsk.shotId);
+  if (settledAsk.shotId !== lastSubjectId) {
+    setLastSubjectId(settledAsk.shotId);
+    setAfterSoreness(storedSoreness(settledAsk.subject));
+    setAfterLump(storedLump(settledAsk.subject));
+  }
+  /**
+   * A pick the elapsed gap can no longer settle goes back to what is on record.
+   *
+   * Re-dating a new entry from a 10-day gap to a 2-day one withdraws the whole
+   * duration group, and the "week or more" tapped a moment ago would otherwise
+   * still be saved — storing the one answer `previousShotQuestions` exists to
+   * withhold. Reset to the STORED value, never blindly to "": clearing a value
+   * that merely matches the record would erase the previous shot's real answer,
+   * which is the same defect by another door.
+   */
+  const onRecordSoreness = storedSoreness(settledAsk.subject);
+  const onRecordLump = storedLump(settledAsk.subject);
+  if (
+    !editingShot &&
+    afterSoreness !== "" &&
+    afterSoreness !== onRecordSoreness &&
+    !settledAsk.durations.includes(afterSoreness)
+  ) {
+    setAfterSoreness(onRecordSoreness);
+  }
+  if (!editingShot && afterLump !== "" && afterLump !== onRecordLump && !settledAsk.lump) {
+    setAfterLump(onRecordLump);
+  }
   const [notes, setNotes] = useState<string>(start.notes);
 
   // Suggestions derived from past entries — one tap to reuse a value you've
@@ -968,10 +1033,15 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       plannedFor: parsedPlanned ?? undefined,
     };
 
+    // Against the RECORD, not against "is anything selected". The block seeds
+    // from the subject shot, so an untouched question already holds its stored
+    // value — sending `undefined` for it would delete an answer the user never
+    // went near, and sending nothing when they cleared one would ignore them.
     const answeredAboutPrevious =
       !editingShot &&
       settledAsk.shotId !== undefined &&
-      (afterSoreness !== "" || afterLump !== "");
+      (afterSoreness !== storedSoreness(settledAsk.subject) ||
+        afterLump !== storedLump(settledAsk.subject));
     const outcome =
       editingShot && onUpdateShot
         ? onUpdateShot(newShot)
