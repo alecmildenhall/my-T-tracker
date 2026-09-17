@@ -11,9 +11,11 @@ import {
   PAIN_LEVELS,
   isOffDaysPattern,
   isPainLevel,
+  isSorenessDuration,
   type OffDaysPattern,
   type PainLevel,
   type ShotEntry,
+  type SorenessDuration,
 } from "../types/shot";
 import { painLabel } from "../utils/painLabel";
 import {
@@ -22,6 +24,9 @@ import {
   offDaysStrip,
 } from "../utils/offDaysLabel";
 import { offDaysWindowDays, offDaysWindowLabel } from "../utils/offDaysWindow";
+import { previousShotQuestions, sorenessShortLabel } from "../utils/soreness";
+import { daysBetweenCivil } from "../utils/milestones";
+import type { PreviousShotAnswers } from "../hooks/useShots";
 import type { Profile } from "../types/profile";
 import { suggestionsFor } from "../utils/suggestions";
 import { todayLocalISO, nowHHMM } from "../utils/datetime";
@@ -38,10 +43,11 @@ import { SuggestionChips } from "./SuggestionChips";
 import { handOffFocus } from "../utils/focus";
 import { sortShots } from "../utils/shotQuery";
 import {
-  planShot,
-  previousShotDateBefore,
   anchorReferenceDate,
   effectiveScheduleMode,
+  planShot,
+  previousShotBefore,
+  previousShotDateBefore,
 } from "../utils/schedule";
 
 /**
@@ -134,6 +140,11 @@ export interface ShotDraft {
    *  and the form's "nothing selected" is distinct from "none". */
   pain: PainLevel | "";
   offDays: OffDaysPattern | "";
+  /** How the site settled — about the PREVIOUS shot when logging, about this
+   *  one when editing. `""` is "nobody answered", which `undefined` means in
+   *  storage and which is not the same as "none"/"no". */
+  afterSoreness: SorenessDuration | "";
+  afterLump: "" | "yes" | "no";
   notes: string;
 }
 
@@ -153,6 +164,8 @@ function freshDraft(): ShotDraft {
     carrierOil: "",
     pain: "",
     offDays: "",
+    afterSoreness: "",
+    afterLump: "",
     notes: "",
   };
 }
@@ -179,7 +192,13 @@ export type SaveOutcome =
 interface ShotFormProps {
   /** Returns what the save did; see {@link SaveOutcome}. `"refused"` keeps every
    *  field, so a failed write does not also erase what was typed. */
-  onAddShot: (shot: ShotEntry) => void | SaveOutcome;
+  onAddShot: (
+    shot: ShotEntry,
+    /** How the PREVIOUS shot settled, answered while logging this one and
+     *  written onto that shot rather than this one — see afterSoreness in
+     *  types/shot.ts for why it lives there. */
+    previous?: PreviousShotAnswers,
+  ) => void | SaveOutcome;
   onUpdateShot?: (shot: ShotEntry) => void | SaveOutcome;
   /**
    * Download a backup. Offered inside the sheet when a save fails, because from
@@ -416,6 +435,18 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             // unchecked would put a phantom into a group where no chip matches
             // and the Clear control is the only way out.
             offDays: isOffDaysPattern(initial.offDays) ? initial.offDays : "",
+            // Seeded from the shot being EDITED, where these describe that shot
+            // itself. Validated like the rest — storage is lenient, so a value
+            // predating the enum reaches here.
+            afterSoreness: isSorenessDuration(initial.afterSoreness)
+              ? initial.afterSoreness
+              : "",
+            afterLump:
+              typeof initial.afterLump === "boolean"
+                ? initial.afterLump
+                  ? "yes"
+                  : "no"
+                : "",
             notes: initial.notes ?? "",
           }
         : { ...freshDraft(), ...carried },
@@ -465,6 +496,54 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     if (!confirming) spanBeforeConfirm.current = liveOffDaysSpan;
   }, [confirming, liveOffDaysSpan]);
   const offDaysSpan = confirming ? spanBeforeConfirm.current : liveOffDaysSpan;
+
+  /**
+   * Which shot "how did it settle" is about, and which answers the time elapsed
+   * can actually settle.
+   *
+   * Two different subjects. Logging asks about the PREVIOUS shot, because this
+   * one has not settled yet — you find out over the following days. Editing a
+   * saved shot asks about that shot itself, whose interval closed long ago.
+   *
+   * The elapsed days are what decide the offered answers: nobody can say "a week
+   * or more" three days on. `previousShotQuestions` owns that rule; here we only
+   * work out how long it has been, from the previous shot to this one's date
+   * when logging, and from the shot to today when editing.
+   */
+  const settledAsk = useMemo(() => {
+    const none = {
+      durations: [] as SorenessDuration[],
+      lump: false,
+      shotId: undefined as string | undefined,
+      heading: "",
+      sub: "",
+    };
+    const subject = editingShot
+      ? { shot: editingShot, elapsed: daysBetweenCivil(editingShot.date, todayLocalISO()) }
+      : (() => {
+          const prev = previousShotBefore(date, shots);
+          return prev ? { shot: prev, elapsed: daysBetweenCivil(prev.date, date) } : null;
+        })();
+    // NaN guards a half-typed date, which is a real state of this field.
+    if (!subject || !Number.isFinite(subject.elapsed) || subject.elapsed < 0) {
+      return none;
+    }
+    const site = [subject.shot.injectionSitePosition, subject.shot.injectionSite]
+      .filter(Boolean)
+      .join(" ");
+    return {
+      ...previousShotQuestions(subject.elapsed),
+      shotId: subject.shot.id,
+      heading: editingShot ? "How this shot settled" : "Your previous shot",
+      sub: [
+        subject.shot.date,
+        site || null,
+        editingShot ? null : `${subject.elapsed} days before this one`,
+      ]
+        .filter(Boolean)
+        .join(" \u00b7 "),
+    };
+  }, [editingShot, date, shots]);
 
   /** What the app works out this shot was meant to be, given today's settings. */
   const plan = useMemo(
@@ -666,6 +745,11 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   const firstPainChipRef = useRef<HTMLInputElement>(null);
   const firstOffDaysChipRef = useRef<HTMLInputElement>(null);
   const [offDays, setOffDays] = useState<OffDaysPattern | "">(start.offDays);
+  const firstSorenessChipRef = useRef<HTMLInputElement>(null);
+  const [afterSoreness, setAfterSoreness] = useState<SorenessDuration | "">(
+    start.afterSoreness,
+  );
+  const [afterLump, setAfterLump] = useState<"" | "yes" | "no">(start.afterLump);
   const [notes, setNotes] = useState<string>(start.notes);
 
   // Suggestions derived from past entries — one tap to reuse a value you've
@@ -724,6 +808,8 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     setInjectionSitePosition("");
     setPain("");
     setOffDays("");
+    setAfterSoreness("");
+    setAfterLump("");
     setNotes("");
     // Carried-forward fields reset to the last shot's values, not to empty.
     const { doseMg, testosteroneEster, carrierOil } = carriedRef.current;
@@ -862,6 +948,16 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       carrierOil: carrierOil || undefined,
       pain: pain === "" ? undefined : pain,
       offDays: offDays || undefined,
+      // ONLY in edit mode do these describe the shot in front of you. On a new
+      // shot they are about the previous one and travel separately, below.
+      // Written back unconditionally while editing — including when the block is
+      // not rendered because the shot is too old to ask about — because
+      // `updateShot` replaces the entry wholesale, so omitting them would wipe
+      // an answer the user gave weeks ago.
+      afterSoreness:
+        editingShot && afterSoreness !== "" ? afterSoreness : undefined,
+      afterLump:
+        editingShot && afterLump !== "" ? afterLump === "yes" : undefined,
       notes: notes || undefined,
       // Frozen here and never recomputed. An emptied field means "no planned
       // date", which is a real answer rather than a prompt to guess one.
@@ -872,8 +968,24 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       plannedFor: parsedPlanned ?? undefined,
     };
 
+    const answeredAboutPrevious =
+      !editingShot &&
+      settledAsk.shotId !== undefined &&
+      (afterSoreness !== "" || afterLump !== "");
     const outcome =
-      editingShot && onUpdateShot ? onUpdateShot(newShot) : onAddShot(newShot);
+      editingShot && onUpdateShot
+        ? onUpdateShot(newShot)
+        : answeredAboutPrevious
+          ? onAddShot(newShot, {
+              id: settledAsk.shotId as string,
+              afterSoreness: afterSoreness || undefined,
+              afterLump: afterLump === "" ? undefined : afterLump === "yes",
+            })
+          // No trailing `undefined`: a second argument that is always present
+          // changes what every existing caller sees, and `toHaveBeenCalledWith`
+          // is an exact argument-list match. The optional parameter should be
+          // genuinely absent when there is nothing to say.
+          : onAddShot(newShot);
 
     // Written only once the shot actually landed, and only when planShot had to
     // establish one — otherwise a failed save would leave an anchor behind for
@@ -951,6 +1063,8 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     carrierOil,
     pain,
     offDays,
+    afterSoreness,
+    afterLump,
     notes,
   };
 
@@ -1542,6 +1656,89 @@ export const ShotForm: React.FC<ShotFormProps> = ({
               different day.
             </p>
           </div>
+        )}
+
+        {/* How the previous shot settled — the last thing before Notes, so it
+            never sits between you and the fields about the shot you are
+            actually logging. Rendered only when the elapsed time can settle at
+            least one of the questions: an answer that cannot yet be true gets
+            skipped or guessed, and a guess charts as confidently as a fact. */}
+        {(settledAsk.durations.length > 0 || settledAsk.lump) && (
+          <section className="prev-shot">
+            <h3 className="prev-shot__title">{settledAsk.heading}</h3>
+            <p className="prev-shot__sub">{settledAsk.sub}</p>
+            {settledAsk.durations.length > 0 && (
+              <fieldset className="prev-shot__field">
+                <legend>How long was it sore?</legend>
+                <div
+                  className={`prev-shot__chips${
+                    settledAsk.durations.length === 3
+                      ? " prev-shot__chips--three"
+                      : ""
+                  }`}
+                >
+                  {settledAsk.durations.map((level, i) => (
+                    <label
+                      key={level}
+                      className={`prev-shot__chip${
+                        afterSoreness === level ? " prev-shot__chip--on" : ""
+                      }`}
+                    >
+                      <input
+                        ref={i === 0 ? firstSorenessChipRef : undefined}
+                        type="radio"
+                        name="afterSoreness"
+                        value={level}
+                        checked={afterSoreness === level}
+                        onChange={() => setAfterSoreness(level)}
+                      />
+                      {sorenessShortLabel(level)}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            )}
+            {settledAsk.lump && (
+              <fieldset className="prev-shot__field">
+                <legend>Any lump that hasn’t absorbed?</legend>
+                <div className="prev-shot__chips prev-shot__chips--pair">
+                  {(["no", "yes"] as const).map((value) => (
+                    <label
+                      key={value}
+                      className={`prev-shot__chip${
+                        afterLump === value ? " prev-shot__chip--on" : ""
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="afterLump"
+                        value={value}
+                        checked={afterLump === value}
+                        onChange={() => setAfterLump(value)}
+                      />
+                      {value === "no" ? "No" : "Yes"}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            )}
+            {/* Same control, same reasoning and same focus hand-off as the pain
+                and off-days groups': the only way back to "not recorded". */}
+            {(afterSoreness !== "" || afterLump !== "") && (
+              <button
+                type="button"
+                className="link-button field-clear"
+                aria-label="Clear how it settled"
+                onClick={() => {
+                  setAfterSoreness("");
+                  setAfterLump("");
+                  handOffFocus(firstSorenessChipRef, headingRef);
+                }}
+              >
+                Clear
+              </button>
+            )}
+          </section>
         )}
 
         <label className="form-column">

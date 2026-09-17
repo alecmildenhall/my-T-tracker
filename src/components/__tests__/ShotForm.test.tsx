@@ -396,6 +396,8 @@ describe("ShotForm field mapping", () => {
           carrierOil: "",
           pain: "",
           offDays: "",
+          afterSoreness: "",
+          afterLump: "",
           notes: "",
           plannedFor: "",
           plannedBaseline: "",
@@ -922,6 +924,8 @@ describe("ShotForm draft publishing", () => {
     carrierOil: "",
     pain: "",
     offDays: "",
+    afterSoreness: "",
+    afterLump: "",
     notes,
   });
 
@@ -1707,6 +1711,8 @@ const planned = () =>
       carrierOil: "",
       pain: "",
       offDays: "",
+      afterSoreness: "",
+      afterLump: "",
       notes: "",
     };
     const onAddShot = vi.fn((): SaveOutcome => "saved");
@@ -1826,6 +1832,8 @@ const planned = () =>
           carrierOil: "",
           pain: "",
           offDays: "",
+          afterSoreness: "",
+          afterLump: "",
           notes: "",
         }}
       />,
@@ -1904,6 +1912,8 @@ const planned = () =>
       carrierOil: "",
       pain: "",
       offDays: "",
+      afterSoreness: "",
+      afterLump: "",
       notes: "",
     };
     render(
@@ -2552,5 +2562,142 @@ describe("ShotForm — off days", () => {
       // ...and no invented length beside it.
       expect(screen.queryByText(/·/)).toBeNull();
     });
+  });
+});
+
+describe("how the previous shot settled", () => {
+  const daysAgo = (n: number) => addDaysCivil(todayLocalISO(), -n);
+  const withPrevious = (n: number): ShotEntry[] => [
+    { id: "prev", date: daysAgo(n), injectionSite: "glute", injectionSitePosition: "left" },
+  ];
+  const sorenessGroup = () =>
+    screen.queryByRole("group", { name: /How long was it sore/i });
+  const lumpGroup = () =>
+    screen.queryByRole("group", { name: /Any lump/i });
+
+  it("asks nothing when there is no previous shot to ask about", () => {
+    render(<ShotForm onAddShot={vi.fn()} shots={[]} />);
+
+    expect(sorenessGroup()).toBeNull();
+    expect(lumpGroup()).toBeNull();
+  });
+
+  it("offers every duration once a week has passed", () => {
+    render(<ShotForm onAddShot={vi.fn()} shots={withPrevious(7)} />);
+
+    expect(sorenessGroup()).not.toBeNull();
+    expect(screen.getByRole("radio", { name: "A week or more" })).toBeTruthy();
+  });
+
+  it("withholds 'a week or more' when only a few days have passed", () => {
+    // Not wrong — UNANSWERABLE. Four days in, nobody can say it was sore for a
+    // week, so offering it invites a guess.
+    render(<ShotForm onAddShot={vi.fn()} shots={withPrevious(4)} />);
+
+    expect(screen.getByRole("radio", { name: "Several days" })).toBeTruthy();
+    expect(screen.queryByRole("radio", { name: "A week or more" })).toBeNull();
+  });
+
+  it("asks only about the lump below the three-day floor", () => {
+    // "Is there a lump now?" is present tense and answerable on any day, so a
+    // short cadence still gets asked that one.
+    render(<ShotForm onAddShot={vi.fn()} shots={withPrevious(2)} />);
+
+    expect(sorenessGroup()).toBeNull();
+    expect(lumpGroup()).not.toBeNull();
+  });
+
+  it("saves the answers onto the PREVIOUS shot, not the one being logged", () => {
+    const onAddShot = vi.fn();
+    render(<ShotForm onAddShot={onAddShot} shots={withPrevious(7)} />);
+
+    fireEvent.click(screen.getByRole("radio", { name: "Several days" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Yes" }));
+    fireEvent.click(screen.getByRole("button", { name: /save shot/i }));
+
+    const [shot, previous] = onAddShot.mock.calls[0];
+    // The shot being logged carries none of it: these describe the other shot's
+    // site, and keeping them on that row is what a rotation chart needs.
+    expect(shot.afterSoreness).toBeUndefined();
+    expect(shot.afterLump).toBeUndefined();
+    expect(previous).toEqual({
+      id: "prev",
+      afterSoreness: "several-days",
+      afterLump: true,
+    });
+  });
+
+  it("passes no second argument when nothing was answered", () => {
+    // An always-present argument changes what every existing caller sees.
+    const onAddShot = vi.fn();
+    render(<ShotForm onAddShot={onAddShot} shots={withPrevious(7)} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /save shot/i }));
+
+    expect(onAddShot.mock.calls[0]).toHaveLength(1);
+  });
+
+  it("asks about the shot itself when editing, and saves it there", () => {
+    const editing: ShotEntry = { id: "old", date: daysAgo(10) };
+    const onUpdateShot = vi.fn();
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        onUpdateShot={onUpdateShot}
+        editingShot={editing}
+        shots={[editing]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("radio", { name: "A week or more" }));
+    fireEvent.click(screen.getByRole("button", { name: /update shot/i }));
+
+    const [shot, previous] = onUpdateShot.mock.calls[0];
+    expect(shot.id).toBe("old");
+    expect(shot.afterSoreness).toBe("week-plus");
+    expect(previous).toBeUndefined();
+  });
+
+  it("leaves a visible ring on the chip Clear hands focus to", () => {
+    // Clear removes ITSELF — the condition rendering it is the value it just
+    // cleared — so without a hand-off focus drops to <body> inside an open
+    // dialog, where the Tab trap cannot re-engage. The ring half is the one
+    // that goes missing silently: focus moves correctly and nothing on screen
+    // changes (WCAG 2.4.7), which is one of slice B's nine defects.
+    render(<ShotForm onAddShot={vi.fn()} shots={withPrevious(9)} />);
+
+    fireEvent.click(screen.getByRole("radio", { name: "Several days" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /clear how it settled/i }),
+    );
+
+    expectVisibleFocusRing("after clearing how the previous shot settled");
+  });
+
+  it("keeps an existing answer when editing a shot too old to be asked about", () => {
+    // `updateShot` replaces the entry wholesale, so a field the form does not
+    // render must still be written back — otherwise opening an old shot to fix
+    // a typo silently erases an answer given weeks ago.
+    const editing: ShotEntry = {
+      id: "old",
+      date: daysAgo(90),
+      afterSoreness: "day-or-two",
+      afterLump: false,
+    };
+    const onUpdateShot = vi.fn();
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        onUpdateShot={onUpdateShot}
+        editingShot={editing}
+        shots={[editing]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /update shot/i }));
+
+    const [shot] = onUpdateShot.mock.calls[0];
+    expect(shot.afterSoreness).toBe("day-or-two");
+    expect(shot.afterLump).toBe(false);
   });
 });

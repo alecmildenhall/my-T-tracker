@@ -653,6 +653,16 @@ select {
   margin-bottom: 0.35rem;
 }
 
+/* How the site settled. Full text colour and a heavier weight than `.meta`,
+   because it is the one line on the row that was answered days after the shot
+   and is what someone scanning for a bad site is looking for. */
+.shot-list-item__settled {
+  margin: 0 0 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
 .first-shot-card {
   background: radial-gradient(circle at top left, #111827, #020617 60%);
   border: 1px solid var(--border-subtle);
@@ -1160,6 +1170,118 @@ select {
    before this one", so a ramp would assert an order the values do not have, and
    a red-ish "most of the time" would grade an answer the app has no business
    grading. Neutral chips, accent only for the one you chose. */
+/* How the previous shot settled. Its own section rather than a `.form-row`
+   member: it is about a DIFFERENT shot from every field above it, and a rule
+   plus a heading is what says so. Sits last before Notes, so it never delays
+   the shot you are logging — and the Save button is pinned outside the
+   scrolling region either way, so length here never gates saving. */
+.prev-shot {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.prev-shot__title {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.prev-shot__sub {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.prev-shot__field {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0; /* a fieldset defaults to min-content, which breaks flex rows */
+}
+
+.prev-shot__field legend {
+  padding: 0;
+  font-size: 0.8rem;
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* Equal columns, not a wrapping chip row. Four durations measured 333px of
+   chips into 288px of card and wrapped, stranding the last answer alone on a
+   second line; equal columns cannot strand anything at any width. Two columns
+   so the longest label has room for a second line rather than being clipped. */
+.prev-shot__chips {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.3rem;
+  margin-top: 0.45rem;
+}
+
+/* Three answers get three columns, four get 2x2. The column count follows the
+   option count so the last answer is never stranded alone on a second row —
+   measured in the browser at 390px, where three options in two columns left
+   "Several days" orphaned, which is the exact fault the four-answer grid was
+   chosen to avoid. */
+.prev-shot__chips--three {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.prev-shot__chips--pair {
+  grid-template-columns: repeat(2, minmax(0, 6rem));
+}
+
+.prev-shot__chip {
+  position: relative;
+  /* BOTH declared, like `.off-days-row`: the base `label` rule sets
+     `flex-direction: column` and `flex: 1 1 0`, which would stack the text. */
+  display: flex;
+  flex-direction: row;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 44px; /* Apple HIG, same as every other chip here */
+  padding: 0.3rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-subtle);
+  color: var(--text);
+  font-size: 0.8rem;
+  font-weight: 500;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+/* Covers the chip so the whole pill is the target, and invisible rather than
+   `display: none` — a hidden input is not focusable, which would cost the
+   arrow-key roaming the native control is here for. */
+.prev-shot__chip input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+/* Fill, border AND weight — never hue alone (WCAG 1.4.1). */
+.prev-shot__chip--on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: #e0f2fe;
+  font-weight: 600;
+}
+
+/* The ring goes on the LABEL: the input is transparent and stretched over the
+   pill, so an outline on it would trace the same box invisibly. */
+.prev-shot__chip:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .off-days-field {
   border: 0;
   padding: 0;

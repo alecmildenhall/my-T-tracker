@@ -17,6 +17,7 @@ import { useSwipeBack } from "./hooks/useSwipeBack";
 import { useShotsContext } from "./context/ShotsContext";
 import { useProfileContext } from "./context/ProfileContext";
 import type { ShotEntry } from "./types/shot";
+import type { PreviousShotAnswers } from "./hooks/useShots";
 import type { SaveOutcome } from "./components/ShotForm";
 import type { View } from "./types/view";
 
@@ -550,13 +551,19 @@ const App: React.FC = () => {
   // the sheet holding open is not just a courtesy: the form is now the only copy
   // of that entry, and pressing Save again retries it instead of appending a
   // second one.
-  const handleAddShot = (shot: ShotEntry): SaveOutcome => {
+  const handleAddShot = (
+    shot: ShotEntry,
+    previous?: PreviousShotAnswers,
+  ): SaveOutcome => {
     // "ignored", not "refused": the sheet is on its way out and this submit is
     // being dropped, which is not the same event as storage rejecting a write.
     // Collapsing the two into `false` made a double-tapped Save announce
     // "Couldn't save this shot" over a shot that had just saved perfectly.
     if (closingRef.current) return "ignored";
-    if (!addShot(shot)) return "refused"; // sheet stays put, fields kept, and it says why
+    // One call, two entries: the soreness answers describe the PREVIOUS shot,
+    // and the store writes both inside a single persist so neither can land
+    // without the other.
+    if (!addShot(shot, previous)) return "refused"; // sheet stays put, fields kept, and it says why
     clearDraft();
     // Only a shot that actually reached storage is acknowledged. A refused save
     // has nothing to affirm, and a retry that succeeds is an ordinary success —

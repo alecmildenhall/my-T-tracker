@@ -528,7 +528,23 @@ export function previousShotDateBefore(
   shots: { id: string; date: string }[],
   exceptId?: string,
 ): string | undefined {
-  let best: string | undefined;
+  return previousShotBefore(date, shots, exceptId)?.date;
+}
+
+/**
+ * The same question, answered with the SHOT rather than just its date.
+ *
+ * The log form needs the id as well: the soreness answers describe the previous
+ * shot's site, so they are written onto that entry. One owner for "which shot
+ * came before this one", so the id and the date can never disagree about which
+ * shot that is.
+ */
+export function previousShotBefore<T extends { id: string; date: string }>(
+  date: string,
+  shots: T[],
+  exceptId?: string,
+): T | undefined {
+  let best: T | undefined;
   for (const shot of shots) {
     // `>`, not `>=`: a shot logged on the SAME civil date is still the one
     // before this one. Skipping it reached past to the shot before that, and
@@ -537,7 +553,7 @@ export function previousShotDateBefore(
     // edit could repair. A shot cannot be its own predecessor because `exceptId`
     // removes it, and a brand-new shot has no id in the list yet.
     if (shot.id === exceptId || shot.date > date) continue;
-    if (best === undefined || shot.date > best) best = shot.date;
+    if (best === undefined || shot.date > best.date) best = shot;
   }
   return best;
 }
