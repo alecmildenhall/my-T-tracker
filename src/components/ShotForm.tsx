@@ -9,6 +9,7 @@ import React, {
 import {
   OFF_DAYS_PATTERNS,
   PAIN_LEVELS,
+  SORENESS_DURATIONS,
   isOffDaysPattern,
   isPainLevel,
   isSorenessDuration,
@@ -537,8 +538,18 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     const site = [subject.shot.injectionSitePosition, subject.shot.injectionSite]
       .filter(Boolean)
       .join(" ");
+    // EDITING asks unconditionally, and that is not the gate being abandoned.
+    // The gate governs what to ask UNPROMPTED while logging, where offering an
+    // answer the days so far cannot settle invites a guess. Opening a saved
+    // shot is a deliberate trip made to record how it went, so the one screen
+    // built for the job must not sit silent — and the two modes looked
+    // arbitrary side by side, because the number they turn on (the gap when
+    // logging, days since the shot when editing) is nowhere on screen.
+    const asks = editingShot
+      ? { durations: [...SORENESS_DURATIONS], lump: true }
+      : previousShotQuestions(subject.elapsed);
     return {
-      ...previousShotQuestions(subject.elapsed),
+      ...asks,
       shotId: subject.shot.id,
       subject: subject.shot,
       heading: editingShot ? "How this shot settled" : "Your previous shot",
@@ -1552,131 +1563,6 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             )}
           </div>
 
-          {/* The `.field-cell` wrapper is NOT decoration — this shipped without
-              one and crushed the pain group beside it. `.form-row` is a flex row
-              above 560px where every member is a `.field-cell` (`flex: 1 1 0`);
-              a bare fieldset gets `flex: 0 1 auto` with a ~509px max-content
-              basis instead, so it took the row and left pain with 1px at 600px
-              and 8px above that. Measured: the four pain chips stacked
-              vertically inside an 8px box and painted over this column, with
-              "Injection pain" overprinting "Any days you felt off?".
-
-              It also repaired itself the moment a chip was tapped — Clear
-              becomes a third flex item and the row wraps — so the broken state
-              was the one every sheet opens in. On main this row's second member
-              was a text input, whose small content basis hid the difference.
-              The phone widths I swept were all below the breakpoint, so none of
-              them could see it.
-
-              Inside it, the same shape as the pain group: native radios in a
-              fieldset, so arrow keys roam the group for free and it is one tab
-              stop, which `useFocusTrap` already handles for an unchecked
-              group. */}
-          <div className="field-cell">
-            <fieldset className="off-days-field">
-              {/* The window lives INSIDE the legend, so it is part of the
-                  group's accessible NAME rather than a description of it.
-                  `aria-describedby` on a fieldset was the first attempt and it
-                  was a prediction, not a measurement: group-level descriptions
-                  are announced inconsistently, and iOS VoiceOver — this app's
-                  primary platform — does not reliably surface fieldset
-                  semantics at all. A name is announced on entering the group by
-                  every AT there is, so this shape does not depend on support we
-                  cannot check from here. It reads the same on screen. */}
-              <legend>
-                {/* The explicit space is load-bearing. JSX strips the newline
-                    between this text and the expression below, so the group's
-                    accessible name computed as "...felt off?The 13 days..." —
-                    measured. The span is `display: block`, so nothing shows the
-                    join on screen and only the NAME is wrong. */}
-                Any days you felt off?{" "}
-                {/* The recall window, named rather than assumed. Never "this week":
-                cadence here runs from 3 to 14 days, so a fixed word would be
-                wrong for most people. It says which shot you are answering
-                about, which is also what lets the four answers keep one meaning
-                each at any interval length — the chips do not change, the span
-                does. */}
-                {/* Unconditional. It used to render only when the length was
-                    known, which hid the anchor on a first entry — the one shot
-                    where nothing else on screen says what window is being asked
-                    about. `offDaysWindowLabel` now always names the window and
-                    adds the length only when it has one. */}
-                <span className="off-days-field__span">{offDaysSpan}</span>
-              </legend>
-              {/* Rows, not chips. Choice chips are specified for "one to two
-                  short words", which the pain group fits and this one never
-                  did — "Right before this one" measured 158.6px against
-                  Moderate's 77, so four wrapped to two or three lines and a
-                  wrapped grid has no reading order left to follow. A radio LIST
-                  is the control for single-select with longer labels. */}
-              <div className="off-days-rows">
-                {OFF_DAYS_PATTERNS.map((pattern) => (
-                  <label
-                    key={pattern}
-                    className={`off-days-row${
-                      offDays === pattern ? " off-days-row--on" : ""
-                    }`}
-                  >
-                    <input
-                      ref={
-                        pattern === OFF_DAYS_PATTERNS[0]
-                          ? firstOffDaysChipRef
-                          : undefined
-                      }
-                      type="radio"
-                      name="offDays"
-                      value={pattern}
-                      checked={offDays === pattern}
-                      onChange={() => setOffDays(pattern)}
-                      // The visible text is short because the strip draws the
-                      // position; this is where that position stays available to
-                      // anyone who cannot see the strip. It always begins with
-                      // the visible label, which is what WCAG 2.5.3 asks for and
-                      // what keeps "tap Early on" working in voice control.
-                      aria-label={offDaysSpokenLabel(pattern)}
-                    />
-                    <span className="off-days-row__mark" aria-hidden="true" />
-                    <span className="off-days-row__label">
-                      {offDaysShortLabel(pattern)}
-                    </span>
-                    {/* Decorative, and safely so: `offDaysSpokenLabel` above
-                        carries the same fact in words. Three of the five light
-                        the same NUMBER of slots in different places, which is
-                        the whole reason to draw it — a count cannot tell them
-                        apart and the position can. */}
-                    <span className="off-days-row__strip" aria-hidden="true">
-                      {offDaysStrip(pattern).map((on, i) => (
-                        <i key={i} className={on ? "is-off" : undefined} />
-                      ))}
-                    </span>
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-            {/* Only once something is set, and the only way back to "not
-              recorded" — a different fact from "not really". Same control, same
-              reasoning and same focus hand-off as the pain group's. */}
-            {offDays !== "" && (
-              <button
-                type="button"
-                className="link-button field-clear"
-                // Named for what it clears: outside the fieldset, a screen reader
-                // browsing by button hears only "Clear", beside a separate "Clear
-                // form" in the same dialog.
-                aria-label="Clear off days"
-                onClick={() => {
-                  setOffDays("");
-                  // Removes ITSELF — the condition rendering it is the value it
-                  // just cleared — so it hands focus on first, back to the group
-                  // it belongs to. Without this, focus lands on <body> inside a
-                  // dialog whose #root is inert, where the trap cannot re-engage.
-                  handOffFocus(firstOffDaysChipRef, headingRef);
-                }}
-              >
-                Clear
-              </button>
-            )}
-          </div>
         </div>
 
         {/* Only when the settings answer the question. With no cadence there is
@@ -1728,11 +1614,140 @@ export const ShotForm: React.FC<ShotFormProps> = ({
           </div>
         )}
 
-        {/* How the previous shot settled — the last thing before Notes, so it
-            never sits between you and the fields about the shot you are
-            actually logging. Rendered only when the elapsed time can settle at
-            least one of the questions: an answer that cannot yet be true gets
-            skipped or guessed, and a guess charts as confidently as a fact. */}
+        {/* Out of the pain row and down here, next to the question about the shot
+            it shares a window with. It used to sit beside "Injection pain" in a
+            `.form-row`, which put a field about the PREVIOUS interval in the
+            middle of the fields about this shot, with "Planned for" separating
+            it from the other retrospective question.
+
+            The `.field-cell` wrapper stays. It is no longer holding a flex row
+            open — that was the bug it was added for, where a bare fieldset took
+            the row and crushed the pain group to 8px — but it still carries the
+            `min-width: 0` that keeps a fieldset from defaulting to min-content.
+
+            Inside it, the same shape as the pain group: native radios in a
+            fieldset, so arrow keys roam the group for free and it is one tab
+            stop, which `useFocusTrap` already handles for an unchecked
+            group. */}
+        <div className="field-cell">
+          <fieldset className="off-days-field">
+            {/* The window lives INSIDE the legend, so it is part of the
+                group's accessible NAME rather than a description of it.
+                `aria-describedby` on a fieldset was the first attempt and it
+                was a prediction, not a measurement: group-level descriptions
+                are announced inconsistently, and iOS VoiceOver — this app's
+                primary platform — does not reliably surface fieldset
+                semantics at all. A name is announced on entering the group by
+                every AT there is, so this shape does not depend on support we
+                cannot check from here. It reads the same on screen. */}
+            <legend>
+              {/* The explicit space is load-bearing. JSX strips the newline
+                  between this text and the expression below, so the group's
+                  accessible name computed as "...felt off?The 13 days..." —
+                  measured. The span is `display: block`, so nothing shows the
+                  join on screen and only the NAME is wrong. */}
+              Any days you felt off?{" "}
+              {/* The recall window, named rather than assumed. Never "this week":
+              cadence here runs from 3 to 14 days, so a fixed word would be
+              wrong for most people. It says which shot you are answering
+              about, which is also what lets the four answers keep one meaning
+              each at any interval length — the chips do not change, the span
+              does. */}
+              {/* Unconditional. It used to render only when the length was
+                  known, which hid the anchor on a first entry — the one shot
+                  where nothing else on screen says what window is being asked
+                  about. `offDaysWindowLabel` now always names the window and
+                  adds the length only when it has one. */}
+              <span className="off-days-field__span">{offDaysSpan}</span>
+            </legend>
+            {/* Rows, not chips. Choice chips are specified for "one to two
+                short words", which the pain group fits and this one never
+                did — "Right before this one" measured 158.6px against
+                Moderate's 77, so four wrapped to two or three lines and a
+                wrapped grid has no reading order left to follow. A radio LIST
+                is the control for single-select with longer labels. */}
+            <div className="off-days-rows">
+              {OFF_DAYS_PATTERNS.map((pattern) => (
+                <label
+                  key={pattern}
+                  className={`off-days-row${
+                    offDays === pattern ? " off-days-row--on" : ""
+                  }`}
+                >
+                  <input
+                    ref={
+                      pattern === OFF_DAYS_PATTERNS[0]
+                        ? firstOffDaysChipRef
+                        : undefined
+                    }
+                    type="radio"
+                    name="offDays"
+                    value={pattern}
+                    checked={offDays === pattern}
+                    onChange={() => setOffDays(pattern)}
+                    // The visible text is short because the strip draws the
+                    // position; this is where that position stays available to
+                    // anyone who cannot see the strip. It always begins with
+                    // the visible label, which is what WCAG 2.5.3 asks for and
+                    // what keeps "tap Early on" working in voice control.
+                    aria-label={offDaysSpokenLabel(pattern)}
+                  />
+                  <span className="off-days-row__mark" aria-hidden="true" />
+                  <span className="off-days-row__label">
+                    {offDaysShortLabel(pattern)}
+                  </span>
+                  {/* Decorative, and safely so: `offDaysSpokenLabel` above
+                      carries the same fact in words. Three of the five light
+                      the same NUMBER of slots in different places, which is
+                      the whole reason to draw it — a count cannot tell them
+                      apart and the position can. */}
+                  <span className="off-days-row__strip" aria-hidden="true">
+                    {offDaysStrip(pattern).map((on, i) => (
+                      <i key={i} className={on ? "is-off" : undefined} />
+                    ))}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          {/* Only once something is set, and the only way back to "not
+            recorded" — a different fact from "not really". Same control, same
+            reasoning and same focus hand-off as the pain group's. */}
+          {offDays !== "" && (
+            <button
+              type="button"
+              className="link-button field-clear"
+              // Named for what it clears: outside the fieldset, a screen reader
+              // browsing by button hears only "Clear", beside a separate "Clear
+              // form" in the same dialog.
+              aria-label="Clear off days"
+              onClick={() => {
+                setOffDays("");
+                // Removes ITSELF — the condition rendering it is the value it
+                // just cleared — so it hands focus on first, back to the group
+                // it belongs to. Without this, focus lands on <body> inside a
+                // dialog whose #root is inert, where the trap cannot re-engage.
+                handOffFocus(firstOffDaysChipRef, headingRef);
+              }}
+            >
+              Clear
+            </button>
+          )}
+        </div>
+
+        {/* Directly under "Any days you felt off?", because when logging they
+            are two questions about the same stretch of time — the interval that
+            just closed — and they used to be split by "Planned for", a field
+            about the shot in front of you.
+
+            They keep SEPARATE headings rather than merging under one, because
+            when EDITING they are not about the same window at all: off days is
+            the interval before that shot, and this is how that shot settled
+            afterwards. One heading would be wrong for half the cases.
+
+            When logging, still rendered only when the elapsed time can settle
+            at least one question — an answer that cannot yet be true gets
+            skipped or guessed. Editing always asks; see `liveSettledAsk`. */}
         {(settledAsk.durations.length > 0 || settledAsk.lump) && (
           <section className="prev-shot">
             <h3 className="prev-shot__title">{settledAsk.heading}</h3>

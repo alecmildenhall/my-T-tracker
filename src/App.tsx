@@ -391,26 +391,21 @@ const App: React.FC = () => {
    * Tapping a row in the Home teaser: go to History with that shot already open
    * for editing.
    *
-   * Both halves matter. Opening the sheet alone would leave Home behind it, so
-   * closing it would drop you back on a screen with no sign of what you just
-   * did; going to History alone would make you find the row again in a list you
-   * did not choose to be in. The roadmap's line is "tapping through to edit
-   * happens in the History tab", and this is that trip taken for you.
+   * The sheet opens OVER HOME, and closing it leaves you on Home.
    *
-   * `navigate` first, so the tab change's clean-up (retiring the
-   * acknowledgement, resetting scroll) happens before the sheet exists rather
-   * than underneath it.
+   * It used to take you to History first, on the reasoning that closing should
+   * land somewhere showing what you just did. Home already does: the teaser
+   * lists the very row you tapped, so the trip bought nothing and cost the
+   * thing people actually notice — you close an editor and find yourself on a
+   * screen you never asked to be on. The roadmap's "tapping through to edit
+   * happens in the History tab" is about where the full list lives, not about
+   * moving someone mid-edit.
+   *
+   * Dropping the trip also retires the History-query reset that went with it:
+   * that existed only because a filter set earlier could hide the shot the
+   * sheet was opening over, which cannot happen on Home.
    */
   const openShotFromTeaser = (shot: ShotEntry) => {
-    navigate("history");
-    // Clear the History query on the way. It is deliberately kept across tab
-    // changes — "a trip to Home and back keeps the filter you were using" — but
-    // this is not a trip the user took to History, it is one taken for them, and
-    // a filter set earlier can exclude the very shot they just tapped. The sheet
-    // would then open over a list not containing it, and saving would send the
-    // entry somewhere invisible. The promise of this route is "closing lands
-    // somewhere that shows what you just did", and a stale filter breaks it.
-    setHistoryQuery(emptyHistoryQuery);
     openSheet(shot);
   };
 
