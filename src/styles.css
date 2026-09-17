@@ -1183,7 +1183,27 @@ select {
   border-top: 1px solid var(--border-subtle);
 }
 
-.prev-shot__title {
+/* The Clear control sits closer to the question it clears than the questions do
+   to each other, which is what `.field-cell` already does for the pain and
+   off-days groups: they are flex columns with a 0.4rem gap, so their Clear
+   lands 6.4px under its group. Here one 0.55rem gap was doing both jobs and
+   put this one 8.8px down — the same control, three pixels adrift, in the same
+   sheet. Pulling it back by the difference keeps a single gap on the section
+   while giving the control the spacing its siblings have. */
+.prev-shot .field-clear {
+  margin-top: -0.15rem;
+}
+
+/* `.dialog .prev-shot__title`, not `.prev-shot__title`. Inside the sheet this
+   competes with `.dialog h3` — a descendant selector at (0,1,1) that a single
+   class cannot beat at any position in the file. Measured before this: the
+   heading rendered at 1.05rem, the same size as the sheet's own <h2>, with an
+   8px bottom margin that the section's flex `gap` then added to, so the title
+   sat 17px off its own sub-line where every other pair here sits ~9px.
+
+   0.95rem keeps it BELOW the sheet's title in the hierarchy: this names a
+   section inside the form, not the form. */
+.dialog .prev-shot__title {
   margin: 0;
   font-size: 0.95rem;
 }
@@ -1216,7 +1236,13 @@ select {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.3rem;
-  margin-top: 0.45rem;
+  /* 0.55rem, matching `.pain-chips` rather than the 0.45rem of
+     `.off-days-rows` — this is a CHIP row, and the reason pain uses more air is
+     written down: a chip row is lighter than a bordered input and sits closer
+     in visual weight to its label, so it needs more separation. Off-days is a
+     list of 48px bordered rows, a different weight, which is why it reads fine
+     tighter. Measured: 8.8px here and on pain, 7.2px on off-days. */
+  margin-top: 0.55rem;
 }
 
 /* Three answers get three columns, four get 2x2. The column count follows the
