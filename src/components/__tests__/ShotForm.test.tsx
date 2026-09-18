@@ -2913,4 +2913,27 @@ describe("how the previous shot settled", () => {
       (screen.getByRole("radio", { name: "Yes" }) as HTMLInputElement).checked,
     ).toBe(false);
   });
+
+  it("counts a CHANGED answer as unsaved input", () => {
+    // The other half of the baseline comparison, and the half a mutation test
+    // found unguarded. These two fields are excluded from the generic
+    // "differs from the opened form" loop, so without an explicit clause they
+    // are compared against nothing at all: tapping a different answer left the
+    // sheet reading as untouched, which means no "Clear form" and a dismissal
+    // that discards the answer with no confirm.
+    const ref = { current: null as ShotDraft | null };
+    render(
+      <ShotForm onAddShot={vi.fn()} shots={answeredPrevious()} liveDraftRef={ref} />,
+    );
+
+    // Untouched: nothing to clear, nothing to keep.
+    expect(screen.queryByRole("button", { name: "Clear form" })).toBeNull();
+    expect(ref.current).toBeNull();
+
+    fireEvent.click(screen.getByRole("radio", { name: "Several days" }));
+
+    expect(screen.getByRole("button", { name: "Clear form" })).toBeTruthy();
+    expect(ref.current).not.toBeNull();
+    expect(ref.current!.afterSoreness).toBe("several-days");
+  });
 });
