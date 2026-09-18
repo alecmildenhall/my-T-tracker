@@ -366,19 +366,14 @@ export function CadencePicker({
               onChange={(v) => { setTouched(true); setNumDraft(v); }}
               onCommit={() => commitNumRef.current()}
             />
-            {/* The same incomplete state the grid half warns about, and it was
-                given only to the grid. "Every so many days" with an empty box
-                stores `scheduleMode: "rolling"` and no `intervalDays`, so
-                `effectiveScheduleMode` returns "none" and no shot ever gets a
-                planned date — silently, since an untouched box raises no error.
-                Writing the lesson down for one branch and not the other is how
-                it stayed half-learned. */}
-            {!problem && numDraft.trim() === "" && (
-              <p className="cadence__summary cadence__summary--info">
-                Add how many days — otherwise there is nothing to plan your
-                shots against.
-              </p>
-            )}
+            {/* No "add a number" notice here: it restated the empty box beside
+                it, on both surfaces, and was removed on request. The state it
+                described is still real — "Every so many days" with no
+                `intervalDays` stores `scheduleMode: "rolling"`,
+                `effectiveScheduleMode` returns "none", and no shot gets a
+                planned date — so don't read the silence as "this is complete".
+                If it ever needs saying again, say it somewhere the empty field
+                isn't already saying it. */}
           </div>
         )}
 

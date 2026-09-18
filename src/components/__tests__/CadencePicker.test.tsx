@@ -162,12 +162,13 @@ describe("CadencePicker — the sentence", () => {
     expect(document.querySelector(".cadence__summary")).toBeNull();
   });
 
-  it("asks for the days when the rolling rhythm has no number", () => {
-    // The grid half warned about exactly this and the rolling half did not:
-    // "Every so many days" with an empty box stores `scheduleMode: "rolling"`
-    // and no `intervalDays`, so nothing ever gets a planned date, in silence.
+  it("says nothing when the rolling rhythm has no number yet", () => {
+    // Deliberately reversed: this used to assert an "Add how many days" notice.
+    // It restated the empty box beside it, so it was removed from both surfaces
+    // on request. Asserted on the ELEMENT rather than on the words, so it fails
+    // if any summary returns here — not only if that one sentence comes back.
     setup({ scheduleMode: "rolling" });
-    expect(screen.getByText(/Add how many days/)).toBeInTheDocument();
+    expect(document.querySelector(".cadence__summary")).toBeNull();
   });
 
   it("asks for the weeks when the days are chosen but the number is not", () => {
