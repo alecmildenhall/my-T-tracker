@@ -777,14 +777,53 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   const firstOffDaysChipRef = useRef<HTMLInputElement>(null);
   const [offDays, setOffDays] = useState<OffDaysPattern | "">(start.offDays);
   const firstSorenessChipRef = useRef<HTMLInputElement>(null);
-  // Seeded from what the subject shot already has on record, so an existing
-  // answer is visible and changeable rather than invisible and silently
-  // replaceable. A restored draft wins, because that is work the user did.
+  /**
+   * What these two fields show untouched: whatever the subject shot already has
+   * on record, so an existing answer is visible and changeable rather than
+   * invisible and silently replaceable.
+   *
+   * The REFERENCE is kept, never a "has it changed" answer derived from it —
+   * the rule `dateBaseline` records, and this pair is what skipping it cost.
+   * Seeding the fields from the record while the dirty check still measured
+   * them against an empty form made an untouched sheet read as dirty: "Clear
+   * form" appeared on a form nobody had touched, and dismissing it parked a
+   * draft nobody typed.
+   *
+   * Unlike `dateBaseline` these do NOT travel in the draft, and the difference
+   * is the point. Today moves while a sheet sits parked, so the date's
+   * reference has to be carried or it drifts out from under the comparison. A
+   * record does not move on its own — and if the subject really was answered
+   * somewhere else meanwhile, re-reading it is the RIGHT reference where a
+   * carried one would be stale.
+   */
+  const [afterSorenessBaseline, setAfterSorenessBaseline] = useState<
+    SorenessDuration | ""
+  >(() => storedSoreness(settledAsk.subject));
+  const [afterLumpBaseline, setAfterLumpBaseline] = useState<"" | "yes" | "no">(
+    () => storedLump(settledAsk.subject),
+  );
+  // Held in a ref for the reason `carriedRef` is: resetForm must stay
+  // identity-stable, and these move whenever the subject does.
+  const settledBaselineRef = useRef({
+    soreness: afterSorenessBaseline,
+    lump: afterLumpBaseline,
+  });
+  useEffect(() => {
+    settledBaselineRef.current = {
+      soreness: afterSorenessBaseline,
+      lump: afterLumpBaseline,
+    };
+  });
+  // A restored draft wins, because that is work the user did — including the
+  // work of CLEARING an answer. Tested on `draft` itself, never
+  // `start.afterSoreness || …`: "" is both a legitimate restored value and
+  // falsy, so `||` handed the record a win over a deliberate clear, which is
+  // the opposite of what the line it sat on claimed to do.
   const [afterSoreness, setAfterSoreness] = useState<SorenessDuration | "">(
-    () => start.afterSoreness || storedSoreness(settledAsk.subject),
+    () => (draft ? start.afterSoreness : afterSorenessBaseline),
   );
   const [afterLump, setAfterLump] = useState<"" | "yes" | "no">(
-    () => start.afterLump || storedLump(settledAsk.subject),
+    () => (draft ? start.afterLump : afterLumpBaseline),
   );
   /**
    * The answers are about a subject that can MOVE — backdating a new entry
@@ -796,12 +835,25 @@ export const ShotForm: React.FC<ShotFormProps> = ({
    * Adjusted during render, the way this codebase syncs state to props
    * elsewhere, and keyed on the subject's id rather than on a boolean "has it
    * changed" — the id IS the reference, and a derived flag is what drifts.
+   *
+   * NO SUBJECT IS NOT A NEW SUBJECT. Clearing the date field — one keystroke of
+   * an ordinary correction — resolves to no shot at all for a render or two,
+   * and treating that as a change re-seeded from `null` and wiped the answer
+   * just tapped. Permanently: finishing the date brings back the same id, so
+   * there is no further change to sync, and nothing puts it back. The
+   * last-known id is therefore held across the gap, and only a different KNOWN
+   * shot re-seeds.
    */
   const [lastSubjectId, setLastSubjectId] = useState(settledAsk.shotId);
-  if (settledAsk.shotId !== lastSubjectId) {
+  if (settledAsk.shotId !== undefined && settledAsk.shotId !== lastSubjectId) {
     setLastSubjectId(settledAsk.shotId);
     setAfterSoreness(storedSoreness(settledAsk.subject));
     setAfterLump(storedLump(settledAsk.subject));
+    // The baseline moves with the value it is the reference for, or the two
+    // fall out of step and "has the user entered something?" starts answering
+    // wrongly — the failure `plannedBaseline` documents a few lines above.
+    setAfterSorenessBaseline(storedSoreness(settledAsk.subject));
+    setAfterLumpBaseline(storedLump(settledAsk.subject));
   }
   /**
    * A pick the elapsed gap can no longer settle goes back to what is on record.
@@ -813,18 +865,31 @@ export const ShotForm: React.FC<ShotFormProps> = ({
    * that merely matches the record would erase the previous shot's real answer,
    * which is the same defect by another door.
    */
-  const onRecordSoreness = storedSoreness(settledAsk.subject);
-  const onRecordLump = storedLump(settledAsk.subject);
+  // NO SUBJECT IS NOT AN UNANSWERABLE GAP — the same distinction the sync above
+  // turns on, and missing it here defeated that fix rather than adding to it.
+  // A cleared date resolves to no shot, so `durations` is empty and `lump` is
+  // false, and without this guard that reads as "every answer just became
+  // unanswerable" and resets the chip the user tapped. Retyping the date brings
+  // the subject back but not the answer, so an ordinary date correction ate it.
+  // An unknown question withdraws nothing; only a KNOWN gap can.
+  const subjectKnown = settledAsk.shotId !== undefined;
   if (
     !editingShot &&
+    subjectKnown &&
     afterSoreness !== "" &&
-    afterSoreness !== onRecordSoreness &&
+    afterSoreness !== afterSorenessBaseline &&
     !settledAsk.durations.includes(afterSoreness)
   ) {
-    setAfterSoreness(onRecordSoreness);
+    setAfterSoreness(afterSorenessBaseline);
   }
-  if (!editingShot && afterLump !== "" && afterLump !== onRecordLump && !settledAsk.lump) {
-    setAfterLump(onRecordLump);
+  if (
+    !editingShot &&
+    subjectKnown &&
+    afterLump !== "" &&
+    afterLump !== afterLumpBaseline &&
+    !settledAsk.lump
+  ) {
+    setAfterLump(afterLumpBaseline);
   }
   const [notes, setNotes] = useState<string>(start.notes);
 
@@ -884,8 +949,14 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     setInjectionSitePosition("");
     setPain("");
     setOffDays("");
-    setAfterSoreness("");
-    setAfterLump("");
+    // The BASELINE, not "" — see the block that seeds these. Blanking them told
+    // the save path the user had deliberately cleared the previous shot's
+    // answers, so "Clear form" followed by Save DELETED answers nobody had
+    // touched. Unrecoverable by this feature's own design: it never asks again
+    // about a shot whose interval has closed. Clearing restores what the record
+    // says, exactly as the date goes back to today.
+    setAfterSoreness(settledBaselineRef.current.soreness);
+    setAfterLump(settledBaselineRef.current.lump);
     setNotes("");
     // Carried-forward fields reset to the last shot's values, not to empty.
     const { doseMg, testosteroneEster, carrierOil } = carriedRef.current;
@@ -1051,8 +1122,8 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     const answeredAboutPrevious =
       !editingShot &&
       settledAsk.shotId !== undefined &&
-      (afterSoreness !== storedSoreness(settledAsk.subject) ||
-        afterLump !== storedLump(settledAsk.subject));
+      (afterSoreness !== afterSorenessBaseline ||
+        afterLump !== afterLumpBaseline);
     const outcome =
       editingShot && onUpdateShot
         ? onUpdateShot(newShot)
@@ -1163,15 +1234,23 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   // it would make a brand-new form dirty on open — the field seeds from what
   // the app computed, while `opened` holds "" — so "Clear form" would appear
   // and dismissing would confirm, on a form nobody had touched.
+  // `afterSoreness` and `afterLump` join them for a third version of the same
+  // reason: they seed from the SUBJECT SHOT's record, which `opened` is built
+  // too early to know about, so measuring them generically made an untouched
+  // sheet dirty the moment the previous shot already had an answer on it.
   const BASELINE_FIELDS: (keyof ShotDraft)[] = [
     "date",
     "dateBaseline",
     "plannedFor",
     "plannedBaseline",
+    "afterSoreness",
+    "afterLump",
   ];
   const hasUnsavedInput =
     date !== dateBaseline ||
     plannedDraft !== plannedBaseline ||
+    afterSoreness !== afterSorenessBaseline ||
+    afterLump !== afterLumpBaseline ||
     (Object.keys(current) as (keyof ShotDraft)[])
       .filter((k) => !BASELINE_FIELDS.includes(k))
       .some((k) => current[k] !== opened[k]);
@@ -1181,6 +1260,8 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   const looksFresh =
     date === todayLocalISO() &&
     plannedDraft === plannedBaseline &&
+    afterSoreness === afterSorenessBaseline &&
+    afterLump === afterLumpBaseline &&
     (Object.keys(current) as (keyof ShotDraft)[])
       .filter((k) => !BASELINE_FIELDS.includes(k))
       .every((k) => current[k] === opened[k]);

@@ -2800,4 +2800,117 @@ describe("how the previous shot settled", () => {
     expect(shot.afterSoreness).toBe("day-or-two");
     expect(shot.afterLump).toBe(false);
   });
+
+  // The four below are one mistake seen from four sides. Seeding these fields
+  // from the subject's record gave them a second source of truth, and the
+  // draft machinery went on measuring them against an empty form — so the
+  // answers are compared against a BASELINE now, the same shape `dateBaseline`
+  // records. Each test pins one consequence of not doing that.
+  const answeredPrevious = (): ShotEntry[] => [
+    {
+      id: "prev",
+      date: daysAgo(9),
+      injectionSite: "glute",
+      afterSoreness: "week-plus",
+      afterLump: true,
+    },
+  ];
+  const weekPlusChecked = () =>
+    (screen.getByRole("radio", { name: "A week or more" }) as HTMLInputElement)
+      .checked;
+
+  it("does not read as dirty just because the previous shot has answers", () => {
+    // The trap the `plannedFor` comment warns about, walked into by the fix one
+    // review earlier. An untouched sheet offered "Clear form" and dismissing it
+    // parked a draft nobody had typed.
+    const ref = { current: null as ShotDraft | null };
+    render(
+      <ShotForm onAddShot={vi.fn()} shots={answeredPrevious()} liveDraftRef={ref} />,
+    );
+
+    // The answers are on screen — the seeding this guards is still doing its
+    // job, so a "fix" that simply stopped seeding cannot pass this test.
+    expect(weekPlusChecked()).toBe(true);
+    // And none of it counts as input, so there is nothing to offer to clear and
+    // nothing to park.
+    expect(screen.queryByRole("button", { name: "Clear form" })).toBeNull();
+    expect(ref.current).toBeNull();
+  });
+
+  it("restores the record's answers on 'Clear form' rather than deleting them", () => {
+    // Blanking them to "" told the save path the user had deliberately cleared
+    // the previous shot's answers, so Clear + Save DELETED answers nobody had
+    // touched — unrecoverable, because the question is never asked again once
+    // that interval has closed.
+    const onAddShot = vi.fn();
+    render(<ShotForm onAddShot={onAddShot} shots={answeredPrevious()} />);
+
+    // Type something, or "Clear form" is not offered at all.
+    fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "wip" } });
+    fireEvent.click(screen.getByRole("button", { name: "Clear form" }));
+
+    expect(weekPlusChecked()).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: /save shot/i }));
+    // Nothing differs from the record, so no patch is sent at all.
+    expect(onAddShot.mock.calls[0]).toHaveLength(1);
+  });
+
+  it("keeps the tapped answer through a momentarily blank date", () => {
+    // Clearing the date is one keystroke of an ordinary correction, and it
+    // resolves to no subject for a render. That read BOTH as "the subject
+    // changed" and as "the gap can no longer settle this", each of which reset
+    // the chip — and retyping the date brings the subject back but not the
+    // answer, so the loss was permanent.
+    const onAddShot = vi.fn();
+    render(
+      <ShotForm onAddShot={onAddShot} shots={[{ id: "prev", date: daysAgo(9) }]} />,
+    );
+
+    fireEvent.click(screen.getByRole("radio", { name: "Several days" }));
+    const date = screen.getByLabelText("Date");
+    fireEvent.change(date, { target: { value: "" } });
+    fireEvent.change(date, { target: { value: todayLocalISO() } });
+
+    expect(
+      (screen.getByRole("radio", { name: "Several days" }) as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: /save shot/i }));
+    expect(onAddShot.mock.calls[0][1]).toEqual({
+      id: "prev",
+      afterSoreness: "several-days",
+      afterLump: undefined,
+    });
+  });
+
+  it("lets a restored draft that CLEARED an answer beat the record", () => {
+    // "" is both a legitimate restored value and falsy, so `draft.afterSoreness
+    // || storedSoreness(...)` handed the record a win over a deliberate clear —
+    // the opposite of what that line said it did.
+    const cleared: ShotDraft = {
+      date: todayLocalISO(),
+      dateBaseline: todayLocalISO(),
+      plannedFor: "",
+      plannedBaseline: "",
+      time: "",
+      doseMg: "",
+      injectionSite: "",
+      injectionSitePosition: "",
+      testosteroneEster: "",
+      carrierOil: "",
+      pain: "",
+      offDays: "",
+      afterSoreness: "",
+      afterLump: "",
+      notes: "",
+    };
+    render(
+      <ShotForm onAddShot={vi.fn()} shots={answeredPrevious()} draft={cleared} />,
+    );
+
+    expect(weekPlusChecked()).toBe(false);
+    expect(
+      (screen.getByRole("radio", { name: "Yes" }) as HTMLInputElement).checked,
+    ).toBe(false);
+  });
 });
