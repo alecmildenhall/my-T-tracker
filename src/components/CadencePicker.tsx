@@ -316,32 +316,20 @@ export function CadencePicker({
             {sentence && !problem && (
               <p className="cadence__summary cadence__summary--info">{sentence}</p>
             )}
-            {/* Both halves of an incomplete grid, not just the days. A grid
-                needs days AND a whole number of weeks; with either missing,
-                `effectiveScheduleMode` returns "none" and no shot ever gets a
-                planned date. Only the days half was covered, so choosing days
-                and leaving the number empty went silent — no sentence, no
-                warning, no error, since an untouched box raises none. The panel
-                this component replaced carried the mirror notice and it was
-                lost in the move.
+            {/* No "pick a day" / "add how many weeks" notice here. Both were
+                removed on request, the same call as the rolling rhythm's, and
+                for the same reason: each restated what the control beside it
+                already showed — unlit day chips, or an empty weeks box.
 
-                The interval is checked through `describeWeeklySchedule`
-                returning null rather than by re-testing the number here: one
-                statement of "is this a usable weekly rhythm", so the warning
-                and the sentence cannot disagree about it. */}
-            {/* Neutral, not red. These describe what you will GET, not what
-                you did wrong — and days with no interval is a legitimate
-                end state rather than a mistake: `shotDaysInEffect` keeps the
-                shot-day greeting working without any cadence at all. Styled as
-                an error, that state nagged on every visit about a choice
-                somebody had made. The information stays; the alarm goes. */}
-            {!problem && !sentence && (
-              <p className="cadence__summary cadence__summary--info">
-                {days.length === 0
-                  ? "Pick a day to plan your shots against."
-                  : "Add how many weeks to plan your shot dates."}
-              </p>
-            )}
+                What that gives up is real, so it is written down rather than
+                forgotten. An incomplete grid needs days AND a whole number of
+                weeks; with either missing, `scheduleMode` is still stored as
+                "grid" while `effectiveScheduleMode` returns "none", so no shot
+                ever gets a planned date — and nothing now says so. An untouched
+                box raises no error either, so the silence is total. Do not read
+                the absence of a message here as "this is complete". If it ever
+                needs saying again, say it where the empty field and the unlit
+                chips are not already saying it. */}
           </div>
         )}
 

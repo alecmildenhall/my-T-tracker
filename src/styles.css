@@ -2995,12 +2995,16 @@ select {
   color: #d9f5e3;
 }
 
-/* Neither confirmation nor problem: the rhythm is chosen and something is
-   still missing, which is a fact about what you will get rather than a success
-   or a fault. The base rule is the app's SUCCESS wash, so falling through to it
-   painted "Pick a day to plan your shots against." in the same green as the
-   confirmed schedule sentence — while the identical state one rhythm down was
-   painted red. Same state, two opposite signals, and neither of them neutral. */
+/* Neutral rather than the app's success green. The base rule above IS that
+   success wash, so anything falling through to it reads as a confirmed
+   schedule; this modifier is what stops that.
+
+   It was written for the "something is still missing" notices — a state that
+   was neither a success nor a fault, and that fell through to green on one
+   rhythm while being painted red on another. Those notices have since been
+   removed outright. What still carries this modifier is the schedule SENTENCE
+   itself, which is why the base rule is currently never applied alone: change
+   the green above and nothing on screen moves. */
 .cadence__summary--info {
   background: var(--bg-card-soft);
   border-color: var(--border-subtle);

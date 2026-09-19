@@ -171,29 +171,22 @@ describe("CadencePicker — the sentence", () => {
     expect(document.querySelector(".cadence__summary")).toBeNull();
   });
 
-  it("asks for the weeks when the days are chosen but the number is not", () => {
-    // The mirror, and it was missing: days with no interval stores
-    // `scheduleMode: "grid"` and no `intervalDays`, so `effectiveScheduleMode`
-    // returns "none" and NO shot ever gets a planned date — silently, since an
-    // untouched box raises no error. The panel this replaced had this notice
-    // and it was lost in the move.
+  it("says nothing when the days are chosen but the number is not", () => {
+    // Deliberately reversed: this used to assert an "Add how many weeks" notice
+    // carrying the neutral modifier. It restated the empty weeks box directly
+    // above it, so it went on request — the same call as the rolling rhythm's.
+    // Asserted on the ELEMENT rather than the words, so any notice returning
+    // here fails this, not only that one sentence.
     setup({ scheduleMode: "grid", shotDays: ["monday"] });
-    expect(screen.getByText(/Add how many weeks/)).toBeInTheDocument();
-    // Neutral: days with no interval still gives the shot-day greeting, so it is
-    // a legitimate end state rather than a mistake OR a success. Asserted as
-    // "carries the neutral modifier", because the bare class is the app's
-    // SUCCESS wash — falling through to it painted this in the same green as a
-    // confirmed schedule, while the identical state one rhythm down was red.
-    expect(screen.getByText(/Add how many weeks/)).toHaveClass(
-      "cadence__summary--info",
-    );
+    expect(document.querySelector(".cadence__summary")).toBeNull();
   });
 
-  it("asks for a day when the rhythm is chosen but no day is", () => {
+  it("says nothing when the rhythm is chosen but no day is", () => {
+    // Also reversed, from "Pick a day to plan your shots against." The trade is
+    // recorded in CadencePicker: an incomplete grid plans nothing and now says
+    // so nowhere, which is accepted rather than overlooked.
     setup({ scheduleMode: "grid", intervalDays: 7 });
-    expect(screen.getByText(/Pick a day to plan/)).toHaveClass(
-      "cadence__summary--info",
-    );
+    expect(document.querySelector(".cadence__summary")).toBeNull();
   });
 });
 
