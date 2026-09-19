@@ -107,6 +107,58 @@ describe("filterShots", () => {
     expect(filterShots(shots, { pain: "severe" })).toHaveLength(0);
   });
 
+  it("matches one soreness duration exactly", () => {
+    const shots = [
+      shot({ id: "a", afterSoreness: "week-plus" }),
+      shot({ id: "b", afterSoreness: "day-or-two" }),
+    ];
+
+    expect(
+      filterShots(shots, { afterSoreness: "week-plus" }).map((s) => s.id),
+    ).toEqual(["a"]);
+  });
+
+  it("never matches a shot nobody was asked about", () => {
+    // Only shots whose successor was logged carry an answer. "Not recorded" is
+    // not "not sore", so filtering to a value must exclude the unanswered.
+    const shots = [shot({ id: "asked", afterSoreness: "none" }), shot({ id: "never" })];
+
+    expect(
+      filterShots(shots, { afterSoreness: "none" }).map((s) => s.id),
+    ).toEqual(["asked"]);
+  });
+
+  it("treats 'no lump' as an answer, not as an absence", () => {
+    // The first boolean facet here. A truthiness test would collapse `false`
+    // into "facet off" and silently return every shot.
+    const shots = [
+      shot({ id: "lump", afterLump: true }),
+      shot({ id: "clear", afterLump: false }),
+      shot({ id: "unasked" }),
+    ];
+
+    expect(filterShots(shots, { afterLump: false }).map((s) => s.id)).toEqual([
+      "clear",
+    ]);
+    expect(filterShots(shots, { afterLump: true }).map((s) => s.id)).toEqual([
+      "lump",
+    ]);
+  });
+
+  it("treats an absent lump facet as no constraint", () => {
+    const shots = [
+      shot({ id: "lump", afterLump: true }),
+      shot({ id: "clear", afterLump: false }),
+      shot({ id: "unasked" }),
+    ];
+
+    expect(filterShots(shots, {}).map((s) => s.id)).toEqual([
+      "lump",
+      "clear",
+      "unasked",
+    ]);
+  });
+
   it("treats an absent pain facet as no constraint", () => {
     // This replaces a pair of tests about NaN bounds. The old facet was a
     // min/max pair bound to Number(input), which went NaN on a blank field —

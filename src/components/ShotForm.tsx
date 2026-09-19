@@ -9,11 +9,14 @@ import React, {
 import {
   OFF_DAYS_PATTERNS,
   PAIN_LEVELS,
+  SORENESS_DURATIONS,
   isOffDaysPattern,
   isPainLevel,
+  isSorenessDuration,
   type OffDaysPattern,
   type PainLevel,
   type ShotEntry,
+  type SorenessDuration,
 } from "../types/shot";
 import { painLabel } from "../utils/painLabel";
 import {
@@ -22,6 +25,14 @@ import {
   offDaysStrip,
 } from "../utils/offDaysLabel";
 import { offDaysWindowDays, offDaysWindowLabel } from "../utils/offDaysWindow";
+import {
+  previousShotQuestions,
+  sorenessShortLabel,
+  storedLump,
+  storedSoreness,
+} from "../utils/soreness";
+import { daysBetweenCivil } from "../utils/milestones";
+import type { PreviousShotAnswers } from "../hooks/useShots";
 import type { Profile } from "../types/profile";
 import { suggestionsFor } from "../utils/suggestions";
 import { todayLocalISO, nowHHMM } from "../utils/datetime";
@@ -38,10 +49,11 @@ import { SuggestionChips } from "./SuggestionChips";
 import { handOffFocus } from "../utils/focus";
 import { sortShots } from "../utils/shotQuery";
 import {
-  planShot,
-  previousShotDateBefore,
   anchorReferenceDate,
   effectiveScheduleMode,
+  planShot,
+  previousShotBefore,
+  previousShotDateBefore,
 } from "../utils/schedule";
 
 /**
@@ -134,6 +146,11 @@ export interface ShotDraft {
    *  and the form's "nothing selected" is distinct from "none". */
   pain: PainLevel | "";
   offDays: OffDaysPattern | "";
+  /** How the site settled — about the PREVIOUS shot when logging, about this
+   *  one when editing. `""` is "nobody answered", which `undefined` means in
+   *  storage and which is not the same as "none"/"no". */
+  afterSoreness: SorenessDuration | "";
+  afterLump: "" | "yes" | "no";
   notes: string;
 }
 
@@ -153,6 +170,8 @@ function freshDraft(): ShotDraft {
     carrierOil: "",
     pain: "",
     offDays: "",
+    afterSoreness: "",
+    afterLump: "",
     notes: "",
   };
 }
@@ -179,7 +198,13 @@ export type SaveOutcome =
 interface ShotFormProps {
   /** Returns what the save did; see {@link SaveOutcome}. `"refused"` keeps every
    *  field, so a failed write does not also erase what was typed. */
-  onAddShot: (shot: ShotEntry) => void | SaveOutcome;
+  onAddShot: (
+    shot: ShotEntry,
+    /** How the PREVIOUS shot settled, answered while logging this one and
+     *  written onto that shot rather than this one — see afterSoreness in
+     *  types/shot.ts for why it lives there. */
+    previous?: PreviousShotAnswers,
+  ) => void | SaveOutcome;
   onUpdateShot?: (shot: ShotEntry) => void | SaveOutcome;
   /**
    * Download a backup. Offered inside the sheet when a save fails, because from
@@ -416,6 +441,18 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             // unchecked would put a phantom into a group where no chip matches
             // and the Clear control is the only way out.
             offDays: isOffDaysPattern(initial.offDays) ? initial.offDays : "",
+            // Seeded from the shot being EDITED, where these describe that shot
+            // itself. Validated like the rest — storage is lenient, so a value
+            // predating the enum reaches here.
+            afterSoreness: isSorenessDuration(initial.afterSoreness)
+              ? initial.afterSoreness
+              : "",
+            afterLump:
+              typeof initial.afterLump === "boolean"
+                ? initial.afterLump
+                  ? "yes"
+                  : "no"
+                : "",
             notes: initial.notes ?? "",
           }
         : { ...freshDraft(), ...carried },
@@ -465,6 +502,79 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     if (!confirming) spanBeforeConfirm.current = liveOffDaysSpan;
   }, [confirming, liveOffDaysSpan]);
   const offDaysSpan = confirming ? spanBeforeConfirm.current : liveOffDaysSpan;
+
+  /**
+   * Which shot "how did it settle" is about, and which answers the time elapsed
+   * can actually settle.
+   *
+   * Two different subjects. Logging asks about the PREVIOUS shot, because this
+   * one has not settled yet — you find out over the following days. Editing a
+   * saved shot asks about that shot itself, whose interval closed long ago.
+   *
+   * The elapsed days are what decide the offered answers: nobody can say "a week
+   * or more" three days on. `previousShotQuestions` owns that rule; here we only
+   * work out how long it has been, from the previous shot to this one's date
+   * when logging, and from the shot to today when editing.
+   */
+  const liveSettledAsk = useMemo(() => {
+    const none = {
+      durations: [] as SorenessDuration[],
+      lump: false,
+      shotId: undefined as string | undefined,
+      subject: null as ShotEntry | null,
+      heading: "",
+      sub: "",
+    };
+    const subject = editingShot
+      ? { shot: editingShot, elapsed: daysBetweenCivil(editingShot.date, todayLocalISO()) }
+      : (() => {
+          const prev = previousShotBefore(date, shots);
+          return prev ? { shot: prev, elapsed: daysBetweenCivil(prev.date, date) } : null;
+        })();
+    // NaN guards a half-typed date, which is a real state of this field.
+    if (!subject || !Number.isFinite(subject.elapsed) || subject.elapsed < 0) {
+      return none;
+    }
+    const site = [subject.shot.injectionSitePosition, subject.shot.injectionSite]
+      .filter(Boolean)
+      .join(" ");
+    // EDITING asks unconditionally, and that is not the gate being abandoned.
+    // The gate governs what to ask UNPROMPTED while logging, where offering an
+    // answer the days so far cannot settle invites a guess. Opening a saved
+    // shot is a deliberate trip made to record how it went, so the one screen
+    // built for the job must not sit silent — and the two modes looked
+    // arbitrary side by side, because the number they turn on (the gap when
+    // logging, days since the shot when editing) is nowhere on screen.
+    const asks = editingShot
+      ? { durations: [...SORENESS_DURATIONS], lump: true }
+      : previousShotQuestions(subject.elapsed);
+    return {
+      ...asks,
+      shotId: subject.shot.id,
+      subject: subject.shot,
+      heading: editingShot ? "How this shot settled" : "Your previous shot",
+      sub: [
+        subject.shot.date,
+        site || null,
+        editingShot ? null : `${subject.elapsed} days before this one`,
+      ]
+        .filter(Boolean)
+        .join(" \u00b7 "),
+    };
+  }, [editingShot, date, shots]);
+
+  /**
+   * Frozen for the ✓ beat, for the same reason `offDaysSpan` is: the sheet must
+   * not change under its own confirmation. Measured before this — on a
+   * successful save the sub-line flipped to the shot just logged ("0 days
+   * before this one") and the duration group vanished, taking the chip the user
+   * had just tapped with it, while "✓ Saved" was still on screen.
+   */
+  const askBeforeConfirm = useRef(liveSettledAsk);
+  useEffect(() => {
+    if (!confirming) askBeforeConfirm.current = liveSettledAsk;
+  }, [confirming, liveSettledAsk]);
+  const settledAsk = confirming ? askBeforeConfirm.current : liveSettledAsk;
 
   /** What the app works out this shot was meant to be, given today's settings. */
   const plan = useMemo(
@@ -666,6 +776,121 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   const firstPainChipRef = useRef<HTMLInputElement>(null);
   const firstOffDaysChipRef = useRef<HTMLInputElement>(null);
   const [offDays, setOffDays] = useState<OffDaysPattern | "">(start.offDays);
+  const firstSorenessChipRef = useRef<HTMLInputElement>(null);
+  /**
+   * What these two fields show untouched: whatever the subject shot already has
+   * on record, so an existing answer is visible and changeable rather than
+   * invisible and silently replaceable.
+   *
+   * The REFERENCE is kept, never a "has it changed" answer derived from it —
+   * the rule `dateBaseline` records, and this pair is what skipping it cost.
+   * Seeding the fields from the record while the dirty check still measured
+   * them against an empty form made an untouched sheet read as dirty: "Clear
+   * form" appeared on a form nobody had touched, and dismissing it parked a
+   * draft nobody typed.
+   *
+   * Unlike `dateBaseline` these do NOT travel in the draft, and the difference
+   * is the point. Today moves while a sheet sits parked, so the date's
+   * reference has to be carried or it drifts out from under the comparison. A
+   * record does not move on its own — and if the subject really was answered
+   * somewhere else meanwhile, re-reading it is the RIGHT reference where a
+   * carried one would be stale.
+   */
+  const [afterSorenessBaseline, setAfterSorenessBaseline] = useState<
+    SorenessDuration | ""
+  >(() => storedSoreness(settledAsk.subject));
+  const [afterLumpBaseline, setAfterLumpBaseline] = useState<"" | "yes" | "no">(
+    () => storedLump(settledAsk.subject),
+  );
+  // Held in a ref for the reason `carriedRef` is: resetForm must stay
+  // identity-stable, and these move whenever the subject does.
+  const settledBaselineRef = useRef({
+    soreness: afterSorenessBaseline,
+    lump: afterLumpBaseline,
+  });
+  useEffect(() => {
+    settledBaselineRef.current = {
+      soreness: afterSorenessBaseline,
+      lump: afterLumpBaseline,
+    };
+  });
+  // A restored draft wins, because that is work the user did — including the
+  // work of CLEARING an answer. Tested on `draft` itself, never
+  // `start.afterSoreness || …`: "" is both a legitimate restored value and
+  // falsy, so `||` handed the record a win over a deliberate clear, which is
+  // the opposite of what the line it sat on claimed to do.
+  const [afterSoreness, setAfterSoreness] = useState<SorenessDuration | "">(
+    () => (draft ? start.afterSoreness : afterSorenessBaseline),
+  );
+  const [afterLump, setAfterLump] = useState<"" | "yes" | "no">(
+    () => (draft ? start.afterLump : afterLumpBaseline),
+  );
+  /**
+   * The answers are about a subject that can MOVE — backdating a new entry
+   * changes which shot "the previous one" is. Without this, an answer tapped
+   * about Tuesday's glute shot was written onto a thigh shot from a month
+   * earlier: the sub-line updated, nothing re-asked, and the row a rotation
+   * chart reads was the wrong one.
+   *
+   * Adjusted during render, the way this codebase syncs state to props
+   * elsewhere, and keyed on the subject's id rather than on a boolean "has it
+   * changed" — the id IS the reference, and a derived flag is what drifts.
+   *
+   * NO SUBJECT IS NOT A NEW SUBJECT. Clearing the date field — one keystroke of
+   * an ordinary correction — resolves to no shot at all for a render or two,
+   * and treating that as a change re-seeded from `null` and wiped the answer
+   * just tapped. Permanently: finishing the date brings back the same id, so
+   * there is no further change to sync, and nothing puts it back. The
+   * last-known id is therefore held across the gap, and only a different KNOWN
+   * shot re-seeds.
+   */
+  const [lastSubjectId, setLastSubjectId] = useState(settledAsk.shotId);
+  if (settledAsk.shotId !== undefined && settledAsk.shotId !== lastSubjectId) {
+    setLastSubjectId(settledAsk.shotId);
+    setAfterSoreness(storedSoreness(settledAsk.subject));
+    setAfterLump(storedLump(settledAsk.subject));
+    // The baseline moves with the value it is the reference for, or the two
+    // fall out of step and "has the user entered something?" starts answering
+    // wrongly — the failure `plannedBaseline` documents a few lines above.
+    setAfterSorenessBaseline(storedSoreness(settledAsk.subject));
+    setAfterLumpBaseline(storedLump(settledAsk.subject));
+  }
+  /**
+   * A pick the elapsed gap can no longer settle goes back to what is on record.
+   *
+   * Re-dating a new entry from a 10-day gap to a 2-day one withdraws the whole
+   * duration group, and the "week or more" tapped a moment ago would otherwise
+   * still be saved — storing the one answer `previousShotQuestions` exists to
+   * withhold. Reset to the STORED value, never blindly to "": clearing a value
+   * that merely matches the record would erase the previous shot's real answer,
+   * which is the same defect by another door.
+   */
+  // NO SUBJECT IS NOT AN UNANSWERABLE GAP — the same distinction the sync above
+  // turns on, and missing it here defeated that fix rather than adding to it.
+  // A cleared date resolves to no shot, so `durations` is empty and `lump` is
+  // false, and without this guard that reads as "every answer just became
+  // unanswerable" and resets the chip the user tapped. Retyping the date brings
+  // the subject back but not the answer, so an ordinary date correction ate it.
+  // An unknown question withdraws nothing; only a KNOWN gap can.
+  const subjectKnown = settledAsk.shotId !== undefined;
+  if (
+    !editingShot &&
+    subjectKnown &&
+    afterSoreness !== "" &&
+    afterSoreness !== afterSorenessBaseline &&
+    !settledAsk.durations.includes(afterSoreness)
+  ) {
+    setAfterSoreness(afterSorenessBaseline);
+  }
+  if (
+    !editingShot &&
+    subjectKnown &&
+    afterLump !== "" &&
+    afterLump !== afterLumpBaseline &&
+    !settledAsk.lump
+  ) {
+    setAfterLump(afterLumpBaseline);
+  }
   const [notes, setNotes] = useState<string>(start.notes);
 
   // Suggestions derived from past entries — one tap to reuse a value you've
@@ -724,6 +949,14 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     setInjectionSitePosition("");
     setPain("");
     setOffDays("");
+    // The BASELINE, not "" — see the block that seeds these. Blanking them told
+    // the save path the user had deliberately cleared the previous shot's
+    // answers, so "Clear form" followed by Save DELETED answers nobody had
+    // touched. Unrecoverable by this feature's own design: it never asks again
+    // about a shot whose interval has closed. Clearing restores what the record
+    // says, exactly as the date goes back to today.
+    setAfterSoreness(settledBaselineRef.current.soreness);
+    setAfterLump(settledBaselineRef.current.lump);
     setNotes("");
     // Carried-forward fields reset to the last shot's values, not to empty.
     const { doseMg, testosteroneEster, carrierOil } = carriedRef.current;
@@ -862,6 +1095,16 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       carrierOil: carrierOil || undefined,
       pain: pain === "" ? undefined : pain,
       offDays: offDays || undefined,
+      // ONLY in edit mode do these describe the shot in front of you. On a new
+      // shot they are about the previous one and travel separately, below.
+      // Written back unconditionally while editing — including when the block is
+      // not rendered because the shot is too old to ask about — because
+      // `updateShot` replaces the entry wholesale, so omitting them would wipe
+      // an answer the user gave weeks ago.
+      afterSoreness:
+        editingShot && afterSoreness !== "" ? afterSoreness : undefined,
+      afterLump:
+        editingShot && afterLump !== "" ? afterLump === "yes" : undefined,
       notes: notes || undefined,
       // Frozen here and never recomputed. An emptied field means "no planned
       // date", which is a real answer rather than a prompt to guess one.
@@ -872,8 +1115,29 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       plannedFor: parsedPlanned ?? undefined,
     };
 
+    // Against the RECORD, not against "is anything selected". The block seeds
+    // from the subject shot, so an untouched question already holds its stored
+    // value — sending `undefined` for it would delete an answer the user never
+    // went near, and sending nothing when they cleared one would ignore them.
+    const answeredAboutPrevious =
+      !editingShot &&
+      settledAsk.shotId !== undefined &&
+      (afterSoreness !== afterSorenessBaseline ||
+        afterLump !== afterLumpBaseline);
     const outcome =
-      editingShot && onUpdateShot ? onUpdateShot(newShot) : onAddShot(newShot);
+      editingShot && onUpdateShot
+        ? onUpdateShot(newShot)
+        : answeredAboutPrevious
+          ? onAddShot(newShot, {
+              id: settledAsk.shotId as string,
+              afterSoreness: afterSoreness || undefined,
+              afterLump: afterLump === "" ? undefined : afterLump === "yes",
+            })
+          // No trailing `undefined`: a second argument that is always present
+          // changes what every existing caller sees, and `toHaveBeenCalledWith`
+          // is an exact argument-list match. The optional parameter should be
+          // genuinely absent when there is nothing to say.
+          : onAddShot(newShot);
 
     // Written only once the shot actually landed, and only when planShot had to
     // establish one — otherwise a failed save would leave an anchor behind for
@@ -951,6 +1215,8 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     carrierOil,
     pain,
     offDays,
+    afterSoreness,
+    afterLump,
     notes,
   };
 
@@ -968,15 +1234,23 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   // it would make a brand-new form dirty on open — the field seeds from what
   // the app computed, while `opened` holds "" — so "Clear form" would appear
   // and dismissing would confirm, on a form nobody had touched.
+  // `afterSoreness` and `afterLump` join them for a third version of the same
+  // reason: they seed from the SUBJECT SHOT's record, which `opened` is built
+  // too early to know about, so measuring them generically made an untouched
+  // sheet dirty the moment the previous shot already had an answer on it.
   const BASELINE_FIELDS: (keyof ShotDraft)[] = [
     "date",
     "dateBaseline",
     "plannedFor",
     "plannedBaseline",
+    "afterSoreness",
+    "afterLump",
   ];
   const hasUnsavedInput =
     date !== dateBaseline ||
     plannedDraft !== plannedBaseline ||
+    afterSoreness !== afterSorenessBaseline ||
+    afterLump !== afterLumpBaseline ||
     (Object.keys(current) as (keyof ShotDraft)[])
       .filter((k) => !BASELINE_FIELDS.includes(k))
       .some((k) => current[k] !== opened[k]);
@@ -986,6 +1260,8 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   const looksFresh =
     date === todayLocalISO() &&
     plannedDraft === plannedBaseline &&
+    afterSoreness === afterSorenessBaseline &&
+    afterLump === afterLumpBaseline &&
     (Object.keys(current) as (keyof ShotDraft)[])
       .filter((k) => !BASELINE_FIELDS.includes(k))
       .every((k) => current[k] === opened[k]);
@@ -1368,131 +1644,6 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             )}
           </div>
 
-          {/* The `.field-cell` wrapper is NOT decoration — this shipped without
-              one and crushed the pain group beside it. `.form-row` is a flex row
-              above 560px where every member is a `.field-cell` (`flex: 1 1 0`);
-              a bare fieldset gets `flex: 0 1 auto` with a ~509px max-content
-              basis instead, so it took the row and left pain with 1px at 600px
-              and 8px above that. Measured: the four pain chips stacked
-              vertically inside an 8px box and painted over this column, with
-              "Injection pain" overprinting "Any days you felt off?".
-
-              It also repaired itself the moment a chip was tapped — Clear
-              becomes a third flex item and the row wraps — so the broken state
-              was the one every sheet opens in. On main this row's second member
-              was a text input, whose small content basis hid the difference.
-              The phone widths I swept were all below the breakpoint, so none of
-              them could see it.
-
-              Inside it, the same shape as the pain group: native radios in a
-              fieldset, so arrow keys roam the group for free and it is one tab
-              stop, which `useFocusTrap` already handles for an unchecked
-              group. */}
-          <div className="field-cell">
-            <fieldset className="off-days-field">
-              {/* The window lives INSIDE the legend, so it is part of the
-                  group's accessible NAME rather than a description of it.
-                  `aria-describedby` on a fieldset was the first attempt and it
-                  was a prediction, not a measurement: group-level descriptions
-                  are announced inconsistently, and iOS VoiceOver — this app's
-                  primary platform — does not reliably surface fieldset
-                  semantics at all. A name is announced on entering the group by
-                  every AT there is, so this shape does not depend on support we
-                  cannot check from here. It reads the same on screen. */}
-              <legend>
-                {/* The explicit space is load-bearing. JSX strips the newline
-                    between this text and the expression below, so the group's
-                    accessible name computed as "...felt off?The 13 days..." —
-                    measured. The span is `display: block`, so nothing shows the
-                    join on screen and only the NAME is wrong. */}
-                Any days you felt off?{" "}
-                {/* The recall window, named rather than assumed. Never "this week":
-                cadence here runs from 3 to 14 days, so a fixed word would be
-                wrong for most people. It says which shot you are answering
-                about, which is also what lets the four answers keep one meaning
-                each at any interval length — the chips do not change, the span
-                does. */}
-                {/* Unconditional. It used to render only when the length was
-                    known, which hid the anchor on a first entry — the one shot
-                    where nothing else on screen says what window is being asked
-                    about. `offDaysWindowLabel` now always names the window and
-                    adds the length only when it has one. */}
-                <span className="off-days-field__span">{offDaysSpan}</span>
-              </legend>
-              {/* Rows, not chips. Choice chips are specified for "one to two
-                  short words", which the pain group fits and this one never
-                  did — "Right before this one" measured 158.6px against
-                  Moderate's 77, so four wrapped to two or three lines and a
-                  wrapped grid has no reading order left to follow. A radio LIST
-                  is the control for single-select with longer labels. */}
-              <div className="off-days-rows">
-                {OFF_DAYS_PATTERNS.map((pattern) => (
-                  <label
-                    key={pattern}
-                    className={`off-days-row${
-                      offDays === pattern ? " off-days-row--on" : ""
-                    }`}
-                  >
-                    <input
-                      ref={
-                        pattern === OFF_DAYS_PATTERNS[0]
-                          ? firstOffDaysChipRef
-                          : undefined
-                      }
-                      type="radio"
-                      name="offDays"
-                      value={pattern}
-                      checked={offDays === pattern}
-                      onChange={() => setOffDays(pattern)}
-                      // The visible text is short because the strip draws the
-                      // position; this is where that position stays available to
-                      // anyone who cannot see the strip. It always begins with
-                      // the visible label, which is what WCAG 2.5.3 asks for and
-                      // what keeps "tap Early on" working in voice control.
-                      aria-label={offDaysSpokenLabel(pattern)}
-                    />
-                    <span className="off-days-row__mark" aria-hidden="true" />
-                    <span className="off-days-row__label">
-                      {offDaysShortLabel(pattern)}
-                    </span>
-                    {/* Decorative, and safely so: `offDaysSpokenLabel` above
-                        carries the same fact in words. Three of the five light
-                        the same NUMBER of slots in different places, which is
-                        the whole reason to draw it — a count cannot tell them
-                        apart and the position can. */}
-                    <span className="off-days-row__strip" aria-hidden="true">
-                      {offDaysStrip(pattern).map((on, i) => (
-                        <i key={i} className={on ? "is-off" : undefined} />
-                      ))}
-                    </span>
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-            {/* Only once something is set, and the only way back to "not
-              recorded" — a different fact from "not really". Same control, same
-              reasoning and same focus hand-off as the pain group's. */}
-            {offDays !== "" && (
-              <button
-                type="button"
-                className="link-button field-clear"
-                // Named for what it clears: outside the fieldset, a screen reader
-                // browsing by button hears only "Clear", beside a separate "Clear
-                // form" in the same dialog.
-                aria-label="Clear off days"
-                onClick={() => {
-                  setOffDays("");
-                  // Removes ITSELF — the condition rendering it is the value it
-                  // just cleared — so it hands focus on first, back to the group
-                  // it belongs to. Without this, focus lands on <body> inside a
-                  // dialog whose #root is inert, where the trap cannot re-engage.
-                  handOffFocus(firstOffDaysChipRef, headingRef);
-                }}
-              >
-                Clear
-              </button>
-            )}
-          </div>
         </div>
 
         {/* Only when the settings answer the question. With no cadence there is
@@ -1542,6 +1693,218 @@ export const ShotForm: React.FC<ShotFormProps> = ({
               different day.
             </p>
           </div>
+        )}
+
+        {/* Out of the pain row and down here, next to the question about the shot
+            it shares a window with. It used to sit beside "Injection pain" in a
+            `.form-row`, which put a field about the PREVIOUS interval in the
+            middle of the fields about this shot, with "Planned for" separating
+            it from the other retrospective question.
+
+            The `.field-cell` wrapper stays. It is no longer holding a flex row
+            open — that was the bug it was added for, where a bare fieldset took
+            the row and crushed the pain group to 8px — but it still carries the
+            `min-width: 0` that keeps a fieldset from defaulting to min-content.
+
+            Inside it, the same shape as the pain group: native radios in a
+            fieldset, so arrow keys roam the group for free and it is one tab
+            stop, which `useFocusTrap` already handles for an unchecked
+            group. */}
+        <div className="field-cell">
+          <fieldset className="off-days-field">
+            {/* The window lives INSIDE the legend, so it is part of the
+                group's accessible NAME rather than a description of it.
+                `aria-describedby` on a fieldset was the first attempt and it
+                was a prediction, not a measurement: group-level descriptions
+                are announced inconsistently, and iOS VoiceOver — this app's
+                primary platform — does not reliably surface fieldset
+                semantics at all. A name is announced on entering the group by
+                every AT there is, so this shape does not depend on support we
+                cannot check from here. It reads the same on screen. */}
+            <legend>
+              {/* The explicit space is load-bearing. JSX strips the newline
+                  between this text and the expression below, so the group's
+                  accessible name computed as "...felt off?The 13 days..." —
+                  measured. The span is `display: block`, so nothing shows the
+                  join on screen and only the NAME is wrong. */}
+              Any days you felt off?{" "}
+              {/* The recall window, named rather than assumed. Never "this week":
+              cadence here runs from 3 to 14 days, so a fixed word would be
+              wrong for most people. It says which shot you are answering
+              about, which is also what lets the four answers keep one meaning
+              each at any interval length — the chips do not change, the span
+              does. */}
+              {/* Unconditional. It used to render only when the length was
+                  known, which hid the anchor on a first entry — the one shot
+                  where nothing else on screen says what window is being asked
+                  about. `offDaysWindowLabel` now always names the window and
+                  adds the length only when it has one. */}
+              <span className="off-days-field__span">{offDaysSpan}</span>
+            </legend>
+            {/* Rows, not chips. Choice chips are specified for "one to two
+                short words", which the pain group fits and this one never
+                did — "Right before this one" measured 158.6px against
+                Moderate's 77, so four wrapped to two or three lines and a
+                wrapped grid has no reading order left to follow. A radio LIST
+                is the control for single-select with longer labels. */}
+            <div className="off-days-rows">
+              {OFF_DAYS_PATTERNS.map((pattern) => (
+                <label
+                  key={pattern}
+                  className={`off-days-row${
+                    offDays === pattern ? " off-days-row--on" : ""
+                  }`}
+                >
+                  <input
+                    ref={
+                      pattern === OFF_DAYS_PATTERNS[0]
+                        ? firstOffDaysChipRef
+                        : undefined
+                    }
+                    type="radio"
+                    name="offDays"
+                    value={pattern}
+                    checked={offDays === pattern}
+                    onChange={() => setOffDays(pattern)}
+                    // The visible text is short because the strip draws the
+                    // position; this is where that position stays available to
+                    // anyone who cannot see the strip. It always begins with
+                    // the visible label, which is what WCAG 2.5.3 asks for and
+                    // what keeps "tap Early on" working in voice control.
+                    aria-label={offDaysSpokenLabel(pattern)}
+                  />
+                  <span className="off-days-row__mark" aria-hidden="true" />
+                  <span className="off-days-row__label">
+                    {offDaysShortLabel(pattern)}
+                  </span>
+                  {/* Decorative, and safely so: `offDaysSpokenLabel` above
+                      carries the same fact in words. Three of the five light
+                      the same NUMBER of slots in different places, which is
+                      the whole reason to draw it — a count cannot tell them
+                      apart and the position can. */}
+                  <span className="off-days-row__strip" aria-hidden="true">
+                    {offDaysStrip(pattern).map((on, i) => (
+                      <i key={i} className={on ? "is-off" : undefined} />
+                    ))}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          {/* Only once something is set, and the only way back to "not
+            recorded" — a different fact from "not really". Same control, same
+            reasoning and same focus hand-off as the pain group's. */}
+          {offDays !== "" && (
+            <button
+              type="button"
+              className="link-button field-clear"
+              // Named for what it clears: outside the fieldset, a screen reader
+              // browsing by button hears only "Clear", beside a separate "Clear
+              // form" in the same dialog.
+              aria-label="Clear off days"
+              onClick={() => {
+                setOffDays("");
+                // Removes ITSELF — the condition rendering it is the value it
+                // just cleared — so it hands focus on first, back to the group
+                // it belongs to. Without this, focus lands on <body> inside a
+                // dialog whose #root is inert, where the trap cannot re-engage.
+                handOffFocus(firstOffDaysChipRef, headingRef);
+              }}
+            >
+              Clear
+            </button>
+          )}
+        </div>
+
+        {/* Directly under "Any days you felt off?", because when logging they
+            are two questions about the same stretch of time — the interval that
+            just closed — and they used to be split by "Planned for", a field
+            about the shot in front of you.
+
+            They keep SEPARATE headings rather than merging under one, because
+            when EDITING they are not about the same window at all: off days is
+            the interval before that shot, and this is how that shot settled
+            afterwards. One heading would be wrong for half the cases.
+
+            When logging, still rendered only when the elapsed time can settle
+            at least one question — an answer that cannot yet be true gets
+            skipped or guessed. Editing always asks; see `liveSettledAsk`. */}
+        {(settledAsk.durations.length > 0 || settledAsk.lump) && (
+          <section className="prev-shot">
+            <h3 className="prev-shot__title">{settledAsk.heading}</h3>
+            <p className="prev-shot__sub">{settledAsk.sub}</p>
+            {settledAsk.durations.length > 0 && (
+              <fieldset className="prev-shot__field">
+                <legend>How long was it sore?</legend>
+                <div
+                  className={`prev-shot__chips${
+                    settledAsk.durations.length === 3
+                      ? " prev-shot__chips--three"
+                      : ""
+                  }`}
+                >
+                  {settledAsk.durations.map((level, i) => (
+                    <label
+                      key={level}
+                      className={`prev-shot__chip${
+                        afterSoreness === level ? " prev-shot__chip--on" : ""
+                      }`}
+                    >
+                      <input
+                        ref={i === 0 ? firstSorenessChipRef : undefined}
+                        type="radio"
+                        name="afterSoreness"
+                        value={level}
+                        checked={afterSoreness === level}
+                        onChange={() => setAfterSoreness(level)}
+                      />
+                      {sorenessShortLabel(level)}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            )}
+            {settledAsk.lump && (
+              <fieldset className="prev-shot__field">
+                <legend>Any lump that hasn’t absorbed?</legend>
+                <div className="prev-shot__chips prev-shot__chips--pair">
+                  {(["no", "yes"] as const).map((value) => (
+                    <label
+                      key={value}
+                      className={`prev-shot__chip${
+                        afterLump === value ? " prev-shot__chip--on" : ""
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="afterLump"
+                        value={value}
+                        checked={afterLump === value}
+                        onChange={() => setAfterLump(value)}
+                      />
+                      {value === "no" ? "No" : "Yes"}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            )}
+            {/* Same control, same reasoning and same focus hand-off as the pain
+                and off-days groups': the only way back to "not recorded". */}
+            {(afterSoreness !== "" || afterLump !== "") && (
+              <button
+                type="button"
+                className="link-button field-clear"
+                aria-label="Clear how it settled"
+                onClick={() => {
+                  setAfterSoreness("");
+                  setAfterLump("");
+                  handOffFocus(firstSorenessChipRef, headingRef);
+                }}
+              >
+                Clear
+              </button>
+            )}
+          </section>
         )}
 
         <label className="form-column">

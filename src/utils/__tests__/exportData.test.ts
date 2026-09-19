@@ -170,7 +170,8 @@ describe("toCsv", () => {
     // through. `plannedFor` sits beside the date it belongs to.
     expect(csv.slice(1).split("\r\n")[0]).toBe(
       "date,plannedFor,time,doseMg,injectionSite,injectionSitePosition," +
-        "testosteroneEster,carrierOil,pain,offDays,notes",
+        "testosteroneEster,carrierOil,pain,offDays,afterSoreness,afterLump," +
+        "notes",
     );
   });
 

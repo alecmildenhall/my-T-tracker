@@ -89,6 +89,42 @@ export function isOffDaysPattern(value: unknown): value is OffDaysPattern {
   );
 }
 
+/**
+ * How long the injection site stayed sore afterwards, and whether a lump was
+ * left — the half of the experience the model had no room for.
+ *
+ * Deliberately NOT the same question as `pain`. Pain at the injection is driven
+ * by needle gauge, speed and technique; soreness afterwards is driven by oil
+ * volume, carrier and how the depot absorbs. Vaccine reactogenicity diaries
+ * formalise the same split, scoring day-0 reactions apart from the days after,
+ * and collapsing them is how you end up unable to tell "that needle hurt" from
+ * "that site was angry for a week" — which is the one site rotation answers.
+ *
+ * ONE vocabulary of four, always meaning the same number of days. The form
+ * offers only the answers the elapsed gap can settle — "a week or more" cannot
+ * be true three days on — but it never rewords them, because an answer whose
+ * meaning depended on the asker's cadence would be the overloaded-value bug
+ * spread across a population instead of a field.
+ *
+ * `undefined` is NOT `"none"`, exactly as with pain and off days: one says the
+ * site was fine, the other says nobody was asked.
+ */
+export const SORENESS_DURATIONS = [
+  "none",
+  "day-or-two",
+  "several-days",
+  "week-plus",
+] as const;
+
+export type SorenessDuration = (typeof SORENESS_DURATIONS)[number];
+
+export function isSorenessDuration(value: unknown): value is SorenessDuration {
+  return (
+    typeof value === "string" &&
+    (SORENESS_DURATIONS as readonly string[]).includes(value)
+  );
+}
+
 // Core model for a single HRT shot log.
 // Intentionally PII-free: only HRT-related fields.
 export interface ShotEntry {
@@ -102,6 +138,16 @@ export interface ShotEntry {
   carrierOil?: string; // e.g. "cottonseed", "sesame", "grapeseed"
   pain?: PainLevel; // how much the injection itself hurt
   offDays?: OffDaysPattern; // where the off days sat in the interval before this
+  /** How long THIS shot's site stayed sore, and whether it left a lump.
+   *
+   *  Answered at the NEXT shot rather than at this one, because the answer does
+   *  not exist yet when you log: you find out over the following days. So the
+   *  log form asks about the previous shot and writes here, onto the shot being
+   *  described — which keeps the site and how it settled on one row, and that is
+   *  exactly what a rotation chart needs. Storing it on the shot being logged
+   *  would make every chart join two rows to learn where the sore one was. */
+  afterSoreness?: SorenessDuration;
+  afterLump?: boolean;
   notes?: string; // long-form notes
   /** The day this shot was meant to be, frozen at save time (YYYY-MM-DD).
    *

@@ -1,15 +1,37 @@
 // src/hooks/useShots.ts
 import { useCallback } from "react";
 import { useLocalStorage } from "./useLocalStorage";
-import type { ShotEntry } from "../types/shot";
+import type { ShotEntry, SorenessDuration } from "../types/shot";
 import { STORAGE_KEYS } from "../storageKeys";
 import { normalizeValue, type TextField } from "../utils/suggestions";
 import { isBlank } from "../utils/strings";
 
+/** How the previous shot's site settled, answered while logging the next one. */
+export interface PreviousShotAnswers {
+  id: string;
+  afterSoreness?: SorenessDuration;
+  afterLump?: boolean;
+}
+
+/**
+ * Apply the answers, DELETING rather than writing `undefined` for one that was
+ * cleared. `ShotEntry` treats an absent field as "nobody answered", and an
+ * explicit `undefined` key is the same thing to JSON but not to `Object.keys`,
+ * so removing it keeps the two readings identical.
+ */
+function withAnswers(shot: ShotEntry, a: PreviousShotAnswers): ShotEntry {
+  const next: ShotEntry = { ...shot };
+  if (a.afterSoreness === undefined) delete next.afterSoreness;
+  else next.afterSoreness = a.afterSoreness;
+  if (a.afterLump === undefined) delete next.afterLump;
+  else next.afterLump = a.afterLump;
+  return next;
+}
+
 export interface UseShots {
   shots: ShotEntry[];
   /** Append a shot. Returns whether it actually reached storage. */
-  addShot: (shot: ShotEntry) => boolean;
+  addShot: (shot: ShotEntry, previous?: PreviousShotAnswers) => boolean;
   /** Replace a shot. Returns whether it actually reached storage. */
   updateShot: (id: string, updatedShot: ShotEntry) => boolean;
   deleteShot: (id: string) => boolean;
@@ -71,8 +93,24 @@ export function useShots(): UseShots {
   //    applies later, so a `persistShots` call in the same tick read a snapshot
   //    that predated it and wrote the stale list back — a delete followed by an
   //    add resurrected the deleted shot.
+  /**
+   * One write, two entries.
+   *
+   * The soreness answers in the log sheet are about the PREVIOUS shot, so
+   * saving a new shot can change two rows. They go through a single
+   * `persistShots` call rather than two, so both land or neither does: a
+   * second write that failed on its own would drop the answer while the shot
+   * saved, and report success — the silent-failure class this store exists to
+   * close.
+   */
   const addShot = useCallback(
-    (shot: ShotEntry) => persistShots((prev) => [...prev, shot]),
+    (shot: ShotEntry, previous?: PreviousShotAnswers) =>
+      persistShots((prev) => {
+        const before = previous
+          ? prev.map((s) => (s.id === previous.id ? withAnswers(s, previous) : s))
+          : prev;
+        return [...before, shot];
+      }),
     [persistShots]
   );
 

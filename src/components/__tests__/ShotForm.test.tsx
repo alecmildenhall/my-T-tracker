@@ -396,6 +396,8 @@ describe("ShotForm field mapping", () => {
           carrierOil: "",
           pain: "",
           offDays: "",
+          afterSoreness: "",
+          afterLump: "",
           notes: "",
           plannedFor: "",
           plannedBaseline: "",
@@ -922,6 +924,8 @@ describe("ShotForm draft publishing", () => {
     carrierOil: "",
     pain: "",
     offDays: "",
+    afterSoreness: "",
+    afterLump: "",
     notes,
   });
 
@@ -1707,6 +1711,8 @@ const planned = () =>
       carrierOil: "",
       pain: "",
       offDays: "",
+      afterSoreness: "",
+      afterLump: "",
       notes: "",
     };
     const onAddShot = vi.fn((): SaveOutcome => "saved");
@@ -1826,6 +1832,8 @@ const planned = () =>
           carrierOil: "",
           pain: "",
           offDays: "",
+          afterSoreness: "",
+          afterLump: "",
           notes: "",
         }}
       />,
@@ -1904,6 +1912,8 @@ const planned = () =>
       carrierOil: "",
       pain: "",
       offDays: "",
+      afterSoreness: "",
+      afterLump: "",
       notes: "",
     };
     render(
@@ -2552,5 +2562,378 @@ describe("ShotForm — off days", () => {
       // ...and no invented length beside it.
       expect(screen.queryByText(/·/)).toBeNull();
     });
+  });
+});
+
+describe("how the previous shot settled", () => {
+  const daysAgo = (n: number) => addDaysCivil(todayLocalISO(), -n);
+  const withPrevious = (n: number): ShotEntry[] => [
+    { id: "prev", date: daysAgo(n), injectionSite: "glute", injectionSitePosition: "left" },
+  ];
+  const sorenessGroup = () =>
+    screen.queryByRole("group", { name: /How long was it sore/i });
+  const lumpGroup = () =>
+    screen.queryByRole("group", { name: /Any lump/i });
+
+  it("asks nothing when there is no previous shot to ask about", () => {
+    render(<ShotForm onAddShot={vi.fn()} shots={[]} />);
+
+    expect(sorenessGroup()).toBeNull();
+    expect(lumpGroup()).toBeNull();
+  });
+
+  it("offers every duration once a week has passed", () => {
+    render(<ShotForm onAddShot={vi.fn()} shots={withPrevious(7)} />);
+
+    expect(sorenessGroup()).not.toBeNull();
+    expect(screen.getByRole("radio", { name: "A week or more" })).toBeTruthy();
+  });
+
+  it("withholds 'a week or more' when only a few days have passed", () => {
+    // Not wrong — UNANSWERABLE. Four days in, nobody can say it was sore for a
+    // week, so offering it invites a guess.
+    render(<ShotForm onAddShot={vi.fn()} shots={withPrevious(4)} />);
+
+    expect(screen.getByRole("radio", { name: "Several days" })).toBeTruthy();
+    expect(screen.queryByRole("radio", { name: "A week or more" })).toBeNull();
+  });
+
+  it("asks only about the lump below the three-day floor", () => {
+    // "Is there a lump now?" is present tense and answerable on any day, so a
+    // short cadence still gets asked that one.
+    render(<ShotForm onAddShot={vi.fn()} shots={withPrevious(2)} />);
+
+    expect(sorenessGroup()).toBeNull();
+    expect(lumpGroup()).not.toBeNull();
+  });
+
+  it("saves the answers onto the PREVIOUS shot, not the one being logged", () => {
+    const onAddShot = vi.fn();
+    render(<ShotForm onAddShot={onAddShot} shots={withPrevious(7)} />);
+
+    fireEvent.click(screen.getByRole("radio", { name: "Several days" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Yes" }));
+    fireEvent.click(screen.getByRole("button", { name: /save shot/i }));
+
+    const [shot, previous] = onAddShot.mock.calls[0];
+    // The shot being logged carries none of it: these describe the other shot's
+    // site, and keeping them on that row is what a rotation chart needs.
+    expect(shot.afterSoreness).toBeUndefined();
+    expect(shot.afterLump).toBeUndefined();
+    expect(previous).toEqual({
+      id: "prev",
+      afterSoreness: "several-days",
+      afterLump: true,
+    });
+  });
+
+  it("passes no second argument when nothing was answered", () => {
+    // An always-present argument changes what every existing caller sees.
+    const onAddShot = vi.fn();
+    render(<ShotForm onAddShot={onAddShot} shots={withPrevious(7)} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /save shot/i }));
+
+    expect(onAddShot.mock.calls[0]).toHaveLength(1);
+  });
+
+  it("asks about the shot itself when editing, and saves it there", () => {
+    const editing: ShotEntry = { id: "old", date: daysAgo(10) };
+    const onUpdateShot = vi.fn();
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        onUpdateShot={onUpdateShot}
+        editingShot={editing}
+        shots={[editing]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("radio", { name: "A week or more" }));
+    fireEvent.click(screen.getByRole("button", { name: /update shot/i }));
+
+    const [shot, previous] = onUpdateShot.mock.calls[0];
+    expect(shot.id).toBe("old");
+    expect(shot.afterSoreness).toBe("week-plus");
+    expect(previous).toBeUndefined();
+  });
+
+  it("keeps an answer already on record when only the other question is answered", () => {
+    // Without seeding, "untouched" and "cleared" both reach the store as
+    // `undefined`, so answering the lump DELETED a soreness answer the shot
+    // already had — and nothing on screen ever showed there was one to lose.
+    const onAddShot = vi.fn();
+    const previous: ShotEntry[] = [
+      {
+        id: "prev",
+        date: daysAgo(9),
+        injectionSite: "glute",
+        afterSoreness: "week-plus",
+      },
+    ];
+    render(<ShotForm onAddShot={onAddShot} shots={previous} />);
+
+    // It is visible, which is the other half of the fix.
+    expect(
+      (screen.getByRole("radio", { name: "A week or more" }) as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+
+    fireEvent.click(screen.getByRole("radio", { name: "Yes" }));
+    fireEvent.click(screen.getByRole("button", { name: /save shot/i }));
+
+    expect(onAddShot.mock.calls[0][1]).toEqual({
+      id: "prev",
+      afterSoreness: "week-plus",
+      afterLump: true,
+    });
+  });
+
+  it("does not carry an answer onto a different shot when the date moves", () => {
+    // The subject can MOVE: backdating a new entry changes which shot "the
+    // previous one" is. Measured before the fix — an answer about the recent
+    // glute shot was written onto a thigh shot from a month earlier, which is
+    // exactly the row a rotation chart reads.
+    const onAddShot = vi.fn();
+    const shots: ShotEntry[] = [
+      { id: "old", date: daysAgo(30), injectionSite: "thigh" },
+      { id: "recent", date: daysAgo(5), injectionSite: "glute" },
+    ];
+    render(<ShotForm onAddShot={onAddShot} shots={shots} />);
+
+    fireEvent.click(screen.getByRole("radio", { name: "Several days" }));
+    // Backdate between the two, so "the previous shot" becomes the older one.
+    fireEvent.change(screen.getByLabelText(/^Date$/), {
+      target: { value: daysAgo(10) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /save shot/i }));
+
+    // Re-seeded from the new subject, which has nothing on record — so there is
+    // nothing to say about it, and no patch at all.
+    expect(onAddShot.mock.calls[0]).toHaveLength(1);
+  });
+
+  it("drops a pick the gap can no longer settle", () => {
+    // Re-dating from a 10-day gap to a 2-day one withdraws the duration group.
+    // The "week or more" tapped a moment earlier must not still be saved: it is
+    // the one answer previousShotQuestions exists to withhold.
+    const onAddShot = vi.fn();
+    const shots: ShotEntry[] = [{ id: "prev", date: daysAgo(10) }];
+    render(<ShotForm onAddShot={onAddShot} shots={shots} />);
+
+    fireEvent.click(screen.getByRole("radio", { name: "A week or more" }));
+    fireEvent.change(screen.getByLabelText(/^Date$/), {
+      target: { value: daysAgo(8) },
+    });
+
+    expect(
+      screen.queryByRole("group", { name: /How long was it sore/i }),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /save shot/i }));
+    expect(onAddShot.mock.calls[0]).toHaveLength(1);
+  });
+
+  it("does not change under its own ✓ confirmation", () => {
+    // The sheet must not mutate while it is confirming a save — the same rule
+    // `offDaysSpan` is frozen for. Measured before the fix: the sub-line flipped
+    // to the shot just logged and the duration group vanished, taking the chip
+    // the user had tapped with it, while "✓ Saved" was still on screen.
+    const shots: ShotEntry[] = [{ id: "prev", date: daysAgo(9), injectionSite: "glute" }];
+    const { rerender } = render(<ShotForm onAddShot={vi.fn()} shots={shots} />);
+    const before = document.querySelector(".prev-shot__sub")?.textContent;
+
+    // What App does on a successful save: the new shot joins the list and the
+    // form is told it is confirming.
+    rerender(
+      <ShotForm
+        onAddShot={vi.fn()}
+        confirming
+        shots={[...shots, { id: "just-logged", date: todayLocalISO() }]}
+      />,
+    );
+
+    expect(document.querySelector(".prev-shot__sub")?.textContent).toBe(before);
+    expect(
+      screen.queryByRole("group", { name: /How long was it sore/i }),
+    ).not.toBeNull();
+  });
+
+  it("leaves a visible ring on the chip Clear hands focus to", () => {
+    // Clear removes ITSELF — the condition rendering it is the value it just
+    // cleared — so without a hand-off focus drops to <body> inside an open
+    // dialog, where the Tab trap cannot re-engage. The ring half is the one
+    // that goes missing silently: focus moves correctly and nothing on screen
+    // changes (WCAG 2.4.7), which is one of slice B's nine defects.
+    render(<ShotForm onAddShot={vi.fn()} shots={withPrevious(9)} />);
+
+    fireEvent.click(screen.getByRole("radio", { name: "Several days" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /clear how it settled/i }),
+    );
+
+    expectVisibleFocusRing("after clearing how the previous shot settled");
+  });
+
+  it("keeps an existing answer when editing a shot too old to be asked about", () => {
+    // `updateShot` replaces the entry wholesale, so a field the form does not
+    // render must still be written back — otherwise opening an old shot to fix
+    // a typo silently erases an answer given weeks ago.
+    const editing: ShotEntry = {
+      id: "old",
+      date: daysAgo(90),
+      afterSoreness: "day-or-two",
+      afterLump: false,
+    };
+    const onUpdateShot = vi.fn();
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        onUpdateShot={onUpdateShot}
+        editingShot={editing}
+        shots={[editing]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /update shot/i }));
+
+    const [shot] = onUpdateShot.mock.calls[0];
+    expect(shot.afterSoreness).toBe("day-or-two");
+    expect(shot.afterLump).toBe(false);
+  });
+
+  // The four below are one mistake seen from four sides. Seeding these fields
+  // from the subject's record gave them a second source of truth, and the
+  // draft machinery went on measuring them against an empty form — so the
+  // answers are compared against a BASELINE now, the same shape `dateBaseline`
+  // records. Each test pins one consequence of not doing that.
+  const answeredPrevious = (): ShotEntry[] => [
+    {
+      id: "prev",
+      date: daysAgo(9),
+      injectionSite: "glute",
+      afterSoreness: "week-plus",
+      afterLump: true,
+    },
+  ];
+  const weekPlusChecked = () =>
+    (screen.getByRole("radio", { name: "A week or more" }) as HTMLInputElement)
+      .checked;
+
+  it("does not read as dirty just because the previous shot has answers", () => {
+    // The trap the `plannedFor` comment warns about, walked into by the fix one
+    // review earlier. An untouched sheet offered "Clear form" and dismissing it
+    // parked a draft nobody had typed.
+    const ref = { current: null as ShotDraft | null };
+    render(
+      <ShotForm onAddShot={vi.fn()} shots={answeredPrevious()} liveDraftRef={ref} />,
+    );
+
+    // The answers are on screen — the seeding this guards is still doing its
+    // job, so a "fix" that simply stopped seeding cannot pass this test.
+    expect(weekPlusChecked()).toBe(true);
+    // And none of it counts as input, so there is nothing to offer to clear and
+    // nothing to park.
+    expect(screen.queryByRole("button", { name: "Clear form" })).toBeNull();
+    expect(ref.current).toBeNull();
+  });
+
+  it("restores the record's answers on 'Clear form' rather than deleting them", () => {
+    // Blanking them to "" told the save path the user had deliberately cleared
+    // the previous shot's answers, so Clear + Save DELETED answers nobody had
+    // touched — unrecoverable, because the question is never asked again once
+    // that interval has closed.
+    const onAddShot = vi.fn();
+    render(<ShotForm onAddShot={onAddShot} shots={answeredPrevious()} />);
+
+    // Type something, or "Clear form" is not offered at all.
+    fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "wip" } });
+    fireEvent.click(screen.getByRole("button", { name: "Clear form" }));
+
+    expect(weekPlusChecked()).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: /save shot/i }));
+    // Nothing differs from the record, so no patch is sent at all.
+    expect(onAddShot.mock.calls[0]).toHaveLength(1);
+  });
+
+  it("keeps the tapped answer through a momentarily blank date", () => {
+    // Clearing the date is one keystroke of an ordinary correction, and it
+    // resolves to no subject for a render. That read BOTH as "the subject
+    // changed" and as "the gap can no longer settle this", each of which reset
+    // the chip — and retyping the date brings the subject back but not the
+    // answer, so the loss was permanent.
+    const onAddShot = vi.fn();
+    render(
+      <ShotForm onAddShot={onAddShot} shots={[{ id: "prev", date: daysAgo(9) }]} />,
+    );
+
+    fireEvent.click(screen.getByRole("radio", { name: "Several days" }));
+    const date = screen.getByLabelText("Date");
+    fireEvent.change(date, { target: { value: "" } });
+    fireEvent.change(date, { target: { value: todayLocalISO() } });
+
+    expect(
+      (screen.getByRole("radio", { name: "Several days" }) as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: /save shot/i }));
+    expect(onAddShot.mock.calls[0][1]).toEqual({
+      id: "prev",
+      afterSoreness: "several-days",
+      afterLump: undefined,
+    });
+  });
+
+  it("lets a restored draft that CLEARED an answer beat the record", () => {
+    // "" is both a legitimate restored value and falsy, so `draft.afterSoreness
+    // || storedSoreness(...)` handed the record a win over a deliberate clear —
+    // the opposite of what that line said it did.
+    const cleared: ShotDraft = {
+      date: todayLocalISO(),
+      dateBaseline: todayLocalISO(),
+      plannedFor: "",
+      plannedBaseline: "",
+      time: "",
+      doseMg: "",
+      injectionSite: "",
+      injectionSitePosition: "",
+      testosteroneEster: "",
+      carrierOil: "",
+      pain: "",
+      offDays: "",
+      afterSoreness: "",
+      afterLump: "",
+      notes: "",
+    };
+    render(
+      <ShotForm onAddShot={vi.fn()} shots={answeredPrevious()} draft={cleared} />,
+    );
+
+    expect(weekPlusChecked()).toBe(false);
+    expect(
+      (screen.getByRole("radio", { name: "Yes" }) as HTMLInputElement).checked,
+    ).toBe(false);
+  });
+
+  it("counts a CHANGED answer as unsaved input", () => {
+    // The other half of the baseline comparison, and the half a mutation test
+    // found unguarded. These two fields are excluded from the generic
+    // "differs from the opened form" loop, so without an explicit clause they
+    // are compared against nothing at all: tapping a different answer left the
+    // sheet reading as untouched, which means no "Clear form" and a dismissal
+    // that discards the answer with no confirm.
+    const ref = { current: null as ShotDraft | null };
+    render(
+      <ShotForm onAddShot={vi.fn()} shots={answeredPrevious()} liveDraftRef={ref} />,
+    );
+
+    // Untouched: nothing to clear, nothing to keep.
+    expect(screen.queryByRole("button", { name: "Clear form" })).toBeNull();
+    expect(ref.current).toBeNull();
+
+    fireEvent.click(screen.getByRole("radio", { name: "Several days" }));
+
+    expect(screen.getByRole("button", { name: "Clear form" })).toBeTruthy();
+    expect(ref.current).not.toBeNull();
+    expect(ref.current!.afterSoreness).toBe("several-days");
   });
 });
