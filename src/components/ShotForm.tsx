@@ -151,6 +151,16 @@ export interface ShotDraft {
    *  storage and which is not the same as "none"/"no". */
   afterSoreness: SorenessDuration | "";
   afterLump: "" | "yes" | "no";
+  /** What the two questions above showed untouched — the subject shot's own
+   *  record at the moment this draft was parked. They travel for the same
+   *  reason `dateBaseline` does: the value alone cannot distinguish "never
+   *  touched" from "cleared on purpose", and the reference they are measured
+   *  against can move while a draft sits parked (answer that shot in History
+   *  and reopen the sheet). Re-reading the record on restore instead was tried
+   *  and is a data-loss bug: the untouched "" then reads as a deliberate clear
+   *  and deletes the answer nobody went near. */
+  afterSorenessBaseline: SorenessDuration | "";
+  afterLumpBaseline: "" | "yes" | "no";
   notes: string;
 }
 
@@ -172,6 +182,11 @@ function freshDraft(): ShotDraft {
     offDays: "",
     afterSoreness: "",
     afterLump: "",
+    // A fresh form knows no subject yet, so these are corrected on mount from
+    // whatever the subject turns out to hold. Only a PARKED draft's copies are
+    // authoritative, and those are the ones that matter.
+    afterSorenessBaseline: "",
+    afterLumpBaseline: "",
     notes: "",
   };
 }
@@ -453,6 +468,17 @@ export const ShotForm: React.FC<ShotFormProps> = ({
                   ? "yes"
                   : "no"
                 : "",
+            // When editing, the subject IS this shot, so its record is the
+            // baseline — known here, unlike on a fresh form.
+            afterSorenessBaseline: isSorenessDuration(initial.afterSoreness)
+              ? initial.afterSoreness
+              : "",
+            afterLumpBaseline:
+              typeof initial.afterLump === "boolean"
+                ? initial.afterLump
+                  ? "yes"
+                  : "no"
+                : "",
             notes: initial.notes ?? "",
           }
         : { ...freshDraft(), ...carried },
@@ -531,8 +557,21 @@ export const ShotForm: React.FC<ShotFormProps> = ({
           const prev = previousShotBefore(date, shots);
           return prev ? { shot: prev, elapsed: daysBetweenCivil(prev.date, date) } : null;
         })();
-    // NaN guards a half-typed date, which is a real state of this field.
-    if (!subject || !Number.isFinite(subject.elapsed) || subject.elapsed < 0) {
+    if (!subject) return none;
+    // The elapsed guard is a LOGGING guard, and applying it to both modes was a
+    // data-loss bug. NaN covers a half-typed date and a negative gap covers a
+    // date typed before the previous shot: both are real states of this field
+    // while logging, and both are reasons to ask nothing. Editing uses `elapsed`
+    // for NEITHER — the questions are unconditional and the sub-line omits the
+    // gap — so gating edit mode on it bought nothing and cost the answers.
+    //
+    // A shot dated in the FUTURE made `subject` null while editing, so the block
+    // hid, both baselines seeded to "", and the unconditional write-back below
+    // then replaced the stored answers with `undefined`, wholesale and silently,
+    // with nothing on screen having shown they existed. Import is deliberately
+    // not held to the taken-date bound (see `takenDateProblem`), so a restored
+    // backup reaches this without anyone hand-editing storage.
+    if (!editingShot && (!Number.isFinite(subject.elapsed) || subject.elapsed < 0)) {
       return none;
     }
     const site = [subject.shot.injectionSitePosition, subject.shot.injectionSite]
@@ -792,15 +831,29 @@ export const ShotForm: React.FC<ShotFormProps> = ({
    * Unlike `dateBaseline` these do NOT travel in the draft, and the difference
    * is the point. Today moves while a sheet sits parked, so the date's
    * reference has to be carried or it drifts out from under the comparison. A
-   * record does not move on its own — and if the subject really was answered
-   * somewhere else meanwhile, re-reading it is the RIGHT reference where a
-   * carried one would be stale.
+   * record CAN move under a parked draft, which is exactly why the baseline
+   * travels with it.
+   *
+   * An earlier version re-read the baseline live on every mount, arguing that a
+   * carried reference would go stale if the subject were answered elsewhere
+   * meanwhile. That reasoning covered only the case where the draft held the
+   * user's own tap, where value and moved baseline still agree. A review found
+   * the other branch and a repro confirmed it: park a draft while the previous
+   * shot is unanswered, answer that shot in History, reopen and save — the
+   * untouched "" is measured against a baseline that has since moved, reads as
+   * a deliberate clear, and deletes the answer nobody went near.
+   *
+   * So the reference travels, which is what `dateBaseline` already does and for
+   * this reason exactly: one reference, moving with the value it belongs to,
+   * that nothing else can disagree with.
    */
   const [afterSorenessBaseline, setAfterSorenessBaseline] = useState<
     SorenessDuration | ""
-  >(() => storedSoreness(settledAsk.subject));
+  >(() =>
+    draft ? draft.afterSorenessBaseline : storedSoreness(settledAsk.subject),
+  );
   const [afterLumpBaseline, setAfterLumpBaseline] = useState<"" | "yes" | "no">(
-    () => storedLump(settledAsk.subject),
+    () => (draft ? draft.afterLumpBaseline : storedLump(settledAsk.subject)),
   );
   // Held in a ref for the reason `carriedRef` is: resetForm must stay
   // identity-stable, and these move whenever the subject does.
@@ -1217,6 +1270,8 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     offDays,
     afterSoreness,
     afterLump,
+    afterSorenessBaseline,
+    afterLumpBaseline,
     notes,
   };
 
@@ -1245,6 +1300,8 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     "plannedBaseline",
     "afterSoreness",
     "afterLump",
+    "afterSorenessBaseline",
+    "afterLumpBaseline",
   ];
   const hasUnsavedInput =
     date !== dateBaseline ||

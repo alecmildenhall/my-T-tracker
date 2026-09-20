@@ -398,6 +398,8 @@ describe("ShotForm field mapping", () => {
           offDays: "",
           afterSoreness: "",
           afterLump: "",
+          afterSorenessBaseline: "",
+          afterLumpBaseline: "",
           notes: "",
           plannedFor: "",
           plannedBaseline: "",
@@ -926,6 +928,8 @@ describe("ShotForm draft publishing", () => {
     offDays: "",
     afterSoreness: "",
     afterLump: "",
+    afterSorenessBaseline: "",
+    afterLumpBaseline: "",
     notes,
   });
 
@@ -1713,6 +1717,8 @@ const planned = () =>
       offDays: "",
       afterSoreness: "",
       afterLump: "",
+      afterSorenessBaseline: "",
+      afterLumpBaseline: "",
       notes: "",
     };
     const onAddShot = vi.fn((): SaveOutcome => "saved");
@@ -1834,6 +1840,8 @@ const planned = () =>
           offDays: "",
           afterSoreness: "",
           afterLump: "",
+          afterSorenessBaseline: "",
+          afterLumpBaseline: "",
           notes: "",
         }}
       />,
@@ -1914,6 +1922,8 @@ const planned = () =>
       offDays: "",
       afterSoreness: "",
       afterLump: "",
+      afterSorenessBaseline: "",
+      afterLumpBaseline: "",
       notes: "",
     };
     render(
@@ -2902,6 +2912,12 @@ describe("how the previous shot settled", () => {
       offDays: "",
       afterSoreness: "",
       afterLump: "",
+      // The record's values, because this draft was parked from a sheet that
+      // WAS showing them — so "" against them is a deliberate clear. Contrast
+      // the parked-untouched draft below, whose baselines are "" because the
+      // shot had no answer when it was parked.
+      afterSorenessBaseline: "week-plus",
+      afterLumpBaseline: "yes",
       notes: "",
     };
     render(
@@ -2935,5 +2951,81 @@ describe("how the previous shot settled", () => {
     expect(screen.getByRole("button", { name: "Clear form" })).toBeTruthy();
     expect(ref.current).not.toBeNull();
     expect(ref.current!.afterSoreness).toBe("several-days");
+  });
+
+  it("keeps a FUTURE-dated shot's answers when it is edited", () => {
+    // Reachable without hand-editing storage: import is deliberately not held
+    // to the taken-date bound, and `takenDateProblem` lets an already-stored
+    // date back through, so a restored backup gets here and saves happily.
+    //
+    // The elapsed guard used to fire in BOTH modes. A future date made elapsed
+    // negative, so the subject went null, the block hid, both baselines seeded
+    // to "", and the unconditional edit write-back replaced the stored answers
+    // with `undefined` — wholesale, and with nothing on screen having shown
+    // they were there to lose.
+    const editing: ShotEntry = {
+      id: "future",
+      date: addDaysCivil(todayLocalISO(), 3),
+      afterSoreness: "week-plus",
+      afterLump: true,
+    };
+    const onUpdateShot = vi.fn();
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        onUpdateShot={onUpdateShot}
+        editingShot={editing}
+        shots={[editing]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /update shot/i }));
+
+    const [shot] = onUpdateShot.mock.calls[0];
+    expect(shot.afterSoreness).toBe("week-plus");
+    expect(shot.afterLump).toBe(true);
+  });
+
+  it("does not clear an answer recorded elsewhere while a draft sat parked", () => {
+    // The draft carries the baseline as well as the value, so a question parked
+    // untouched stays untouched. Both are "" here because the previous shot had
+    // no answer when the draft was parked; it was answered in History before
+    // the sheet was reopened.
+    //
+    // Re-reading the baseline live instead moved it to "week-plus" while the
+    // value stayed "", which read as a deliberate clear and deleted the answer
+    // on save — unrecoverable, since this question is never asked twice.
+    const onAddShot = vi.fn();
+    const parkedUntouched: ShotDraft = {
+      date: todayLocalISO(),
+      dateBaseline: todayLocalISO(),
+      plannedFor: "",
+      plannedBaseline: "",
+      time: "",
+      doseMg: "",
+      injectionSite: "",
+      injectionSitePosition: "",
+      testosteroneEster: "",
+      carrierOil: "",
+      pain: "",
+      offDays: "",
+      afterSoreness: "",
+      afterLump: "",
+      afterSorenessBaseline: "",
+      afterLumpBaseline: "",
+      notes: "half typed",
+    };
+    render(
+      <ShotForm
+        onAddShot={onAddShot}
+        shots={answeredPrevious()}
+        draft={parkedUntouched}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /save shot/i }));
+
+    // No patch at all: nobody answered that question in this sheet.
+    expect(onAddShot.mock.calls[0]).toHaveLength(1);
   });
 });
