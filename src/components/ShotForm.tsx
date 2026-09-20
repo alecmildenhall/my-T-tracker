@@ -24,7 +24,11 @@ import {
   offDaysSpokenLabel,
   offDaysStrip,
 } from "../utils/offDaysLabel";
-import { offDaysWindowDays, offDaysWindowLabel } from "../utils/offDaysWindow";
+import {
+  offDaysWindowDays,
+  offDaysWindowLabel,
+  gapBeforeThisOne,
+} from "../utils/offDaysWindow";
 import {
   previousShotQuestions,
   sorenessShortLabel,
@@ -595,7 +599,10 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       sub: [
         subject.shot.date,
         site || null,
-        editingShot ? null : `${subject.elapsed} days before this one`,
+        // The shared phrase, not a second copy of the rule: this line and the
+        // off-days line above describe the SAME gap, and the local template
+        // read "1 days before this one" the day after a shot.
+        editingShot ? null : gapBeforeThisOne(subject.elapsed),
       ]
         .filter(Boolean)
         .join(" \u00b7 "),

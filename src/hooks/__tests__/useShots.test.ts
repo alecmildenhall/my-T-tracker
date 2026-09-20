@@ -187,6 +187,37 @@ describe('useShots', () => {
       
       expect(result.current.addShot).toBe(firstAddShot)
     })
+
+    // The subject can VANISH between a draft being parked and the shot being
+    // saved: deleted in another tab, deleted from History, or replaced wholesale
+    // by an import. The answers then have nowhere to go, and conjuring the row
+    // back would resurrect something the user deleted — so they are dropped,
+    // deliberately, rather than by `map` quietly matching nothing.
+    //
+    // What must NOT happen is this boolean lying about the SHOT. The caller
+    // turns false into "Couldn't save this shot", holds the sheet open and
+    // invites a second save, so reporting failure here would claim a loss that
+    // did not happen and risk a duplicate entry.
+    it('still saves the shot when the previous shot it answers for is gone', () => {
+      const { result } = renderHook(() => useShots())
+
+      let landed: boolean | undefined
+      act(() => {
+        landed = result.current.addShot(
+          { id: 'new', date: '2026-09-18' },
+          { id: 'vanished', afterSoreness: 'several-days' },
+        )
+      })
+
+      expect(landed).toBe(true)
+      expect(result.current.shots).toHaveLength(1)
+      expect(result.current.shots[0].id).toBe('new')
+      // No orphan row invented to carry the answers...
+      expect(result.current.shots.some((s) => s.id === 'vanished')).toBe(false)
+      // ...and nothing smeared onto the shot being logged, which describes a
+      // different injection entirely.
+      expect(result.current.shots[0].afterSoreness).toBeUndefined()
+    })
   })
 
   describe('updateShot', () => {

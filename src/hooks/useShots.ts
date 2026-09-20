@@ -106,9 +106,23 @@ export function useShots(): UseShots {
   const addShot = useCallback(
     (shot: ShotEntry, previous?: PreviousShotAnswers) =>
       persistShots((prev) => {
-        const before = previous
-          ? prev.map((s) => (s.id === previous.id ? withAnswers(s, previous) : s))
-          : prev;
+        // Whether the subject is still there is ASKED, not left to `map`
+        // quietly matching nothing. It can be gone: deleted in another tab, or
+        // from History while this sheet sat parked, or replaced wholesale by an
+        // import. Dropping the answers is then the right outcome rather than a
+        // consolation — they describe a row the user no longer has, and
+        // re-adding it would resurrect something they deleted.
+        //
+        // The boolean this returns keeps its one meaning: "did the SHOT land?".
+        // It must not go false here. The caller turns false into "Couldn't save
+        // this shot", holds the sheet open and invites a second save — so
+        // reporting failure would claim a loss that did not happen and risk a
+        // duplicate entry, which is strictly worse than dropping an answer
+        // whose subject no longer exists.
+        const before =
+          previous && prev.some((s) => s.id === previous.id)
+            ? prev.map((s) => (s.id === previous.id ? withAnswers(s, previous) : s))
+            : prev;
         return [...before, shot];
       }),
     [persistShots]

@@ -3028,4 +3028,16 @@ describe("how the previous shot settled", () => {
     // No patch at all: nobody answered that question in this sheet.
     expect(onAddShot.mock.calls[0]).toHaveLength(1);
   });
+
+  it("phrases a one-day gap as 'the day before this one'", () => {
+    // Reachable: the lump question has no floor, so the block renders the day
+    // after a shot. The sub-line rolled its own `${elapsed} days before this
+    // one` and read "1 days". It now comes from the same helper the off-days
+    // line uses, so one sheet cannot describe one gap two ways.
+    render(<ShotForm onAddShot={vi.fn()} shots={[{ id: "p", date: daysAgo(1) }]} />);
+
+    const sub = document.querySelector(".prev-shot__sub")?.textContent ?? "";
+    expect(sub).toContain("the day before this one");
+    expect(sub).not.toMatch(/\b1 days\b/);
+  });
 });
