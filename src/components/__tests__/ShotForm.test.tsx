@@ -3196,7 +3196,19 @@ describe("how the previous shot settled", () => {
     render(
       <ShotForm
         onAddShot={vi.fn()}
-        shots={[{ id: "prev", date: daysAgo(9), injectionSite: "glute" }]}
+        shots={[
+          { id: "prev", date: daysAgo(9), injectionSite: "glute" },
+          // A FUTURE-dated shot, which is reachable: import is not held to the
+          // taken-date bound and `takenDateProblem` exempts an already-stored
+          // date, so a restored backup can carry one.
+          //
+          // Without it this fixture proved nothing. While logging, the subject
+          // is by construction the latest shot before today, so `nextShotAfter`
+          // finds nothing and the `editingShot` guard is never exercised — a
+          // mutation deleting that guard survived this test until the list held
+          // a shot that actually followed the subject.
+          { id: "ahead", date: addDaysCivil(todayLocalISO(), 5) },
+        ]}
       />,
     );
 
