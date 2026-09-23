@@ -6,11 +6,21 @@ import { STORAGE_KEYS } from "../storageKeys";
 import { normalizeValue, type TextField } from "../utils/suggestions";
 import { isBlank } from "../utils/strings";
 
-/** How the previous shot's site settled, answered while logging the next one. */
+/**
+ * How the previous shot's site settled, answered while logging the next one.
+ *
+ * Both answers are REQUIRED keys that may hold `undefined`, never optional
+ * ones. `withAnswers` DELETES a key the caller leaves out, so with `?:` a patch
+ * meaning "I only changed the lump" silently erased the soreness answer beside
+ * it — a partial update with full-replacement semantics, which is the kind of
+ * mismatch nothing catches until the data is gone. Requiring both makes every
+ * deletion something a caller typed on purpose, and the compiler names anyone
+ * who forgets.
+ */
 export interface PreviousShotAnswers {
   id: string;
-  afterSoreness?: SorenessDuration;
-  afterLump?: boolean;
+  afterSoreness: SorenessDuration | undefined;
+  afterLump: boolean | undefined;
 }
 
 /**

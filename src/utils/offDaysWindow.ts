@@ -103,6 +103,12 @@ export function offDaysWindowDays(
  * stored ISO string, and ShotListItem's comment warns against inventing a
  * second format on the same surface.
  */
+export function offDaysWindowLabel(days: number | null): string {
+  const anchor = "Since your previous shot";
+  if (days === null) return anchor;
+  return `${anchor}, taken ${gapBeforeThisOne(days)}`;
+}
+
 /**
  * The gap alone, as a fragment: "the day before this one", "4 days before this
  * one". Exported because two surfaces in the SAME sheet describe the same gap —
@@ -114,16 +120,12 @@ export function offDaysWindowDays(
  * One statement of the phrasing, so the two cannot disagree about it — the same
  * shape as the schedule sentence being asked of `describeWeeklySchedule` once
  * rather than re-tested per caller. The reasoning behind each wording is in the
- * comment above.
+ * long comment above `offDaysWindowLabel`, which is the caller it was written
+ * for — this sits BELOW that function so the comment cannot be read as
+ * documenting this one, which is what it did when this was declared first.
  */
 export function gapBeforeThisOne(days: number): string {
   if (days === 0) return "the same day as this one";
   if (days === 1) return "the day before this one";
   return `${days} days before this one`;
-}
-
-export function offDaysWindowLabel(days: number | null): string {
-  const anchor = "Since your previous shot";
-  if (days === null) return anchor;
-  return `${anchor}, taken ${gapBeforeThisOne(days)}`;
 }

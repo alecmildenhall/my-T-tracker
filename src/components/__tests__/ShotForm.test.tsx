@@ -400,6 +400,7 @@ describe("ShotForm field mapping", () => {
           afterLump: "",
           afterSorenessBaseline: "",
           afterLumpBaseline: "",
+          settledSubjectId: undefined,
           notes: "",
           plannedFor: "",
           plannedBaseline: "",
@@ -930,6 +931,7 @@ describe("ShotForm draft publishing", () => {
     afterLump: "",
     afterSorenessBaseline: "",
     afterLumpBaseline: "",
+    settledSubjectId: undefined,
     notes,
   });
 
@@ -1719,6 +1721,7 @@ const planned = () =>
       afterLump: "",
       afterSorenessBaseline: "",
       afterLumpBaseline: "",
+      settledSubjectId: undefined,
       notes: "",
     };
     const onAddShot = vi.fn((): SaveOutcome => "saved");
@@ -1842,6 +1845,7 @@ const planned = () =>
           afterLump: "",
           afterSorenessBaseline: "",
           afterLumpBaseline: "",
+          settledSubjectId: undefined,
           notes: "",
         }}
       />,
@@ -1924,6 +1928,7 @@ const planned = () =>
       afterLump: "",
       afterSorenessBaseline: "",
       afterLumpBaseline: "",
+      settledSubjectId: undefined,
       notes: "",
     };
     render(
@@ -2918,6 +2923,11 @@ describe("how the previous shot settled", () => {
       // shot had no answer when it was parked.
       afterSorenessBaseline: "week-plus",
       afterLumpBaseline: "yes",
+      // Parked from a sheet that was showing THIS shot's answers, so the draft
+      // knows what it was about. Left undefined, the sync treats the subject as
+      // newly arrived and re-seeds from the record, discarding the very clear
+      // this test exists to prove wins.
+      settledSubjectId: "prev",
       notes: "",
     };
     render(
@@ -3013,6 +3023,9 @@ describe("how the previous shot settled", () => {
       afterLump: "",
       afterSorenessBaseline: "",
       afterLumpBaseline: "",
+      // The shot it was parked about, which still exists — it was answered in
+      // History meanwhile, not deleted.
+      settledSubjectId: "prev",
       notes: "half typed",
     };
     render(
@@ -3039,5 +3052,95 @@ describe("how the previous shot settled", () => {
     const sub = document.querySelector(".prev-shot__sub")?.textContent ?? "";
     expect(sub).toContain("the day before this one");
     expect(sub).not.toMatch(/\b1 days\b/);
+  });
+
+  it("does not write a parked answer onto a DIFFERENT shot", () => {
+    // Answered about P, then P is deleted — supported from both Home and
+    // History — so Q becomes "the previous shot". Without the subject id in the
+    // draft, lastSubjectId initialised to Q, the re-seed compared Q against
+    // itself and never fired, and P's answer was written onto Q. The same save
+    // sent afterLump: undefined, which withAnswers treats as a deletion, so it
+    // also destroyed Q's stored lump. One save, two shots' data wrong.
+    const q: ShotEntry = {
+      id: "Q",
+      date: daysAgo(20),
+      injectionSite: "thigh",
+      afterLump: true,
+    };
+    const onAddShot = vi.fn();
+    const parkedAboutP: ShotDraft = {
+      date: todayLocalISO(),
+      dateBaseline: todayLocalISO(),
+      plannedFor: "",
+      plannedBaseline: "",
+      time: "",
+      doseMg: "",
+      injectionSite: "",
+      injectionSitePosition: "",
+      testosteroneEster: "",
+      carrierOil: "",
+      pain: "",
+      offDays: "",
+      afterSoreness: "several-days",
+      afterLump: "",
+      afterSorenessBaseline: "",
+      afterLumpBaseline: "",
+      settledSubjectId: "P", // the shot that has since been deleted
+      notes: "wip",
+    };
+    render(
+      <ShotForm onAddShot={onAddShot} shots={[q]} draft={parkedAboutP} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /save shot/i }));
+
+    // Re-seeded from Q, which nobody has answered about in this sheet.
+    expect(onAddShot.mock.calls[0]).toHaveLength(1);
+  });
+
+  it("does not offer Clear for a question it never rendered", () => {
+    // Two days on, only the lump question is offered — but afterSoreness still
+    // seeds from the record. Clear used to be offered on an untouched sheet
+    // with nothing visibly set, and blanking it deleted a stored answer the
+    // user had never been shown.
+    const onAddShot = vi.fn();
+    const prev: ShotEntry[] = [
+      {
+        id: "prev",
+        date: daysAgo(2),
+        injectionSite: "glute",
+        afterSoreness: "week-plus",
+      },
+    ];
+    render(<ShotForm onAddShot={onAddShot} shots={prev} />);
+
+    // The group really is withheld at this gap — otherwise this proves nothing.
+    expect(
+      screen.queryByRole("group", { name: /How long was it sore/i }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /clear how it settled/i }),
+    ).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /save shot/i }));
+    expect(onAddShot.mock.calls[0]).toHaveLength(1);
+  });
+
+  it("offers a stored answer the gap would otherwise withhold", () => {
+    // Four days on, "A week or more" is not offered — but the shot holds it, so
+    // the group rendered three chips with none checked and the answer read as
+    // absent. An answer already given is answerable: the gate is about guessing,
+    // not about what is already on record.
+    const prev: ShotEntry[] = [
+      {
+        id: "prev",
+        date: daysAgo(4),
+        injectionSite: "glute",
+        afterSoreness: "week-plus",
+      },
+    ];
+    render(<ShotForm onAddShot={vi.fn()} shots={prev} />);
+
+    expect(weekPlusChecked()).toBe(true);
   });
 });

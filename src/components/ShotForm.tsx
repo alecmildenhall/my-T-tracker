@@ -165,6 +165,23 @@ export interface ShotDraft {
    *  and deletes the answer nobody went near. */
   afterSorenessBaseline: SorenessDuration | "";
   afterLumpBaseline: "" | "yes" | "no";
+  /**
+   * WHICH shot the two answers above are about — `undefined` when the draft was
+   * parked with no previous shot to ask about.
+   *
+   * The values and their baselines travelled; the subject did not, and that is
+   * what let a draft answer the wrong question. "The previous shot" is computed
+   * from the list at the moment the sheet opens, so deleting the shot you
+   * answered about (supported from both Home and History) silently promotes a
+   * different one — and with nothing recording the original, the re-seed below
+   * saw no change and left the answer in place. Measured: it was written onto
+   * that other shot, and the same save deleted ITS stored lump, because an
+   * omitted answer is a deletion.
+   *
+   * Carrying the id is the same rule as the baselines beside it, applied to
+   * identity instead of value: store what it was about, not only what was said.
+   */
+  settledSubjectId: string | undefined;
   notes: string;
 }
 
@@ -191,6 +208,9 @@ function freshDraft(): ShotDraft {
     // authoritative, and those are the ones that matter.
     afterSorenessBaseline: "",
     afterLumpBaseline: "",
+    // No subject until one is worked out on mount; a fresh form has answered
+    // nothing, so there is nothing for it to be about yet.
+    settledSubjectId: undefined,
     notes: "",
   };
 }
@@ -483,6 +503,8 @@ export const ShotForm: React.FC<ShotFormProps> = ({
                   ? "yes"
                   : "no"
                 : "",
+            // Editing asks about this shot itself, so it is its own subject.
+            settledSubjectId: initial.id,
             notes: initial.notes ?? "",
           }
         : { ...freshDraft(), ...carried },
@@ -588,9 +610,37 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // built for the job must not sit silent — and the two modes looked
     // arbitrary side by side, because the number they turn on (the gap when
     // logging, days since the shot when editing) is nowhere on screen.
-    const asks = editingShot
+    const asked = editingShot
       ? { durations: [...SORENESS_DURATIONS], lump: true }
       : previousShotQuestions(subject.elapsed);
+    /**
+     * An answer already on record is always offerable, whatever the gap says.
+     *
+     * The gate exists to stop someone GUESSING an answer the elapsed days
+     * cannot settle; it has nothing to say about one they have already given.
+     * Without this, a shot holding "a week or more" met at a 3–6 day gap
+     * rendered three chips with NONE checked — the "phantom in a group where no
+     * chip matches" state the off-days seeding calls out by name — so the one
+     * screen built to show that answer reported it as unanswered.
+     *
+     * Only when the group is rendered anyway. Adding the stored value to an
+     * EMPTY set would resurrect the block at gaps where it is withheld on
+     * purpose, which is a different decision from this one. There the answer
+     * stays off screen and safe, because "Clear" is gated on what rendered.
+     *
+     * The lump question needs no equivalent: it always offers both values, so a
+     * stored answer is always representable and cannot go phantom.
+     */
+    const storedDuration = storedSoreness(subject.shot);
+    const durations =
+      asked.durations.length > 0 &&
+      storedDuration !== "" &&
+      !asked.durations.includes(storedDuration)
+        ? SORENESS_DURATIONS.filter(
+            (d) => asked.durations.includes(d) || d === storedDuration,
+          )
+        : asked.durations;
+    const asks = { durations, lump: asked.lump };
     return {
       ...asks,
       shotId: subject.shot.id,
@@ -904,7 +954,14 @@ export const ShotForm: React.FC<ShotFormProps> = ({
    * last-known id is therefore held across the gap, and only a different KNOWN
    * shot re-seeds.
    */
-  const [lastSubjectId, setLastSubjectId] = useState(settledAsk.shotId);
+  // Seeded from the DRAFT's subject when there is one, never from whatever is
+  // previous right now. Initialising it to the current subject made the check
+  // below compare a shot against itself, so a draft answered about a shot that
+  // has since been deleted sailed through unchanged and was written onto its
+  // replacement. The draft records what it was about; this is where that is read.
+  const [lastSubjectId, setLastSubjectId] = useState(
+    draft ? draft.settledSubjectId : settledAsk.shotId,
+  );
   if (settledAsk.shotId !== undefined && settledAsk.shotId !== lastSubjectId) {
     setLastSubjectId(settledAsk.shotId);
     setAfterSoreness(storedSoreness(settledAsk.subject));
@@ -1279,6 +1336,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     afterLump,
     afterSorenessBaseline,
     afterLumpBaseline,
+    settledSubjectId: settledAsk.shotId,
     notes,
   };
 
@@ -1309,6 +1367,10 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     "afterLump",
     "afterSorenessBaseline",
     "afterLumpBaseline",
+    // A reference, like the baselines: which shot the answers describe is not
+    // something the user typed, so a draft whose subject differs from the
+    // opened form's must not read as unsaved input on that basis alone.
+    "settledSubjectId",
   ];
   const hasUnsavedInput =
     date !== dateBaseline ||
@@ -1954,14 +2016,27 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             )}
             {/* Same control, same reasoning and same focus hand-off as the pain
                 and off-days groups': the only way back to "not recorded". */}
-            {(afterSoreness !== "" || afterLump !== "") && (
+            {/* Gated on what is RENDERED, not on what the state happens to
+                hold. Both fields seed from the subject's record, so below the
+                three-day floor `afterSoreness` carried a stored answer while
+                its group was withheld — Clear was therefore offered on an
+                untouched sheet with nothing visibly set, and clearing it
+                blanked a value the user had never been shown. Saving then
+                deleted it from the record, unrecoverably: this question is
+                never asked again once the interval closes.
+
+                The handler clears only rendered groups for the same reason. If
+                the duration group is absent its chip ref is null, and
+                handOffFocus falls through to the heading. */}
+            {((settledAsk.durations.length > 0 && afterSoreness !== "") ||
+              (settledAsk.lump && afterLump !== "")) && (
               <button
                 type="button"
                 className="link-button field-clear"
                 aria-label="Clear how it settled"
                 onClick={() => {
-                  setAfterSoreness("");
-                  setAfterLump("");
+                  if (settledAsk.durations.length > 0) setAfterSoreness("");
+                  if (settledAsk.lump) setAfterLump("");
                   handOffFocus(firstSorenessChipRef, headingRef);
                 }}
               >

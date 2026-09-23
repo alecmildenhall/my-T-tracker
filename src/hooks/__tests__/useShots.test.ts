@@ -205,7 +205,7 @@ describe('useShots', () => {
       act(() => {
         landed = result.current.addShot(
           { id: 'new', date: '2026-09-18' },
-          { id: 'vanished', afterSoreness: 'several-days' },
+          { id: 'vanished', afterSoreness: 'several-days', afterLump: undefined },
         )
       })
 
@@ -993,7 +993,11 @@ describe('answers about the previous shot', () => {
       result.current.addShot(earlier)
     })
     act(() => {
-      result.current.addShot(fresh, { id: 'prev', afterLump: false })
+      result.current.addShot(fresh, {
+        id: 'prev',
+        afterSoreness: undefined,
+        afterLump: false,
+      })
     })
 
     const stored = JSON.parse(
@@ -1017,7 +1021,14 @@ describe('answers about the previous shot', () => {
       })
     })
     act(() => {
-      result.current.addShot(fresh, { id: 'prev' })
+      // Both stated outright, which is what this test is about: an omitted key
+      // and an explicit `undefined` both mean "clear it", and requiring the
+      // fields is what stops the first happening by accident elsewhere.
+      result.current.addShot(fresh, {
+        id: 'prev',
+        afterSoreness: undefined,
+        afterLump: undefined,
+      })
     })
 
     // Asserted against the IN-MEMORY state, not the JSON in storage.
@@ -1046,6 +1057,7 @@ describe('answers about the previous shot', () => {
       landed = result.current.addShot(fresh, {
         id: 'prev',
         afterSoreness: 'none',
+        afterLump: undefined,
       })
     })
     setItem.mockRestore()
