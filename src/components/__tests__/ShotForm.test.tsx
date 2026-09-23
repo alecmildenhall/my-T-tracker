@@ -3143,4 +3143,57 @@ describe("how the previous shot settled", () => {
 
     expect(weekPlusChecked()).toBe(true);
   });
+
+  it("parks the LAST KNOWN subject, not whatever resolves this instant", () => {
+    // The published half of "no subject is not a new subject". A blank date
+    // resolves to no shot, and publishing that raw parked a draft claiming the
+    // answer was about nothing.
+    const ref = { current: null as ShotDraft | null };
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        shots={[{ id: "prev", date: daysAgo(9), injectionSite: "glute" }]}
+        liveDraftRef={ref}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("radio", { name: "Several days" }));
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "" } });
+
+    expect(ref.current).not.toBeNull();
+    expect(ref.current!.settledSubjectId).toBe("prev");
+  });
+
+  it("keeps the answer across a park with a blank date and a restore", () => {
+    // The round trip the above exists to protect. Measured before the fix: the
+    // restored draft re-seeded on the first render that resolved a subject, so
+    // the tapped answer was gone and no patch was sent at all.
+    const ref = { current: null as ShotDraft | null };
+    const prev: ShotEntry = { id: "prev", date: daysAgo(9), injectionSite: "glute" };
+    const first = render(
+      <ShotForm onAddShot={vi.fn()} shots={[prev]} liveDraftRef={ref} />,
+    );
+
+    fireEvent.click(screen.getByRole("radio", { name: "Several days" }));
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "" } });
+    const parked = ref.current!;
+    first.unmount();
+
+    const onAddShot = vi.fn();
+    render(<ShotForm onAddShot={onAddShot} shots={[prev]} draft={parked} />);
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: todayLocalISO() },
+    });
+
+    expect(
+      (screen.getByRole("radio", { name: "Several days" }) as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: /save shot/i }));
+    expect(onAddShot.mock.calls[0][1]).toEqual({
+      id: "prev",
+      afterSoreness: "several-days",
+      afterLump: undefined,
+    });
+  });
 });

@@ -1336,7 +1336,15 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     afterLump,
     afterSorenessBaseline,
     afterLumpBaseline,
-    settledSubjectId: settledAsk.shotId,
+    // The LAST KNOWN subject, not whatever is resolvable this instant — the
+    // published half of the rule the mount path already follows. A blank date
+    // resolves to no shot, so publishing `settledAsk.shotId` raw parked the
+    // draft saying the answer was about nothing; on restore `lastSubjectId`
+    // seeded from that `undefined`, the first resolved render read as a subject
+    // CHANGE, and the answer was re-seeded away. Clearing the date is one
+    // keystroke of an ordinary correction, so this cost a tapped answer on a
+    // path nobody would suspect.
+    settledSubjectId: settledAsk.shotId ?? lastSubjectId,
     notes,
   };
 
