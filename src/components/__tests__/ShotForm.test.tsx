@@ -3162,7 +3162,10 @@ describe("how the previous shot settled", () => {
 
     expect(
       screen.getByRole("group", {
-        name: "How long was it sore? Up to 2026-09-15",
+        // The accessible name carries the WORD, never the glyph: the arrow is
+        // aria-hidden, so a reader that drops it is not left with two dates and
+        // no relationship between them.
+        name: "How long was it sore? 2026-09-08 to 2026-09-15",
       }),
     ).toBeTruthy();
     // And it stays OFF the identity line, which still names the shot alone.

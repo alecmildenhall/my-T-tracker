@@ -577,7 +577,8 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       subject: null as ShotEntry | null,
       heading: "",
       sub: "",
-      windowLabel: "",
+      windowFrom: "",
+      windowTo: "",
     };
     const subject = editingShot
       ? { shot: editingShot, elapsed: daysBetweenCivil(editingShot.date, todayLocalISO()) }
@@ -677,7 +678,11 @@ export const ShotForm: React.FC<ShotFormProps> = ({
        * answer is about, and those are two different jobs \u2014 hanging the window
        * off the identity line conflated them.
        */
-      windowLabel: nextShot ? `Up to ${nextShot.date}` : "",
+      // The range itself, as two values rather than one string: the rendering
+      // puts a glyph between them for sighted readers and a word for everyone
+      // else, and a pre-joined string could not carry both.
+      windowFrom: nextShot ? subject.shot.date : "",
+      windowTo: nextShot ? nextShot.date : "",
     };
   }, [editingShot, date, shots]);
 
@@ -2008,9 +2013,44 @@ export const ShotForm: React.FC<ShotFormProps> = ({
                     and shipped it. */}
                 <legend>
                   How long was it sore?{" "}
-                  {settledAsk.windowLabel && (
+                  {settledAsk.windowTo && (
                     <span className="prev-shot__span">
-                      {settledAsk.windowLabel}
+                      {/* The arrow carries the RELATIONSHIP, so it must not be
+                          the only thing that does. This span sits inside the
+                          legend precisely so it joins the group's accessible
+                          name, and a screen reader either announces the glyph
+                          as "right arrow" or skips it — skipped, the name
+                          becomes two dates with nothing between them. So the
+                          glyph is hidden from assistive tech and the word is
+                          hidden from the screen; each reader gets one.
+
+                          Other arrows in this app ("See all →") are decorative
+                          and carry no meaning if dropped, which is why they
+                          need none of this. */}
+                      {/* The phrase is rendered TWICE, from the same two
+                          values: an arrow for the eye, a word for everything
+                          else. It has to be whole strings rather than a shared
+                          pair of dates with a separator between them, because
+                          the accessible name is composed by TRIMMING each text
+                          node and joining the results — so padding around the
+                          word is eaten, whether it is a space or a non-breaking
+                          space. Both were tried and both composed as
+                          "2026-09-08to2026-09-15", measured from
+                          `computeAccessibleName` rather than guessed. Inside a
+                          single node the spaces survive, since only the edges
+                          are trimmed.
+
+                          No drift between them: both read the same two fields,
+                          so there is one source for the fact and two renderings
+                          of it. The visible text was correct throughout all of
+                          this, which is why only an exact-name assertion could
+                          see the defect at all. */}
+                      <span aria-hidden="true">
+                        {`${settledAsk.windowFrom} → ${settledAsk.windowTo}`}
+                      </span>
+                      <span className="visually-hidden">
+                        {`${settledAsk.windowFrom} to ${settledAsk.windowTo}`}
+                      </span>
                     </span>
                   )}
                 </legend>
