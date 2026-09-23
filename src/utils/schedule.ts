@@ -528,7 +528,23 @@ export function previousShotDateBefore(
   shots: { id: string; date: string }[],
   exceptId?: string,
 ): string | undefined {
-  let best: string | undefined;
+  return previousShotBefore(date, shots, exceptId)?.date;
+}
+
+/**
+ * The same question, answered with the SHOT rather than just its date.
+ *
+ * The log form needs the id as well: the soreness answers describe the previous
+ * shot's site, so they are written onto that entry. One owner for "which shot
+ * came before this one", so the id and the date can never disagree about which
+ * shot that is.
+ */
+export function previousShotBefore<T extends { id: string; date: string }>(
+  date: string,
+  shots: T[],
+  exceptId?: string,
+): T | undefined {
+  let best: T | undefined;
   for (const shot of shots) {
     // `>`, not `>=`: a shot logged on the SAME civil date is still the one
     // before this one. Skipping it reached past to the shot before that, and
@@ -537,7 +553,36 @@ export function previousShotDateBefore(
     // edit could repair. A shot cannot be its own predecessor because `exceptId`
     // removes it, and a brand-new shot has no id in the list yet.
     if (shot.id === exceptId || shot.date > date) continue;
-    if (best === undefined || shot.date > best) best = shot.date;
+    if (best === undefined || shot.date > best.date) best = shot;
+  }
+  return best;
+}
+
+/**
+ * The mirror: the shot logged immediately AFTER `date`.
+ *
+ * The settled block uses it when editing, to say what window the question
+ * covers — "how long was it sore" is about the days following that shot, and
+ * the next shot is where those days stop being attributable to it.
+ *
+ * `>`, strictly, where {@link previousShotBefore} keeps a same-day shot. That
+ * is deliberate and the two must not disagree: a shot on the same civil date is
+ * the PREVIOUS one by that function's rule, so admitting it here as well would
+ * let one entry be both the predecessor and the successor of another.
+ *
+ * A separate named owner rather than an inline filter, for the reason the
+ * function above gives: one place answers "which shot came next", so the id and
+ * the date can never disagree about which shot that is.
+ */
+export function nextShotAfter<T extends { id: string; date: string }>(
+  date: string,
+  shots: T[],
+  exceptId?: string,
+): T | undefined {
+  let best: T | undefined;
+  for (const shot of shots) {
+    if (shot.id === exceptId || shot.date <= date) continue;
+    if (best === undefined || shot.date < best.date) best = shot;
   }
   return best;
 }

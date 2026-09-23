@@ -7,7 +7,11 @@ import { APP_NAME, FORMAT_VERSION } from "../appMeta";
 import { isRealDate, isShotDateInRange } from "./civilDate";
 import { WEEKDAYS } from "./weekday";
 import { MIN_INTERVAL_DAYS, MAX_INTERVAL_DAYS } from "../types/profile";
-import { OFF_DAYS_PATTERNS, PAIN_LEVELS } from "../types/shot";
+import {
+  OFF_DAYS_PATTERNS,
+  PAIN_LEVELS,
+  SORENESS_DURATIONS,
+} from "../types/shot";
 
 const TIME_RE = /^\d{2}:\d{2}$/; // HH:MM
 
@@ -47,6 +51,11 @@ export const shotEntrySchema = z.strictObject({
   carrierOil: z.string().min(1).optional(),
   pain: z.enum(PAIN_LEVELS).optional(),
   offDays: z.enum(OFF_DAYS_PATTERNS).optional(),
+  // How this shot's own site settled, answered at the NEXT shot. Enumerated
+  // like pain and off days, so a hand-edited file cannot smuggle a value the
+  // app would then render as a blank label.
+  afterSoreness: z.enum(SORENESS_DURATIONS).optional(),
+  afterLump: z.boolean().optional(),
   notes: z.string().min(1).optional(),
   // Same range rule as `date`: a planned date is a date the app could have
   // produced, so it is bounded identically. Import is the other way into

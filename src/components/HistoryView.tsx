@@ -17,14 +17,18 @@ import type { ShotEntry } from "../types/shot";
 import type { ShotFilter } from "../utils/shotQuery";
 import { queryShots } from "../utils/shotQuery";
 import {
-  PAGE_SIZE,
+  LUMP_BANDS,
   OFF_DAYS_BANDS,
+  PAGE_SIZE,
   PAIN_BANDS,
+  SORENESS_BANDS,
   countActiveFacets,
   emptyHistoryQuery,
+  type HistoryQuery,
+  withLumpBand,
   withOffDaysBand,
   withPainBand,
-  type HistoryQuery,
+  withSorenessBand,
 } from "../utils/historyQuery";
 import { toShotDate, shotDateRange } from "../utils/civilDate";
 import { suggestionsFor, normalizeValue } from "../utils/suggestions";
@@ -205,6 +209,19 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   const setOffDaysBand = (id: string) => {
     setLimit(PAGE_SIZE);
     onQueryChange(withOffDaysBand(query, id));
+  };
+
+  // `setLimit(PAGE_SIZE)` like every facet above: narrowing has to shrink the
+  // page window back, or a window grown by "Load more" reveals several pages of
+  // the new, smaller result set at once.
+  const setSorenessBand = (id: string) => {
+    setLimit(PAGE_SIZE);
+    onQueryChange(withSorenessBand(query, id));
+  };
+
+  const setLumpBand = (id: string) => {
+    setLimit(PAGE_SIZE);
+    onQueryChange(withLumpBand(query, id));
   };
 
   const clearAll = () => {
@@ -405,6 +422,55 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
               >
                 <option value="">Any</option>
                 {OFF_DAYS_BANDS.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          {/* Their OWN pair-row, never appended to an existing one. The note
+              above records what a third member did to a row here: `.field-cell`
+              is `flex: 1 1 0` with min-content as its floor, so the longest
+              option claimed 237px and squeezed its neighbours to 107px across
+              561–800px, where the row is side-by-side but the window is still
+              narrow. Measured as a pair instead: 301/301 at 700px, 439/439 at
+              1200, even with every row above.
+
+              No "Not answered" option, matching the two ordinals above: "Any"
+              means the facet is off, and a shot with nothing recorded matches
+              no value — "not recorded" is not "not sore". */}
+          <div className="form-row">
+            <label>
+              Sore for
+              <select
+                value={query.filter.afterSoreness ?? ""}
+                onChange={(e) => setSorenessBand(e.target.value)}
+              >
+                <option value="">Any</option>
+                {SORENESS_BANDS.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Left a lump
+              {/* Read back through LUMP_BANDS rather than
+                  `filter.afterLump ? "yes" : "no"`, which would show "No" for a
+                  facet that is switched OFF — the same false/undefined
+                  collapse the filter itself is written to avoid. */}
+              <select
+                value={
+                  LUMP_BANDS.find((b) => b.value === query.filter.afterLump)
+                    ?.id ?? ""
+                }
+                onChange={(e) => setLumpBand(e.target.value)}
+              >
+                <option value="">Any</option>
+                {LUMP_BANDS.map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.label}
                   </option>

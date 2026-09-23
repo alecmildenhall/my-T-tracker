@@ -1,6 +1,6 @@
 // src/hooks/__tests__/useShots.test.ts
 import { renderHook, act } from '@testing-library/react'
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { useShots } from '../useShots'
 import type { ShotEntry } from '../../types/shot'
 import { STORAGE_KEYS } from '../../storageKeys'
@@ -186,6 +186,37 @@ describe('useShots', () => {
       rerender()
       
       expect(result.current.addShot).toBe(firstAddShot)
+    })
+
+    // The subject can VANISH between a draft being parked and the shot being
+    // saved: deleted in another tab, deleted from History, or replaced wholesale
+    // by an import. The answers then have nowhere to go, and conjuring the row
+    // back would resurrect something the user deleted — so they are dropped,
+    // deliberately, rather than by `map` quietly matching nothing.
+    //
+    // What must NOT happen is this boolean lying about the SHOT. The caller
+    // turns false into "Couldn't save this shot", holds the sheet open and
+    // invites a second save, so reporting failure here would claim a loss that
+    // did not happen and risk a duplicate entry.
+    it('still saves the shot when the previous shot it answers for is gone', () => {
+      const { result } = renderHook(() => useShots())
+
+      let landed: boolean | undefined
+      act(() => {
+        landed = result.current.addShot(
+          { id: 'new', date: '2026-09-18' },
+          { id: 'vanished', afterSoreness: 'several-days', afterLump: undefined },
+        )
+      })
+
+      expect(landed).toBe(true)
+      expect(result.current.shots).toHaveLength(1)
+      expect(result.current.shots[0].id).toBe('new')
+      // No orphan row invented to carry the answers...
+      expect(result.current.shots.some((s) => s.id === 'vanished')).toBe(false)
+      // ...and nothing smeared onto the shot being logged, which describes a
+      // different injection entirely.
+      expect(result.current.shots[0].afterSoreness).toBeUndefined()
     })
   })
 
@@ -913,5 +944,128 @@ describe('useShots', () => {
       const { result } = renderHook(() => useShots())
       expect(result.current.shots).toEqual([])
     })
+  })
+})
+
+describe('answers about the previous shot', () => {
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
+  const earlier: ShotEntry = { id: 'prev', date: '2026-07-01' }
+  const fresh: ShotEntry = { id: 'new', date: '2026-07-08' }
+
+  it('writes the new shot and the previous shot in ONE persist', () => {
+    // Two rows change when a shot is logged: the shot itself, and how the
+    // previous one settled. They go through a single persist so both land or
+    // neither does — a second write failing on its own would drop the answer
+    // while the shot saved, and report success.
+    const { result } = renderHook(() => useShots())
+    act(() => {
+      result.current.addShot(earlier)
+    })
+    act(() => {
+      result.current.addShot(fresh, {
+        id: 'prev',
+        afterSoreness: 'several-days',
+        afterLump: true,
+      })
+    })
+
+    const stored = JSON.parse(
+      localStorage.getItem(STORAGE_KEYS.shots) as string,
+    ) as ShotEntry[]
+    expect(stored).toHaveLength(2)
+    expect(stored.find((s) => s.id === 'prev')).toMatchObject({
+      afterSoreness: 'several-days',
+      afterLump: true,
+    })
+    // The answers belong to the shot they describe, never to the one being
+    // logged — that is what keeps the site and its outcome on one row.
+    expect(stored.find((s) => s.id === 'new')).not.toHaveProperty(
+      'afterSoreness',
+    )
+  })
+
+  it('stores a "no lump" answer, which is not the same as no answer', () => {
+    const { result } = renderHook(() => useShots())
+    act(() => {
+      result.current.addShot(earlier)
+    })
+    act(() => {
+      result.current.addShot(fresh, {
+        id: 'prev',
+        afterSoreness: undefined,
+        afterLump: false,
+      })
+    })
+
+    const stored = JSON.parse(
+      localStorage.getItem(STORAGE_KEYS.shots) as string,
+    ) as ShotEntry[]
+    // `false` survives. A truthiness check here would drop the answer "no
+    // lump" and leave the shot looking unasked.
+    expect(stored.find((s) => s.id === 'prev')).toHaveProperty(
+      'afterLump',
+      false,
+    )
+  })
+
+  it('removes an answer that was cleared rather than writing undefined', () => {
+    const { result } = renderHook(() => useShots())
+    act(() => {
+      result.current.addShot({
+        ...earlier,
+        afterSoreness: 'week-plus',
+        afterLump: true,
+      })
+    })
+    act(() => {
+      // Both stated outright, which is what this test is about: an omitted key
+      // and an explicit `undefined` both mean "clear it", and requiring the
+      // fields is what stops the first happening by accident elsewhere.
+      result.current.addShot(fresh, {
+        id: 'prev',
+        afterSoreness: undefined,
+        afterLump: undefined,
+      })
+    })
+
+    // Asserted against the IN-MEMORY state, not the JSON in storage.
+    // `JSON.stringify` drops undefined-valued keys on its own, so reading the
+    // stored text cannot tell `delete` from `= undefined` — measured: that
+    // version of this test passed with the delete mutated away, which is a
+    // guard that proves nothing.
+    const prev = result.current.shots.find((s) => s.id === 'prev') as ShotEntry
+    expect(prev).not.toHaveProperty('afterSoreness')
+    expect(prev).not.toHaveProperty('afterLump')
+  })
+
+  it('commits neither entry when the write is refused', () => {
+    const { result } = renderHook(() => useShots())
+    act(() => {
+      result.current.addShot(earlier)
+    })
+    const setItem = vi
+      .spyOn(Storage.prototype, 'setItem')
+      .mockImplementation(() => {
+        throw new Error('quota')
+      })
+
+    let landed: boolean | undefined
+    act(() => {
+      landed = result.current.addShot(fresh, {
+        id: 'prev',
+        afterSoreness: 'none',
+        afterLump: undefined,
+      })
+    })
+    setItem.mockRestore()
+
+    expect(landed).toBe(false)
+    // Nothing half-saved: the shot is absent AND the previous shot is
+    // unchanged, so a retry cannot duplicate one while losing the other.
+    expect(result.current.shots).toHaveLength(1)
+    expect(result.current.shots[0]).not.toHaveProperty('afterSoreness')
   })
 })

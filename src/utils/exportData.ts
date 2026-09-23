@@ -4,13 +4,9 @@
 //   - CSV:  a flat, spreadsheet-friendly export for clinical conversations
 // CSV is export-only — we never parse it back — so it optimises for safety in
 // spreadsheet apps (formula-injection guard) and correctness (RFC 4180 quoting).
-import {
-  isOffDaysPattern,
-  isPainLevel,
-  type OffDaysPattern,
-  type ShotEntry,
-} from "../types/shot";
+import { isOffDaysPattern, isPainLevel, isSorenessDuration, type OffDaysPattern, type ShotEntry, type SorenessDuration } from "../types/shot";
 import { offDaysLabel } from "./offDaysLabel";
+import { sorenessLabel } from "./soreness";
 import { isShotDateInRange } from "./civilDate";
 import type { Profile } from "../types/profile";
 import { APP_NAME, APP_VERSION, FORMAT_VERSION } from "../appMeta";
@@ -120,6 +116,25 @@ const CSV_COLUMNS: Array<{
     usable: isOffDaysPattern,
     format: (v) => offDaysLabel(v as OffDaysPattern),
   },
+  // Written out like offDays, and for the rule that column states: a cell must
+  // be readable on its own. `several-days` is a fragment — several days of
+  // what? — where "Sore several days" needs nothing else. Guarded like the
+  // others so a value the backup drops is never written verbatim into the file
+  // a provider reads.
+  {
+    header: "afterSoreness",
+    key: "afterSoreness",
+    usable: isSorenessDuration,
+    format: (v) => sorenessLabel(v as SorenessDuration),
+  },
+  // yes/no rather than true/false: the column beside it is prose, and a
+  // spreadsheet reader is not a JSON reader.
+  {
+    header: "afterLump",
+    key: "afterLump",
+    usable: (v) => typeof v === "boolean",
+    format: (v) => (v ? "yes" : "no"),
+  },
   { header: "notes", key: "notes" },
 ];
 
@@ -165,6 +180,10 @@ export function toCsv(shots: ShotEntry[]): string {
         const value = shot[c.key];
         if (c.usable && value !== undefined && !c.usable(value)) return "";
         if (c.format && value !== undefined) return escapeCsvCell(c.format(value));
+        // A boolean-valued column must declare a `format`: "true" is not a word
+        // a file a provider reads should contain. Blank rather than leak it —
+        // fail safe, and a test pins the one column this applies to.
+        if (typeof value === "boolean") return "";
         return escapeCsvCell(value);
       }).join(","),
     );
