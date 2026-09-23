@@ -559,6 +559,35 @@ export function previousShotBefore<T extends { id: string; date: string }>(
 }
 
 /**
+ * The mirror: the shot logged immediately AFTER `date`.
+ *
+ * The settled block uses it when editing, to say what window the question
+ * covers — "how long was it sore" is about the days following that shot, and
+ * the next shot is where those days stop being attributable to it.
+ *
+ * `>`, strictly, where {@link previousShotBefore} keeps a same-day shot. That
+ * is deliberate and the two must not disagree: a shot on the same civil date is
+ * the PREVIOUS one by that function's rule, so admitting it here as well would
+ * let one entry be both the predecessor and the successor of another.
+ *
+ * A separate named owner rather than an inline filter, for the reason the
+ * function above gives: one place answers "which shot came next", so the id and
+ * the date can never disagree about which shot that is.
+ */
+export function nextShotAfter<T extends { id: string; date: string }>(
+  date: string,
+  shots: T[],
+  exceptId?: string,
+): T | undefined {
+  let best: T | undefined;
+  for (const shot of shots) {
+    if (shot.id === exceptId || shot.date <= date) continue;
+    if (best === undefined || shot.date < best.date) best = shot;
+  }
+  return best;
+}
+
+/**
  * The date a grid anchor is established from: the most recent date this app
  * knows about — the shot being saved, or a later one already on record when
  * this save is a backdated entry.

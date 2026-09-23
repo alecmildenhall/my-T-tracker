@@ -4,6 +4,8 @@ import {
   scheduleMode,
   plannedDateRolling,
   previousShotDateBefore,
+  previousShotBefore,
+  nextShotAfter,
   snapToWeekday,
   establishAnchor,
   plannedDateFor,
@@ -291,6 +293,46 @@ describe("scheduleMode", () => {
     expect(scheduleMode(["wednesday"], 0)).toBe("none");
     expect(scheduleMode(["wednesday"], 7.5)).toBe("none");
     expect(scheduleMode(["wednesday"], 400)).toBe("none");
+  });
+});
+
+describe("nextShotAfter", () => {
+  const shots = [
+    { id: "a", date: "2026-09-01" },
+    { id: "b", date: "2026-09-08" },
+    { id: "c", date: "2026-09-15" },
+  ];
+
+  it("answers with the NEAREST later shot, not merely a later one", () => {
+    // The settled block uses this to say where the window stops. Reaching past
+    // the next shot would claim a span covering somebody else's interval.
+    expect(nextShotAfter("2026-09-01", shots)?.id).toBe("b");
+    expect(nextShotAfter("2026-09-08", shots)?.id).toBe("c");
+  });
+
+  it("answers with nothing when this is the most recent shot", () => {
+    // Not an unhandled case: the window has no end, so the form shows no
+    // boundary rather than inventing one.
+    expect(nextShotAfter("2026-09-15", shots)).toBeUndefined();
+    expect(nextShotAfter("2026-10-01", shots)).toBeUndefined();
+  });
+
+  it("excludes the shot being edited, so it cannot follow itself", () => {
+    expect(nextShotAfter("2026-09-01", shots, "b")?.id).toBe("c");
+  });
+
+  it("leaves a same-day shot to previousShotBefore, never claiming it twice", () => {
+    // The complement rule, pinned from BOTH sides because neither function is
+    // meaningful alone: previousShotBefore deliberately counts a shot on the
+    // same civil date as the one before. If this admitted it too, a single
+    // entry would be both the predecessor and the successor of another, and
+    // the settled block's window would start and end on the same shot.
+    const sameDay = [
+      { id: "earlier", date: "2026-09-08" },
+      { id: "later", date: "2026-09-08" },
+    ];
+    expect(previousShotBefore("2026-09-08", sameDay, "later")?.id).toBe("earlier");
+    expect(nextShotAfter("2026-09-08", sameDay, "later")).toBeUndefined();
   });
 });
 

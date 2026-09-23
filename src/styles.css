@@ -1214,6 +1214,20 @@ select {
   color: var(--text-muted);
 }
 
+/* The window the question covers, inside the <legend> — the same shape as
+   `.off-days-field__span` one field above, and for the same reason: it belongs
+   to the QUESTION, not to the line that identifies the shot. Hanging it off the
+   sub-line conflated two jobs, since that line says WHICH shot this is while
+   this says what the answer is about. `block` keeps it off the end of the
+   question rather than running on after it. */
+.prev-shot__span {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
 .prev-shot__field {
   border: 0;
   padding: 0;
@@ -3006,8 +3020,23 @@ select {
    itself, which is why the base rule is currently never applied alone: change
    the green above and nothing on screen moves. */
 .cadence__summary--info {
-  background: var(--bg-card-soft);
-  border-color: var(--border-subtle);
-  color: var(--text-muted);
+  /* A SENTENCE, not a field. Boxed and muted, this sat in the same visual
+     family as the number input directly above it — same border, same radius,
+     same palette — so the one line where the app says what it understood read
+     as another control. Un-boxing is what separates them: it now stands out by
+     being the only prose in a stack of widgets, which is how every calendar app
+     presents a recurrence summary and how this file already styles
+     `.prev-shot__sub` and `.off-days-field__span`.
+
+     Not the success wash the base rule carries, either. Green is this app's
+     "that worked" and belongs to logging a shot; spending it on a settings echo
+     is how it stops meaning anything. */
+  background: none;
+  border: 0;
+  border-radius: 0;
+  padding-inline: 0;
+  color: inherit;
+  font-size: 0.92rem;
+  font-weight: 600;
 }
 

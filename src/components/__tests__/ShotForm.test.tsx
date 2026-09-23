@@ -3144,6 +3144,68 @@ describe("how the previous shot settled", () => {
     expect(weekPlusChecked()).toBe(true);
   });
 
+  it("names the window ON THE QUESTION when a later shot bounds it", () => {
+    // The sub-line says WHICH shot this is; the window says what the answer
+    // covers. Two jobs, so the window lives in the <legend> — part of the
+    // group's accessible name, the same placement as the off-days span.
+    // Asserted on the composed name, which is how the off-days tests pin theirs.
+    const older: ShotEntry = { id: "older", date: "2026-09-08", injectionSite: "glute" };
+    const newer: ShotEntry = { id: "newer", date: "2026-09-15", injectionSite: "thigh" };
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        onUpdateShot={vi.fn()}
+        editingShot={older}
+        shots={[older, newer]}
+      />,
+    );
+
+    expect(
+      screen.getByRole("group", {
+        name: "How long was it sore? Up to 2026-09-15",
+      }),
+    ).toBeTruthy();
+    // And it stays OFF the identity line, which still names the shot alone.
+    expect(document.querySelector(".prev-shot__sub")?.textContent).toBe(
+      "2026-09-08 · glute",
+    );
+  });
+
+  it("shows no window on the most recent shot", () => {
+    // Nothing follows it, so the window has no end. Naming one would invent a
+    // boundary — so the question is asked bare rather than bounded.
+    const only: ShotEntry = { id: "only", date: "2026-09-08", injectionSite: "glute" };
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        onUpdateShot={vi.fn()}
+        editingShot={only}
+        shots={[only]}
+      />,
+    );
+
+    expect(
+      screen.getByRole("group", { name: "How long was it sore?" }),
+    ).toBeTruthy();
+    expect(document.querySelector(".prev-shot__span")).toBeNull();
+  });
+
+  it("does not repeat the window when LOGGING, where the sub-line carries it", () => {
+    // Logging already reads "… 9 days before this one" on the sub-line. A
+    // second window line would say the same thing twice.
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        shots={[{ id: "prev", date: daysAgo(9), injectionSite: "glute" }]}
+      />,
+    );
+
+    expect(document.querySelector(".prev-shot__span")).toBeNull();
+    expect(document.querySelector(".prev-shot__sub")?.textContent).toContain(
+      "9 days before this one",
+    );
+  });
+
   it("parks the LAST KNOWN subject, not whatever resolves this instant", () => {
     // The published half of "no subject is not a new subject". A blank date
     // resolves to no shot, and publishing that raw parked a draft claiming the

@@ -57,6 +57,7 @@ import {
   effectiveScheduleMode,
   planShot,
   previousShotBefore,
+  nextShotAfter,
   previousShotDateBefore,
 } from "../utils/schedule";
 
@@ -576,6 +577,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       subject: null as ShotEntry | null,
       heading: "",
       sub: "",
+      windowLabel: "",
     };
     const subject = editingShot
       ? { shot: editingShot, elapsed: daysBetweenCivil(editingShot.date, todayLocalISO()) }
@@ -641,6 +643,19 @@ export const ShotForm: React.FC<ShotFormProps> = ({
           )
         : asked.durations;
     const asks = { durations, lump: asked.lump };
+    /**
+     * Where the window the question covers stops.
+     *
+     * Editing only: when logging, the sub-line already names the gap
+     * ("9 days before this one"), and a second line would say it twice.
+     *
+     * `undefined` when nothing follows this shot, and that is the whole
+     * behaviour rather than an unhandled case — the most recent shot has no end
+     * to its window, so naming a boundary would invent one. Nothing is shown.
+     */
+    const nextShot = editingShot
+      ? nextShotAfter(subject.shot.date, shots, subject.shot.id)
+      : undefined;
     return {
       ...asks,
       shotId: subject.shot.id,
@@ -656,6 +671,13 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       ]
         .filter(Boolean)
         .join(" \u00b7 "),
+      /**
+       * What the question covers, shown WITH THE QUESTION rather than on the
+       * line above it. The sub-line says which shot this is; this says what the
+       * answer is about, and those are two different jobs \u2014 hanging the window
+       * off the identity line conflated them.
+       */
+      windowLabel: nextShot ? `Up to ${nextShot.date}` : "",
     };
   }, [editingShot, date, shots]);
 
@@ -1969,7 +1991,29 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             <p className="prev-shot__sub">{settledAsk.sub}</p>
             {settledAsk.durations.length > 0 && (
               <fieldset className="prev-shot__field">
-                <legend>How long was it sore?</legend>
+                {/* Inside the <legend>, so the window joins the group's
+                    accessible NAME rather than hanging off it as a loose
+                    description — the same placement and reasoning as
+                    `.off-days-field__span` one field above. It belongs to the
+                    QUESTION: the sub-line says which shot this is, while this
+                    says what the answer covers. Renders only when a later shot
+                    bounds the window.
+
+                    The explicit {" "} is load-bearing, not formatting. JSX
+                    strips the newline and indentation between the text and the
+                    span, so without it the name computed as
+                    "How long was it sore?Up to 2026-09-15" — one run-on word to
+                    a screen reader. Caught by asserting the COMPOSED name, the
+                    way the off-days tests pin theirs; a regex would have passed
+                    and shipped it. */}
+                <legend>
+                  How long was it sore?{" "}
+                  {settledAsk.windowLabel && (
+                    <span className="prev-shot__span">
+                      {settledAsk.windowLabel}
+                    </span>
+                  )}
+                </legend>
                 <div
                   className={`prev-shot__chips${
                     settledAsk.durations.length === 3
