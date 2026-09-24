@@ -388,8 +388,7 @@ const App: React.FC = () => {
   };
 
   /**
-   * Tapping a row in the Home teaser: go to History with that shot already open
-   * for editing.
+   * Tapping Edit on a row in the Home teaser: open that shot's editor.
    *
    * The sheet opens OVER HOME, and closing it leaves you on Home.
    *

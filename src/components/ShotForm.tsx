@@ -698,6 +698,24 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     if (!confirming) askBeforeConfirm.current = liveSettledAsk;
   }, [confirming, liveSettledAsk]);
   const settledAsk = confirming ? askBeforeConfirm.current : liveSettledAsk;
+  /**
+   * The section can vanish from under the focus it holds, and that strands
+   * focus on <body> inside a dialog whose #root is inert — where the Tab trap
+   * cannot re-engage. `showsPlannedField` freezes itself at mount against this
+   * exact hazard.
+   *
+   * Freezing is NOT the fix here. That field's condition depends only on the
+   * profile, while this one legitimately changes as you re-date a shot: a
+   * backdated entry gains a previous shot to ask about, a re-dated one loses
+   * the duration group. Frozen at mount, the block could never appear.
+   *
+   * So the unmount is allowed and the damage is repaired instead — the shape
+   * `handOffFocus` exists for. Nothing is predicted: the effect runs after the
+   * DOM has changed and asks where focus ACTUALLY landed, which is the only
+   * reading that survives a radio group, an inert ancestor and a disabled
+   * control all removing focus by different routes.
+   */
+  const settledShown = settledAsk.durations.length > 0 || settledAsk.lump;
 
   /** What the app works out this shot was meant to be, given today's settings. */
   const plan = useMemo(
@@ -830,6 +848,26 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   // Modal needs it as `initialFocusRef` — see the note on the <h2> below.
   const ownHeadingRef = useRef<HTMLHeadingElement>(null);
   const headingRef = externalHeadingRef ?? ownHeadingRef;
+  /**
+   * Repair focus when the settled section leaves while holding it. See the note
+   * on `settledShown` for why this is a repair rather than a freeze.
+   *
+   * It lives HERE, below `headingRef`, and not beside `settledShown` where it
+   * reads more naturally: `headingRef` is a `const` declared further down, so
+   * an effect referencing it from above sits in the temporal dead zone and the
+   * component throws on every render. Measured rather than reasoned about —
+   * `tsc` named the line, and the suite had gone from green to 232 failures
+   * across two files, which looked like a behavioural disaster and was one
+   * misplaced declaration.
+   */
+  const settledWasShown = useRef(settledShown);
+  useEffect(() => {
+    const wasShown = settledWasShown.current;
+    settledWasShown.current = settledShown;
+    if (wasShown && !settledShown && document.activeElement === document.body) {
+      handOffFocus(headingRef);
+    }
+  }, [settledShown, headingRef]);
   /**
    * Seeded from the restored draft, not started empty.
    *
@@ -998,6 +1036,39 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // wrongly — the failure `plannedBaseline` documents a few lines above.
     setAfterSorenessBaseline(storedSoreness(settledAsk.subject));
     setAfterLumpBaseline(storedLump(settledAsk.subject));
+  }
+  /**
+   * THE RECORD CAN MOVE WITHOUT THE SUBJECT CHANGING, and the sync above cannot
+   * see that: it keys on the shot's id, while the baselines are values read
+   * from that shot's record. `shots` is live — `useLocalStorage` subscribes to
+   * cross-tab storage events, and an import replaces the list — so answering
+   * this same shot from History in another tab hands us a new object with the
+   * same id and a different answer.
+   *
+   * Measured before this: the baseline stayed "" while the record said
+   * "week-plus", so the duration group rendered with nothing checked although
+   * the stored answer was in the offered list, and then answering only the LUMP
+   * made `answeredAboutPrevious` true and sent `afterSoreness: undefined` —
+   * deleting the stored answer, unrecoverably, since this question is never
+   * asked again once the interval closes.
+   *
+   * The third instance of one mistake: the parked-draft version was fixed by
+   * carrying the baseline in the draft, and the live sheet was left with the
+   * same hole. The rule is `plannedBaseline`'s — the baseline ALWAYS follows the
+   * record, and the value follows only while the user has not touched it, so an
+   * edit in progress is never clobbered by a write from elsewhere.
+   */
+  const recordSoreness = storedSoreness(settledAsk.subject);
+  const recordLump = storedLump(settledAsk.subject);
+  if (settledAsk.shotId !== undefined && settledAsk.shotId === lastSubjectId) {
+    if (recordSoreness !== afterSorenessBaseline) {
+      if (afterSoreness === afterSorenessBaseline) setAfterSoreness(recordSoreness);
+      setAfterSorenessBaseline(recordSoreness);
+    }
+    if (recordLump !== afterLumpBaseline) {
+      if (afterLump === afterLumpBaseline) setAfterLump(recordLump);
+      setAfterLumpBaseline(recordLump);
+    }
   }
   /**
    * A pick the elapsed gap can no longer settle goes back to what is on record.
@@ -1990,7 +2061,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
             When logging, still rendered only when the elapsed time can settle
             at least one question — an answer that cannot yet be true gets
             skipped or guessed. Editing always asks; see `liveSettledAsk`. */}
-        {(settledAsk.durations.length > 0 || settledAsk.lump) && (
+        {settledShown && (
           <section className="prev-shot">
             <h3 className="prev-shot__title">{settledAsk.heading}</h3>
             <p className="prev-shot__sub">{settledAsk.sub}</p>

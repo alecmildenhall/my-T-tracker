@@ -7,7 +7,7 @@ import { OFF_DAYS_PATTERNS, type ShotEntry } from "../../types/shot";
 import type { SaveOutcome } from "../ShotForm";
 import type { Profile } from "../../types/profile";
 import { todayLocalISO } from "../../utils/datetime";
-import { expectFocusSomewhereUseful } from "../../test/focus";
+import { expectFocusSomewhereUseful, withFocusGuard } from "../../test/focus";
 import { expectVisibleFocusRing } from "../../test/focusRing";
 import {
   isShotDateInRange,
@@ -3219,6 +3219,110 @@ describe("how the previous shot settled", () => {
     expect(document.querySelector(".prev-shot__sub")?.textContent).toContain(
       "9 days before this one",
     );
+  });
+
+  it("repairs focus when the whole section leaves from under it", () => {
+    // `shots` is live, so the subject can vanish while a radio inside this
+    // section holds focus — another tab deleting the previous shot. The section
+    // then unmounts WITH the focused control inside it, stranding focus on
+    // <body> inside a dialog whose #root is inert, where the Tab trap cannot
+    // re-engage. `showsPlannedField` freezes itself at mount against this exact
+    // hazard; freezing is wrong here, because this section legitimately appears
+    // and disappears as the date changes.
+    //
+    // Focused directly rather than by clicking: jsdom's fireEvent.click does not
+    // focus what it clicks (nor does Safari), so a click would start this test
+    // from <body> and `withFocusGuard` would pass without testing anything.
+    const prev: ShotEntry = { id: "prev", date: daysAgo(9), injectionSite: "glute" };
+    const { rerender } = render(
+      <ShotForm onAddShot={vi.fn()} shots={[prev]} />,
+    );
+    const radio = screen.getByRole("radio", { name: "Several days" });
+    radio.focus();
+    expect(document.activeElement).toBe(radio);
+
+    withFocusGuard("after the settled section's subject was deleted elsewhere", () => {
+      rerender(<ShotForm onAddShot={vi.fn()} shots={[]} />);
+    });
+
+    // The section really did go — otherwise the guard above proves nothing.
+    expect(
+      screen.queryByRole("group", { name: /How long was it sore/i }),
+    ).toBeNull();
+  });
+
+  it("follows the record when the subject is answered in another tab", () => {
+    // `shots` is live: useLocalStorage subscribes to cross-tab storage events,
+    // and an import replaces the list. The re-seed keys on the subject's ID, so
+    // a new object with the SAME id and a different answer slipped past it and
+    // left the baseline stale — the group then rendered with nothing checked
+    // while the offered list contained the stored answer.
+    const unanswered: ShotEntry = { id: "prev", date: daysAgo(9), injectionSite: "glute" };
+    const { rerender } = render(
+      <ShotForm onAddShot={vi.fn()} shots={[unanswered]} />,
+    );
+
+    rerender(
+      <ShotForm
+        onAddShot={vi.fn()}
+        shots={[{ ...unanswered, afterSoreness: "week-plus" }]}
+      />,
+    );
+
+    expect(weekPlusChecked()).toBe(true);
+  });
+
+  it("does not delete an answer written elsewhere while the sheet was open", () => {
+    // The harm the stale baseline caused. Answering only the LUMP made
+    // `answeredAboutPrevious` true, and the payload then sent
+    // `afterSoreness: undefined` — which withAnswers treats as a deletion.
+    // Unrecoverable: this question is never asked again once the interval
+    // closes.
+    const unanswered: ShotEntry = { id: "prev", date: daysAgo(9), injectionSite: "glute" };
+    const onAddShot = vi.fn();
+    const { rerender } = render(
+      <ShotForm onAddShot={onAddShot} shots={[unanswered]} />,
+    );
+
+    rerender(
+      <ShotForm
+        onAddShot={onAddShot}
+        shots={[{ ...unanswered, afterSoreness: "week-plus" }]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("radio", { name: "Yes" }));
+    fireEvent.click(screen.getByRole("button", { name: /save shot/i }));
+
+    expect(onAddShot.mock.calls[0][1]).toEqual({
+      id: "prev",
+      afterSoreness: "week-plus",
+      afterLump: true,
+    });
+  });
+
+  it("keeps an edit in progress when the record moves underneath it", () => {
+    // The other half of the rule: the baseline always follows the record, but
+    // the VALUE follows only while untouched. A write from elsewhere must not
+    // clobber what the user is part-way through choosing.
+    const unanswered: ShotEntry = { id: "prev", date: daysAgo(9), injectionSite: "glute" };
+    const { rerender } = render(
+      <ShotForm onAddShot={vi.fn()} shots={[unanswered]} />,
+    );
+
+    fireEvent.click(screen.getByRole("radio", { name: "Several days" }));
+    rerender(
+      <ShotForm
+        onAddShot={vi.fn()}
+        shots={[{ ...unanswered, afterSoreness: "week-plus" }]}
+      />,
+    );
+
+    expect(
+      (screen.getByRole("radio", { name: "Several days" }) as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+    expect(weekPlusChecked()).toBe(false);
   });
 
   it("parks the LAST KNOWN subject, not whatever resolves this instant", () => {

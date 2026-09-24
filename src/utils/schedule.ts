@@ -553,7 +553,17 @@ export function previousShotBefore<T extends { id: string; date: string }>(
     // edit could repair. A shot cannot be its own predecessor because `exceptId`
     // removes it, and a brand-new shot has no id in the list yet.
     if (shot.id === exceptId || shot.date > date) continue;
-    if (best === undefined || shot.date > best.date) best = shot;
+    // `>=`, so the LAST-logged shot wins a same-date tie. Two entries on one
+    // civil date is a real protocol — a split dose, left then right — and this
+    // function no longer answers only "what date"; its return value decides
+    // which ROW the soreness answers are written onto. Keeping the first match
+    // pointed at the earlier entry while History's top row for that date was
+    // the other one, so the second shot could never be asked about at all.
+    //
+    // `sortShots` breaks the same tie the same way (`compareShotsChrono` falls
+    // through to array order, and "newest" takes the last), so the two agree
+    // about which shot is the recent one.
+    if (best === undefined || shot.date >= best.date) best = shot;
   }
   return best;
 }

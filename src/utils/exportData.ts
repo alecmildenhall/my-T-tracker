@@ -181,8 +181,14 @@ export function toCsv(shots: ShotEntry[]): string {
         if (c.usable && value !== undefined && !c.usable(value)) return "";
         if (c.format && value !== undefined) return escapeCsvCell(c.format(value));
         // A boolean-valued column must declare a `format`: "true" is not a word
-        // a file a provider reads should contain. Blank rather than leak it —
-        // fail safe, and a test pins the one column this applies to.
+        // a file a provider reads should contain. Blank rather than leak it.
+        //
+        // UNREACHABLE TODAY, and said plainly rather than dressed up: the only
+        // boolean column (`afterLump`) carries a `format`, which returns above.
+        // This catches the NEXT one, added without one. An earlier version of
+        // this comment claimed a test pinned it; none existed, and a comment
+        // asserting a guard that is not there is worse than no comment — the
+        // tests that now exist pin the formatted columns, not this line.
         if (typeof value === "boolean") return "";
         return escapeCsvCell(value);
       }).join(","),

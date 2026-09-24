@@ -175,6 +175,39 @@ describe("toCsv", () => {
     );
   });
 
+  /** The data row, not the whole file. Asserting against the whole CSV is how a
+   *  guard goes vacuous here: the header ends in `notes`, so `toContain("no")`
+   *  matches whatever the row says — it passes with the `format` deleted. The
+   *  header test above makes the same argument for the same reason. */
+  const dataRow = (csv: string) => csv.slice(1).split("\r\n")[1];
+
+  it("writes the settled answers as prose, never as stored values", () => {
+    // Nothing pinned this: the only test touching these columns asserted the
+    // HEADER, so deleting either `format` left the whole suite green while the
+    // file a provider reads said "several-days" and "true".
+    const csv = toCsv([shot({ afterSoreness: "several-days", afterLump: true })]);
+    expect(dataRow(csv)).toBe("2026-07-12,,,,,,,,,,Sore several days,yes,");
+  });
+
+  it("writes 'no' for a lump answered no, which is not the same as unanswered", () => {
+    // `false` has to survive the whole way out. A truthiness check anywhere on
+    // this path turns "I checked, there was none" into "nobody asked", and the
+    // empty column beside it is what that failure would look like.
+    expect(dataRow(toCsv([shot({ afterLump: false })]))).toBe(
+      "2026-07-12,,,,,,,,,,,no,",
+    );
+  });
+
+  it("blanks a settled value the JSON backup would drop", () => {
+    // Same agreement the planned date keeps below: sanitizeShots protects the
+    // SHOT rather than each field, so a hand-edited or legacy value reaches
+    // here and must not be written verbatim into a clinical file.
+    const csv = toCsv([
+      shot({ afterSoreness: "ages" as never, afterLump: "yes" as never }),
+    ]);
+    expect(dataRow(csv)).toBe("2026-07-12,,,,,,,,,,,,");
+  });
+
   it("leaves out a planned date the JSON backup would drop", () => {
     // The two exports have to agree. sanitizeShots is deliberately lenient —
     // it protects the shot, not each field — while pickShotFields drops an
