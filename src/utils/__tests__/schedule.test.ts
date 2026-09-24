@@ -336,6 +336,32 @@ describe("nextShotAfter", () => {
   });
 });
 
+describe("previousShotBefore — same-date ties", () => {
+  it("answers with the LAST-logged shot when two share a date", () => {
+    // A split dose is a real protocol — left then right, one civil date — and
+    // this function no longer answers only "what date". Its return value
+    // decides which ROW the soreness answers are written onto, so keeping the
+    // FIRST match pointed them at the earlier entry while History's top row for
+    // that date was the other one, and the second shot could never be asked
+    // about at all.
+    //
+    // `sortShots` breaks the same tie the same way (`compareShotsChrono` falls
+    // through to array order, and "newest" takes the last), so the two agree
+    // about which shot is the recent one.
+    //
+    // Note what the complement test above does NOT cover: it passes `exceptId`,
+    // which removes the tied shot before any comparison happens. Reverting this
+    // to `>` left the entire suite green until this case existed.
+    const splitDose = [
+      { id: "left", date: "2026-09-08" },
+      { id: "right", date: "2026-09-08" },
+    ];
+    expect(previousShotBefore("2026-09-15", splitDose)?.id).toBe("right");
+    // And on the date itself, where both are still candidates.
+    expect(previousShotBefore("2026-09-08", splitDose)?.id).toBe("right");
+  });
+});
+
 describe("plannedDateRolling", () => {
   const gaps = (actuals: string[], interval: number) =>
     actuals.map((a, i) => {
