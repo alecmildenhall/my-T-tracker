@@ -9,7 +9,6 @@ import React, {
 import {
   OFF_DAYS_PATTERNS,
   PAIN_LEVELS,
-  SORENESS_DURATIONS,
   isOffDaysPattern,
   isPainLevel,
   isSorenessDuration,
@@ -30,7 +29,7 @@ import {
   gapBeforeThisOne,
 } from "../utils/offDaysWindow";
 import {
-  previousShotQuestions,
+  settledQuestions,
   sorenessShortLabel,
   storedLump,
   storedSoreness,
@@ -580,90 +579,98 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       windowFrom: "",
       windowTo: "",
     };
+    /**
+     * ONE subject resolution, carrying the date to MEASURE AND DISPLAY it by.
+     *
+     * `atDate` is the live form value when editing, not the stored one. Re-date
+     * a shot mid-edit and the block used to keep identifying it by the date it
+     * had on open, and worse, bound its window with a shot that was by then
+     * earlier than the edited date.
+     *
+     * Resolving the subject is deliberately NOT gated on answerability — those
+     * were one branch and had to stop being one. The baselines seed from
+     * `subject`, and the edit write-back is unconditional because `updateShot`
+     * replaces the entry wholesale, so a subject of `null` silently deletes the
+     * stored answers. That is what a future date used to do. The question of
+     * WHICH shot this is about and the question of WHAT may be asked about it
+     * are now answered separately, because only the second depends on the gap.
+     */
     const subject = editingShot
-      ? { shot: editingShot, elapsed: daysBetweenCivil(editingShot.date, todayLocalISO()) }
+      ? {
+          shot: editingShot,
+          elapsed: daysBetweenCivil(date, todayLocalISO()),
+          atDate: date,
+        }
       : (() => {
           const prev = previousShotBefore(date, shots);
-          return prev ? { shot: prev, elapsed: daysBetweenCivil(prev.date, date) } : null;
+          return prev
+            ? {
+                shot: prev,
+                elapsed: daysBetweenCivil(prev.date, date),
+                atDate: prev.date,
+              }
+            : null;
         })();
     if (!subject) return none;
-    // The elapsed guard is a LOGGING guard, and applying it to both modes was a
-    // data-loss bug. NaN covers a half-typed date and a negative gap covers a
-    // date typed before the previous shot: both are real states of this field
-    // while logging, and both are reasons to ask nothing. Editing uses `elapsed`
-    // for NEITHER — the questions are unconditional and the sub-line omits the
-    // gap — so gating edit mode on it bought nothing and cost the answers.
-    //
-    // A shot dated in the FUTURE made `subject` null while editing, so the block
-    // hid, both baselines seeded to "", and the unconditional write-back below
-    // then replaced the stored answers with `undefined`, wholesale and silently,
-    // with nothing on screen having shown they existed. Import is deliberately
-    // not held to the taken-date bound (see `takenDateProblem`), so a restored
-    // backup reaches this without anyone hand-editing storage.
-    if (!editingShot && (!Number.isFinite(subject.elapsed) || subject.elapsed < 0)) {
-      return none;
-    }
+    /**
+     * An unusable gap asks NOTHING — it no longer hides the subject.
+     *
+     * `null` rather than the raw number, because `previousShotQuestions` compares
+     * and a NaN loses every comparison it is given: `NaN > 28`, `NaN < 1` and
+     * `NaN < 3` are all false, so a half-typed date would fall through to the
+     * bottom and offer questions about a gap nobody can compute.
+     *
+     * A NEGATIVE gap goes the same way. It means a date in the future, which
+     * import permits (see `takenDateProblem`), and "how long was it sore" about
+     * an injection that has not happened is unanswerable rather than unasked.
+     */
+    const gap =
+      Number.isFinite(subject.elapsed) && subject.elapsed >= 0
+        ? subject.elapsed
+        : null;
     const site = [subject.shot.injectionSitePosition, subject.shot.injectionSite]
       .filter(Boolean)
       .join(" ");
-    // EDITING asks unconditionally, and that is not the gate being abandoned.
-    // The gate governs what to ask UNPROMPTED while logging, where offering an
-    // answer the days so far cannot settle invites a guess. Opening a saved
-    // shot is a deliberate trip made to record how it went, so the one screen
-    // built for the job must not sit silent — and the two modes looked
-    // arbitrary side by side, because the number they turn on (the gap when
-    // logging, days since the shot when editing) is nowhere on screen.
-    const asked = editingShot
-      ? { durations: [...SORENESS_DURATIONS], lump: true }
-      : previousShotQuestions(subject.elapsed);
-    /**
-     * An answer already on record is always offerable, whatever the gap says.
-     *
-     * The gate exists to stop someone GUESSING an answer the elapsed days
-     * cannot settle; it has nothing to say about one they have already given.
-     * Without this, a shot holding "a week or more" met at a 3–6 day gap
-     * rendered three chips with NONE checked — the "phantom in a group where no
-     * chip matches" state the off-days seeding calls out by name — so the one
-     * screen built to show that answer reported it as unanswered.
-     *
-     * Only when the group is rendered anyway. Adding the stored value to an
-     * EMPTY set would resurrect the block at gaps where it is withheld on
-     * purpose, which is a different decision from this one. There the answer
-     * stays off screen and safe, because "Clear" is gated on what rendered.
-     *
-     * The lump question needs no equivalent: it always offers both values, so a
-     * stored answer is always representable and cannot go phantom.
-     */
-    const storedDuration = storedSoreness(subject.shot);
-    const durations =
-      asked.durations.length > 0 &&
-      storedDuration !== "" &&
-      !asked.durations.includes(storedDuration)
-        ? SORENESS_DURATIONS.filter(
-            (d) => asked.durations.includes(d) || d === storedDuration,
-          )
-        : asked.durations;
-    const asks = { durations, lump: asked.lump };
+    // One computation, both modes. `settledQuestions` owns the floor and the
+    // stored-answer expansion together, because the two rules only make sense
+    // read as a pair — see the note on it.
+    const asks = settledQuestions(gap, storedSoreness(subject.shot));
     /**
      * Where the window the question covers stops.
      *
      * Editing only: when logging, the sub-line already names the gap
      * ("9 days before this one"), and a second line would say it twice.
      *
-     * `undefined` when nothing follows this shot, and that is the whole
-     * behaviour rather than an unhandled case — the most recent shot has no end
-     * to its window, so naming a boundary would invent one. Nothing is shown.
+     * `undefined` when nothing follows this shot — the most recent shot has no
+     * end to its window, so naming a boundary would invent one.
+     *
+     * A SPLIT DOSE gets no window either, and that is a judgement rather than a
+     * gap in the code. Two injections on one civil date is a real protocol, and
+     * `nextShotAfter` skips same-date shots (the complement of
+     * `previousShotBefore` keeping them, so one entry cannot be both the
+     * predecessor and the successor of another). Left alone, editing the first
+     * of a pair reached PAST its sibling and drew "2026-07-01 → 2026-07-15",
+     * a range quietly spanning a second injection. Bounding at the sibling
+     * instead would draw a zero-length range. Neither is true: with two shots
+     * on one day the soreness cannot be attributed to either, so the honest
+     * answer is to say nothing about the window at all.
      */
-    const nextShot = editingShot
-      ? nextShotAfter(subject.shot.date, shots, subject.shot.id)
-      : undefined;
+    const sameDaySibling = shots.some(
+      (s) => s.id !== subject.shot.id && s.date === subject.atDate,
+    );
+    const nextShot =
+      editingShot && !sameDaySibling
+        ? nextShotAfter(subject.atDate, shots, subject.shot.id)
+        : undefined;
     return {
       ...asks,
       shotId: subject.shot.id,
       subject: subject.shot,
       heading: editingShot ? "How this shot settled" : "Your previous shot",
       sub: [
-        subject.shot.date,
+        // `atDate`, not the stored date: re-dating mid-edit must move the line
+        // that identifies the shot, or it names a date the form no longer holds.
+        subject.atDate,
         site || null,
         // The shared phrase, not a second copy of the rule: this line and the
         // off-days line above describe the SAME gap, and the local template
@@ -681,7 +688,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       // The range itself, as two values rather than one string: the rendering
       // puts a glyph between them for sighted readers and a word for everyone
       // else, and a pre-joined string could not carry both.
-      windowFrom: nextShot ? subject.shot.date : "",
+      windowFrom: nextShot ? subject.atDate : "",
       windowTo: nextShot ? nextShot.date : "",
     };
   }, [editingShot, date, shots]);
@@ -860,14 +867,32 @@ export const ShotForm: React.FC<ShotFormProps> = ({
    * across two files, which looked like a behavioural disaster and was one
    * misplaced declaration.
    */
-  const settledWasShown = useRef(settledShown);
+  const settledWasShown = useRef({
+    durations: settledAsk.durations.length > 0,
+    lump: settledAsk.lump,
+  });
   useEffect(() => {
-    const wasShown = settledWasShown.current;
-    settledWasShown.current = settledShown;
-    if (wasShown && !settledShown && document.activeElement === document.body) {
+    const was = settledWasShown.current;
+    const now = {
+      durations: settledAsk.durations.length > 0,
+      lump: settledAsk.lump,
+    };
+    settledWasShown.current = now;
+    // PER GROUP, not the union of the two. Keyed on `settledShown`, this could
+    // not see the duration fieldset leaving on its own while the lump group
+    // kept the section mounted — and that is the reachable case: with the
+    // previous shot nine days back and focus on a duration chip, another tab
+    // logging a shot two days ago shrinks the gap below the floor, withdraws
+    // only that fieldset, and strands focus on <body> inside a dialog whose
+    // #root is inert, where the Tab trap cannot re-engage.
+    //
+    // Either group going is enough to check, because the question is not which
+    // one left but whether focus survived it.
+    const lost = (was.durations && !now.durations) || (was.lump && !now.lump);
+    if (lost && document.activeElement === document.body) {
       handOffFocus(headingRef);
     }
-  }, [settledShown, headingRef]);
+  }, [settledAsk.durations.length, settledAsk.lump, headingRef]);
   /**
    * Seeded from the restored draft, not started empty.
    *
@@ -938,6 +963,12 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   const firstOffDaysChipRef = useRef<HTMLInputElement>(null);
   const [offDays, setOffDays] = useState<OffDaysPattern | "">(start.offDays);
   const firstSorenessChipRef = useRef<HTMLInputElement>(null);
+  // The lump group needs its own, or Clear has nowhere to hand focus when that
+  // is the only group rendered — below the three-day floor the duration group
+  // is withheld, so the soreness ref is null and focus fell through to the
+  // sheet's <h2>, scrolling to the top away from the question just answered.
+  // The pain and off-days Clear controls both return focus to their own group.
+  const firstLumpChipRef = useRef<HTMLInputElement>(null);
   /**
    * What these two fields show untouched: whatever the subject shot already has
    * on record, so an existing answer is visible and changeable rather than
@@ -2165,6 +2196,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
                       }`}
                     >
                       <input
+                        ref={value === "no" ? firstLumpChipRef : undefined}
                         type="radio"
                         name="afterLump"
                         value={value}
@@ -2188,9 +2220,14 @@ export const ShotForm: React.FC<ShotFormProps> = ({
                 deleted it from the record, unrecoverably: this question is
                 never asked again once the interval closes.
 
-                The handler clears only rendered groups for the same reason. If
-                the duration group is absent its chip ref is null, and
-                handOffFocus falls through to the heading. */}
+                The handler clears only rendered groups for the same reason.
+
+                Focus goes to whichever group is actually on screen: below the
+                three-day floor only the lump question renders, so the soreness
+                ref is null and `handOffFocus` walks its candidates until one
+                takes focus. The heading is the last resort rather than the
+                usual outcome — landing there scrolls to the top of the sheet,
+                away from the question just answered. */}
             {((settledAsk.durations.length > 0 && afterSoreness !== "") ||
               (settledAsk.lump && afterLump !== "")) && (
               <button
@@ -2200,7 +2237,11 @@ export const ShotForm: React.FC<ShotFormProps> = ({
                 onClick={() => {
                   if (settledAsk.durations.length > 0) setAfterSoreness("");
                   if (settledAsk.lump) setAfterLump("");
-                  handOffFocus(firstSorenessChipRef, headingRef);
+                  handOffFocus(
+                    firstSorenessChipRef,
+                    firstLumpChipRef,
+                    headingRef,
+                  );
                 }}
               >
                 Clear

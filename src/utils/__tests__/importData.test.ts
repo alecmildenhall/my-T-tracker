@@ -79,6 +79,39 @@ describe("a backup from the build before mood was retired", () => {
     expect(r.skipped[0].reason).not.toBe("some of it couldn’t be read");
   });
 
+  it("names the settled answers as the reason, rather than shrugging", () => {
+    // Same class as `pain` and `offDays` above: an unrecognised enum value is a
+    // NAMEABLE failure, and the report is the only account of what a restore
+    // dropped. Without an entry per field the user is told an entry was skipped
+    // and not which field to go and fix — the one-line-per-field gap the DTO
+    // allowlist rule exists to catch.
+    const real = JSON.parse(
+      toJson([
+        { id: "a", date: "2026-07-01" },
+        { id: "b", date: "2026-07-08" },
+      ]),
+    );
+    real.shots[0].afterSoreness = "ages";
+    const sore = parseBackup(JSON.stringify(real));
+    expect(sore.ok).toBe(true);
+    if (!sore.ok) return;
+    expect(sore.skipped[0].reason).toContain("soreness");
+    expect(sore.skipped[0].reason).not.toBe("some of it couldn’t be read");
+
+    const other = JSON.parse(
+      toJson([
+        { id: "a", date: "2026-07-01" },
+        { id: "b", date: "2026-07-08" },
+      ]),
+    );
+    other.shots[0].afterLump = "yes";
+    const lump = parseBackup(JSON.stringify(other));
+    expect(lump.ok).toBe(true);
+    if (!lump.ok) return;
+    expect(lump.skipped[0].reason).toContain("lump");
+    expect(lump.skipped[0].reason).not.toBe("some of it couldn’t be read");
+  });
+
   it("still refuses a key it has never heard of", () => {
     // Retiring a field must not loosen the strict check into "ignore anything
     // unexpected" — that guard is what keeps a hand-edited file out of storage.

@@ -2259,6 +2259,25 @@ describe("every member of a field row is a field-cell", () => {
       ).toEqual([]);
     }
   });
+
+  it("keeps the off-days fieldset wrapped, even though it is in no row", () => {
+    /*
+     * The guard above cannot see this block, and that is the point of this one.
+     * When off-days moved out of the pain `.form-row` it became a `.field-cell`
+     * that is a DIRECT CHILD of the scroll container — in no row at all — so
+     * iterating `.form-row` skips it entirely. The guard kept passing while no
+     * longer covering the very element it was written for.
+     *
+     * The wrapper is no longer holding a flex row open; it carries the
+     * `min-width: 0` that stops a fieldset defaulting to min-content. Asserted
+     * on the parent rather than on a row, because "is it wrapped" is the
+     * invariant that survived the move.
+     */
+    render(<ShotForm onAddShot={vi.fn()} />);
+    const offDays = document.querySelector(".off-days-field");
+    expect(offDays).not.toBeNull();
+    expect(offDays!.parentElement).toHaveClass("field-cell");
+  });
 });
 
 describe("ShotForm — off days", () => {
@@ -3376,5 +3395,129 @@ describe("how the previous shot settled", () => {
       afterSoreness: "several-days",
       afterLump: undefined,
     });
+  });
+
+  // The restructure's acceptance criteria. Each of these was a finding whose
+  // cause was the same one thing: `editingShot` branched five separate times
+  // inside one memo, so answerability, identity and display could disagree.
+  // They are grouped because they stand or fall together.
+
+  it("asks nothing about a shot logged TODAY, even when editing it", () => {
+    // The floor is a fact about elapsed time, not about which screen you came
+    // from. Edit mode used to bypass `previousShotQuestions` entirely and offer
+    // all four answers, so tapping Edit on a shot you had just logged asked how
+    // long an injection given hours earlier had been sore — and the edit
+    // write-back stores whatever is tapped.
+    const justLogged: ShotEntry = {
+      id: "t",
+      date: todayLocalISO(),
+      injectionSite: "glute",
+    };
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        onUpdateShot={vi.fn()}
+        editingShot={justLogged}
+        shots={[justLogged]}
+      />,
+    );
+
+    expect(document.querySelector(".prev-shot")).toBeNull();
+  });
+
+  it("repairs focus when only the DURATION group leaves", () => {
+    // The union of the two groups could not see this: the lump question keeps
+    // the section mounted, so the section-level check never fired while the
+    // fieldset holding focus was removed underneath it. Reachable — another tab
+    // logging a shot two days ago shrinks the gap below the floor.
+    const older: ShotEntry = { id: "older", date: daysAgo(9), injectionSite: "glute" };
+    const { rerender } = render(
+      <ShotForm onAddShot={vi.fn()} shots={[older]} />,
+    );
+    const chip = screen.getByRole("radio", { name: "Several days" });
+    chip.focus();
+    expect(document.activeElement).toBe(chip);
+
+    withFocusGuard("after the duration group alone was withdrawn", () => {
+      rerender(
+        <ShotForm
+          onAddShot={vi.fn()}
+          shots={[older, { id: "recent", date: daysAgo(2) }]}
+        />,
+      );
+    });
+
+    // The lump question is still there — otherwise this is the whole-section
+    // case the other test already covers, and proves nothing new.
+    expect(screen.getByRole("group", { name: /Any lump/i })).toBeTruthy();
+    expect(
+      screen.queryByRole("group", { name: /How long was it sore/i }),
+    ).toBeNull();
+  });
+
+  it("hands focus to the LUMP group when that is the only one rendered", () => {
+    // Clear removes itself, so it must hand focus on. Below the floor the
+    // soreness ref is null, and with no lump ref focus fell through to the
+    // sheet's heading — scrolling to the top, away from the question just
+    // answered, where every other Clear returns focus to its own group.
+    render(
+      <ShotForm onAddShot={vi.fn()} shots={[{ id: "p", date: daysAgo(2) }]} />,
+    );
+    fireEvent.click(screen.getByRole("radio", { name: "Yes" }));
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /clear how it settled/i }),
+    );
+
+    expect(document.activeElement).toHaveAttribute("name", "afterLump");
+    expectFocusSomewhereUseful("after clearing a lump-only answer");
+  });
+
+  it("shows no window for a split dose rather than one spanning its sibling", () => {
+    // Two injections on one civil date is a real protocol. `nextShotAfter`
+    // skips same-date shots — the complement of `previousShotBefore` keeping
+    // them — so editing the first of a pair reached PAST its sibling and drew a
+    // range covering a second injection. Bounding at the sibling instead would
+    // draw a zero-length range. With two shots on one day the soreness cannot
+    // be attributed to either, so the honest answer is to say nothing.
+    const a: ShotEntry = { id: "a", date: daysAgo(9), injectionSite: "glute" };
+    const b: ShotEntry = { id: "b", date: daysAgo(9), injectionSite: "thigh" };
+    const c: ShotEntry = { id: "c", date: daysAgo(2), injectionSite: "glute" };
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        onUpdateShot={vi.fn()}
+        editingShot={a}
+        shots={[a, b, c]}
+      />,
+    );
+
+    expect(document.querySelector(".prev-shot__span")).toBeNull();
+  });
+
+  it("moves the identity line when the shot is re-dated mid-edit", () => {
+    // The subject carries the date to MEASURE AND DISPLAY it by, and that is
+    // the live field rather than the stored value. Re-date a shot and the line
+    // used to keep naming the date it had on open.
+    const shot: ShotEntry = { id: "s", date: daysAgo(9), injectionSite: "glute" };
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        onUpdateShot={vi.fn()}
+        editingShot={shot}
+        shots={[shot]}
+      />,
+    );
+    expect(document.querySelector(".prev-shot__sub")?.textContent).toContain(
+      daysAgo(9),
+    );
+
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: daysAgo(5) },
+    });
+
+    expect(document.querySelector(".prev-shot__sub")?.textContent).toContain(
+      daysAgo(5),
+    );
   });
 });

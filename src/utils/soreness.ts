@@ -49,6 +49,48 @@ export function previousShotQuestions(gapDays: number | null): {
 }
 
 /**
+ * What may be asked about a shot, given the gap and what that shot already holds.
+ *
+ * MODE-AGNOSTIC, and that is the point of it existing. The form used to ask
+ * `previousShotQuestions` while logging and offer all four unconditionally
+ * while editing, on the reasoning that opening a saved shot is a deliberate
+ * trip made to record how it went. Sound for a shot from weeks ago, and it
+ * never covered the case that broke: log a shot, tap Edit on it, and the sheet
+ * asked how long an injection given hours earlier had been sore — offering "a
+ * week or more" — while the edit write-back stored whatever was tapped.
+ *
+ * The floor is a fact about elapsed time, not about which screen you came from.
+ * One computation fed by the gap, so the two modes cannot drift apart again.
+ *
+ * The stored answer is folded in here for the same reason: it was a second
+ * expansion living in the component, and the two rules only make sense read
+ * together. An answer already on record is always offerable — the gate exists
+ * to stop someone GUESSING what the days cannot settle, and has nothing to say
+ * about one they already gave — but only when the group is rendered anyway.
+ * Adding it to an EMPTY set would resurrect the block at gaps where it is
+ * withheld on purpose, which is a different decision.
+ */
+export function settledQuestions(
+  gapDays: number | null,
+  stored: SorenessDuration | "",
+): { durations: SorenessDuration[]; lump: boolean } {
+  const asked = previousShotQuestions(gapDays);
+  if (
+    asked.durations.length === 0 ||
+    stored === "" ||
+    asked.durations.includes(stored)
+  ) {
+    return asked;
+  }
+  return {
+    durations: SORENESS_DURATIONS.filter(
+      (d) => asked.durations.includes(d) || d === stored,
+    ),
+    lump: asked.lump,
+  };
+}
+
+/**
  * In the group, under the question that supplies the frame ("How long was it
  * sore?"). Short because the question already said what is being measured.
  */
