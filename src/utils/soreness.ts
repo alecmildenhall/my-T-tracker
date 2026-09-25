@@ -62,31 +62,65 @@ export function previousShotQuestions(gapDays: number | null): {
  * The floor is a fact about elapsed time, not about which screen you came from.
  * One computation fed by the gap, so the two modes cannot drift apart again.
  *
- * The stored answer is folded in here for the same reason: it was a second
+ * The stored answers are folded in here for the same reason: they were a second
  * expansion living in the component, and the two rules only make sense read
  * together. An answer already on record is always offerable — the gate exists
  * to stop someone GUESSING what the days cannot settle, and has nothing to say
- * about one they already gave — but only when the group is rendered anyway.
- * Adding it to an EMPTY set would resurrect the block at gaps where it is
- * withheld on purpose, which is a different decision.
+ * about one they already gave.
+ *
+ * THAT RULE USED TO STOP SHORT OF ITS OWN REASONING, and the earlier version of
+ * this comment defended the gap: adding a stored answer to an EMPTY set was
+ * called "a different decision", on the grounds that it would resurrect the
+ * block where it is withheld on purpose. Withholding the QUESTION is the
+ * decision; hiding an answer already given is not, and the two had been
+ * collapsed into one `length === 0` check.
+ *
+ * What that cost: `settledQuestions(40, "week-plus")` returned nothing, so a
+ * stored answer on a shot past the stale bound rendered no chips and no Clear
+ * while History and the CSV went on showing it — uncorrectable, by any route in
+ * the app. Same for a same-day second shot, and for a stored soreness answer at
+ * a gap of 1–2 days where only the lump group renders. Before the restructure
+ * that collapsed the modes, edit mode offered all four unconditionally and
+ * could fix it; the restructure fixed the worse bug (guessing about a shot
+ * logged hours ago) and silently took that with it.
+ *
+ * So: the gap decides what may be ASKED, and the record decides what must
+ * remain EDITABLE. When the gap withholds everything but something is on
+ * record, the full vocabulary is offered — correcting a mistap is not guessing,
+ * and offering only the stored value would make a one-tap fix a
+ * clear-and-retype. When the gap asks for something, the stored answer is added
+ * to what it asks, exactly as before.
+ *
+ * The LUMP answer is a parameter for the same reason and not an afterthought:
+ * it was frozen by the identical branch, and "on record means editable" is one
+ * rule or it is nothing.
  */
 export function settledQuestions(
   gapDays: number | null,
   stored: SorenessDuration | "",
+  storedLumpAnswer: "" | "yes" | "no" = "",
 ): { durations: SorenessDuration[]; lump: boolean } {
   const asked = previousShotQuestions(gapDays);
-  if (
-    asked.durations.length === 0 ||
-    stored === "" ||
-    asked.durations.includes(stored)
-  ) {
-    return asked;
+  if (asked.durations.length === 0) {
+    // Nothing asked and nothing on record: genuinely nothing to show. This is
+    // the case the floor and the stale bound exist for, and it is untouched.
+    if (stored === "" && storedLumpAnswer === "") return asked;
+    return {
+      // Only when a soreness answer is actually on record. A stored LUMP answer
+      // must not conjure a duration group the gap cannot settle and nobody
+      // filled in — that would be the guessing this gate exists to prevent.
+      durations: stored === "" ? asked.durations : [...SORENESS_DURATIONS],
+      lump: asked.lump || storedLumpAnswer !== "",
+    };
+  }
+  if (stored === "" || asked.durations.includes(stored)) {
+    return { ...asked, lump: asked.lump || storedLumpAnswer !== "" };
   }
   return {
     durations: SORENESS_DURATIONS.filter(
       (d) => asked.durations.includes(d) || d === stored,
     ),
-    lump: asked.lump,
+    lump: asked.lump || storedLumpAnswer !== "",
   };
 }
 

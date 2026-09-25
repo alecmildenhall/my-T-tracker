@@ -15,6 +15,10 @@ import {
 } from "../schedule";
 import { WEEKDAYS, weekdayOf } from "../weekday";
 import { shotDateRange, isShotDateInRange } from "../civilDate";
+// The point of the same-date-tie tests below is that these two agree, so the
+// guard has to call BOTH rather than restate what History does.
+import { sortShots } from "../shotQuery";
+import type { ShotEntry } from "../../types/shot";
 
 /** 5 Aug 2026 is a Wednesday — the anchor day for every scenario below. */
 const WED = "2026-08-05";
@@ -345,9 +349,9 @@ describe("previousShotBefore — same-date ties", () => {
     // that date was the other one, and the second shot could never be asked
     // about at all.
     //
-    // `sortShots` breaks the same tie the same way (`compareShotsChrono` falls
-    // through to array order, and "newest" takes the last), so the two agree
-    // about which shot is the recent one.
+    // With NO times these are an exact tie for `compareShotsChrono` too, which
+    // reports a tie as a tie and lets `sortShots` break it by stored order —
+    // so both functions take the last, and they agree.
     //
     // Note what the complement test above does NOT cover: it passes `exceptId`,
     // which removes the tied shot before any comparison happens. Reverting this
@@ -359,6 +363,49 @@ describe("previousShotBefore — same-date ties", () => {
     expect(previousShotBefore("2026-09-15", splitDose)?.id).toBe("right");
     // And on the date itself, where both are still candidates.
     expect(previousShotBefore("2026-09-08", splitDose)?.id).toBe("right");
+  });
+
+  it("agrees with History when a same-date pair carries TIMES", () => {
+    // The half the old comment got wrong. It claimed `sortShots` "breaks the
+    // same tie the same way", but a same-date pair with different times was
+    // never a tie for `compareShotsChrono` — it compares date AND time. So the
+    // two functions picked opposite rows, and the old `.date >= .date` compare
+    // took whichever happened to be last in the ARRAY.
+    //
+    // Logged out of time order, which is what makes this reachable: you log the
+    // evening shot, then go back and add the morning one you forgot.
+    const splitDose = [
+      { id: "evening", date: "2026-09-08", time: "20:00" },
+      { id: "morning", date: "2026-09-08", time: "08:00" },
+    ];
+    expect(previousShotBefore("2026-09-15", splitDose)?.id).toBe("evening");
+    expect(sortShots(splitDose as ShotEntry[], "newest")[0]?.id).toBe("evening");
+    // Stated as the invariant rather than as two coincidental literals: these
+    // must not be able to disagree again, whatever the fixture.
+    expect(previousShotBefore("2026-09-15", splitDose)?.id).toBe(
+      sortShots(splitDose as ShotEntry[], "newest")[0]?.id,
+    );
+  });
+
+  it("still prefers the later TIME when the array order already agrees", () => {
+    // The mirror of the case above, so the test cannot pass merely by taking
+    // the FIRST element instead of the last — which is what a naive fix does,
+    // and it would be wrong here.
+    const splitDose = [
+      { id: "morning", date: "2026-09-08", time: "08:00" },
+      { id: "evening", date: "2026-09-08", time: "20:00" },
+    ];
+    expect(previousShotBefore("2026-09-15", splitDose)?.id).toBe("evening");
+  });
+
+  it("treats a missing time as 00:00, not as later than a real one", () => {
+    // `compareShotsChrono`'s documented rule, inherited rather than restated.
+    // A shot with no time logged AFTER one at 09:00 must not outrank it.
+    const pair = [
+      { id: "timed", date: "2026-09-08", time: "09:00" },
+      { id: "untimed", date: "2026-09-08" },
+    ];
+    expect(previousShotBefore("2026-09-15", pair)?.id).toBe("timed");
   });
 });
 

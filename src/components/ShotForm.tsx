@@ -634,7 +634,11 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     // One computation, both modes. `settledQuestions` owns the floor and the
     // stored-answer expansion together, because the two rules only make sense
     // read as a pair — see the note on it.
-    const asks = settledQuestions(gap, storedSoreness(subject.shot));
+    const asks = settledQuestions(
+      gap,
+      storedSoreness(subject.shot),
+      storedLump(subject.shot),
+    );
     /**
      * Where the window the question covers stops.
      *

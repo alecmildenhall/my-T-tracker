@@ -2809,9 +2809,15 @@ describe("how the previous shot settled", () => {
   });
 
   it("keeps an existing answer when editing a shot too old to be asked about", () => {
-    // `updateShot` replaces the entry wholesale, so a field the form does not
-    // render must still be written back — otherwise opening an old shot to fix
-    // a typo silently erases an answer given weeks ago.
+    // `updateShot` replaces the entry wholesale, so these fields must be
+    // written back UNCONDITIONALLY — otherwise opening an old shot to fix a
+    // typo silently erases an answer given weeks ago.
+    //
+    // This comment used to say "a field the form does not render", and that
+    // premise is now false for this fixture: a stored answer keeps its controls
+    // on screen at any gap. The write-back still must not depend on rendering,
+    // which is what this pins — but note that it passes whether or not anything
+    // renders, so it cannot be the guard for that. The two tests below are.
     const editing: ShotEntry = {
       id: "old",
       date: daysAgo(90),
@@ -2833,6 +2839,96 @@ describe("how the previous shot settled", () => {
     const [shot] = onUpdateShot.mock.calls[0];
     expect(shot.afterSoreness).toBe("day-or-two");
     expect(shot.afterLump).toBe(false);
+  });
+
+  it("lets a stale stored answer be CORRECTED, not merely preserved", () => {
+    // The defect the test above could not see. Past the 28-day stale bound the
+    // block rendered nothing at all — no chips, no Clear — while History and
+    // the CSV went on showing "Sore a week or more", so a mistap was permanent.
+    // Preserving a value and being able to change it are different facts, and
+    // only the first had a guard.
+    const editing: ShotEntry = {
+      id: "old",
+      date: daysAgo(90),
+      afterSoreness: "week-plus",
+      afterLump: true,
+    };
+    const onUpdateShot = vi.fn();
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        onUpdateShot={onUpdateShot}
+        editingShot={editing}
+        shots={[editing]}
+      />,
+    );
+
+    // On screen, and showing what is actually on record.
+    expect(
+      (screen.getByRole("radio", { name: "A week or more" }) as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+    expect(
+      (screen.getByRole("radio", { name: "Yes" }) as HTMLInputElement).checked,
+    ).toBe(true);
+
+    // The whole vocabulary is offered, so fixing it is one tap rather than
+    // clear-and-retype.
+    fireEvent.click(screen.getByRole("radio", { name: "A day or two" }));
+    fireEvent.click(screen.getByRole("button", { name: /update shot/i }));
+
+    const [shot] = onUpdateShot.mock.calls[0];
+    expect(shot.afterSoreness).toBe("day-or-two");
+    // The answer NOT touched is unchanged — correcting one must not disturb
+    // the other, which is why these are two fields and not one.
+    expect(shot.afterLump).toBe(true);
+  });
+
+  it("lets a stale stored answer be CLEARED back to unrecorded", () => {
+    // The other half. `undefined` is "nobody answered" and `"none"` is "not
+    // sore"; with no Clear on screen there was no way back to the first, and
+    // this question is never asked again once the interval closes.
+    const editing: ShotEntry = {
+      id: "old",
+      date: daysAgo(90),
+      afterSoreness: "week-plus",
+      afterLump: true,
+    };
+    const onUpdateShot = vi.fn();
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        onUpdateShot={onUpdateShot}
+        editingShot={editing}
+        shots={[editing]}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /clear how it settled/i }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /update shot/i }));
+
+    const [shot] = onUpdateShot.mock.calls[0];
+    expect(shot.afterSoreness).toBeUndefined();
+    expect(shot.afterLump).toBeUndefined();
+  });
+
+  it("still asks nothing about a stale shot with NOTHING on record", () => {
+    // The assertion that fails if the fix is "always offer everything". The
+    // stale bound is not repealed — it is scoped to the question, and says
+    // nothing about an answer already given.
+    const editing: ShotEntry = { id: "old", date: daysAgo(90) };
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        onUpdateShot={vi.fn()}
+        editingShot={editing}
+        shots={[editing]}
+      />,
+    );
+
+    expect(document.querySelector(".prev-shot")).toBeNull();
   });
 
   // The four below are one mistake seen from four sides. Seeding these fields
@@ -3118,18 +3214,20 @@ describe("how the previous shot settled", () => {
   });
 
   it("does not offer Clear for a question it never rendered", () => {
-    // Two days on, only the lump question is offered — but afterSoreness still
-    // seeds from the record. Clear used to be offered on an untouched sheet
-    // with nothing visibly set, and blanking it deleted a stored answer the
-    // user had never been shown.
+    // Two days on, only the lump question is offered. Clear used to be offered
+    // on an untouched sheet with nothing visibly set, and blanking it deleted a
+    // stored answer the user had never been shown.
+    //
+    // THE FIXTURE MOVED, and the rule did not. It used to give `prev` a stored
+    // `afterSoreness: "week-plus"`, which no longer exercises anything: a
+    // stored answer now keeps its own group on screen at any gap, so the
+    // seeded-but-withheld state this was built around cannot occur for soreness
+    // any more. Pinned here with nothing on record, where the floor genuinely
+    // withholds the group — and by the invariant below, which is what the old
+    // fixture was really reaching for.
     const onAddShot = vi.fn();
     const prev: ShotEntry[] = [
-      {
-        id: "prev",
-        date: daysAgo(2),
-        injectionSite: "glute",
-        afterSoreness: "week-plus",
-      },
+      { id: "prev", date: daysAgo(2), injectionSite: "glute" },
     ];
     render(<ShotForm onAddShot={onAddShot} shots={prev} />);
 
@@ -3137,12 +3235,44 @@ describe("how the previous shot settled", () => {
     expect(
       screen.queryByRole("group", { name: /How long was it sore/i }),
     ).toBeNull();
+    // The lump question has no floor, so it IS offered — which is what makes
+    // this the mixed case rather than the whole section being absent.
+    expect(screen.getByRole("group", { name: /Any lump/i })).toBeTruthy();
     expect(
       screen.queryByRole("button", { name: /clear how it settled/i }),
     ).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: /save shot/i }));
     expect(onAddShot.mock.calls[0]).toHaveLength(1);
+  });
+
+  it("never offers Clear for an answer it is not showing", () => {
+    // The invariant the test above used to approximate with a single gap, now
+    // stated directly and swept across the gaps that used to break it — a
+    // stored answer renders its own group at ANY gap, so whenever Clear is on
+    // screen the value it would blank is visible and checked.
+    //
+    // Swept rather than sampled because the previous version of this guard
+    // measured exactly one gap and read green as proof of a rule it did not
+    // hold. The stale bound (40) and the floor (1, 2) are the two ends that
+    // were silently returning nothing.
+    for (const gap of [1, 2, 4, 9, 40]) {
+      const prev: ShotEntry[] = [
+        {
+          id: "prev",
+          date: daysAgo(gap),
+          injectionSite: "glute",
+          afterSoreness: "week-plus",
+        },
+      ];
+      const { unmount } = render(<ShotForm onAddShot={vi.fn()} shots={prev} />);
+
+      expect(
+        screen.getByRole("button", { name: /clear how it settled/i }),
+      ).toBeTruthy();
+      expect(weekPlusChecked()).toBe(true);
+      unmount();
+    }
   });
 
   it("offers a stored answer the gap would otherwise withhold", () => {

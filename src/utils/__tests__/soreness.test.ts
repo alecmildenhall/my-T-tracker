@@ -3,6 +3,7 @@ import {
   SORENESS_FLOOR_DAYS,
   SORENESS_STALE_DAYS,
   previousShotQuestions,
+  settledQuestions,
   settledSummary,
   sorenessLabel,
   sorenessShortLabel,
@@ -72,6 +73,111 @@ describe("previousShotQuestions", () => {
       }
     }
     expect(durations(28).every((d) => durations(7).includes(d))).toBe(true);
+  });
+});
+
+describe("settledQuestions", () => {
+  // This function had NO direct tests, which is how the defect below survived:
+  // it was pinned only through ShotForm's integration tests, and the one that
+  // covers a stale shot asserts the write-back — which passed either way,
+  // because the answers survive a save whether or not anything is rendered.
+
+  it("asks nothing when the gap withholds it and nothing is on record", () => {
+    // Untouched. The floor and the stale bound still do their job, and this is
+    // the assertion that fails if "always offer everything" is the fix.
+    expect(settledQuestions(SORENESS_STALE_DAYS + 1, "")).toEqual({
+      durations: [],
+      lump: false,
+    });
+    expect(settledQuestions(0, "")).toEqual({ durations: [], lump: false });
+    expect(settledQuestions(null, "")).toEqual({ durations: [], lump: false });
+    expect(settledQuestions(2, "")).toEqual({ durations: [], lump: true });
+  });
+
+  it("keeps a stored answer correctable past the stale bound", () => {
+    // The defect. `settledQuestions(40, "week-plus")` returned nothing at all,
+    // so a shot older than 28 days rendered no chips and no Clear while History
+    // and the CSV went on showing "Sore a week or more". There was no route in
+    // the app to fix or remove it.
+    //
+    // The gap decides what may be ASKED; the record decides what stays
+    // EDITABLE. Correcting a mistap is not guessing, so the full vocabulary is
+    // offered rather than the stored value alone.
+    expect(settledQuestions(SORENESS_STALE_DAYS + 12, "week-plus")).toEqual({
+      durations: [...SORENESS_DURATIONS],
+      lump: false,
+    });
+  });
+
+  it("keeps a stored answer correctable on a same-day second shot", () => {
+    // Same branch, different gap. A split dose is a real protocol, so a stored
+    // answer here is reachable rather than only importable.
+    expect(settledQuestions(0, "day-or-two")).toEqual({
+      durations: [...SORENESS_DURATIONS],
+      lump: false,
+    });
+  });
+
+  it("keeps a stored answer correctable below the three-day floor", () => {
+    // The case that is easiest to miss, because the section is NOT empty here —
+    // the lump group renders, and the stored soreness answer sat beside it with
+    // no way to reach it.
+    expect(settledQuestions(2, "several-days")).toEqual({
+      durations: [...SORENESS_DURATIONS],
+      lump: true,
+    });
+  });
+
+  it("renders the lump group for a stored lump answer the gap withholds", () => {
+    // The other half of the same rule. `afterLump` was frozen by the identical
+    // branch, and "on record means editable" is one rule or it is nothing.
+    expect(settledQuestions(SORENESS_STALE_DAYS + 1, "", "yes")).toEqual({
+      durations: [],
+      lump: true,
+    });
+    // "no" is an ANSWER, not silence — the distinction this codebase has paid
+    // for repeatedly. A truthiness check would drop it.
+    expect(settledQuestions(SORENESS_STALE_DAYS + 1, "", "no")).toEqual({
+      durations: [],
+      lump: true,
+    });
+  });
+
+  it("does not conjure a duration group from a lump answer alone", () => {
+    // The guessing this gate exists to prevent. A stored lump answer says
+    // nothing about how long the site was sore, so offering four durations
+    // nobody can judge would be exactly the defect the floor was written for.
+    expect(settledQuestions(0, "", "yes").durations).toEqual([]);
+    expect(settledQuestions(2, "", "yes").durations).toEqual([]);
+  });
+
+  it("adds a stored answer to what the gap DOES ask, without rewording", () => {
+    // Pre-existing behaviour, pinned because the rewrite moved the branch it
+    // lives in. At a 4-day gap "a week or more" is unanswerable and withheld —
+    // but if it is already on record it must still be shown, or opening the
+    // shot would silently drop it.
+    expect(settledQuestions(4, "week-plus")).toEqual({
+      durations: [...SORENESS_DURATIONS],
+      lump: true,
+    });
+    // And an answer the gap already offers changes nothing.
+    expect(settledQuestions(4, "none")).toEqual({
+      durations: ["none", "day-or-two", "several-days"],
+      lump: true,
+    });
+  });
+
+  it("never reorders the vocabulary, however it was assembled", () => {
+    // One vocabulary, one order, whatever route produced the list — the chips
+    // render in it, and a set assembled by `filter` must not differ from one
+    // assembled by spreading the tuple.
+    for (const stored of [...SORENESS_DURATIONS, "" as const]) {
+      for (const gap of [0, 2, 4, 7, 14, 40]) {
+        const { durations } = settledQuestions(gap, stored);
+        const order = durations.map((d) => SORENESS_DURATIONS.indexOf(d));
+        expect(order).toEqual([...order].sort((a, b) => a - b));
+      }
+    }
   });
 });
 
