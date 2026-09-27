@@ -14,23 +14,38 @@ import type { SorenessDuration } from "../types/shot";
  */
 export const SORENESS_FLOOR_DAYS = 3;
 
-/** Past this, the recall is not worth the field. */
-export const SORENESS_STALE_DAYS = 28;
-
 /** The gap at which "a week or more" becomes answerable. */
 const WEEK = 7;
 
 /**
- * What the log form may ask about the previous shot, given the gap in days.
+ * What the log form may ask, given how many days have actually passed.
  *
  * The LUMP question has no floor: "is there a lump now?" is present tense and
  * answerable on any day, so a short cadence still gets asked that one alone.
+ *
+ * THERE IS NO LONGER AN UPPER BOUND, and removing it was deliberate. A
+ * `SORENESS_STALE_DAYS = 28` cutoff used to return nothing past four weeks, on
+ * the reasoning that the recall was not worth the field. That reasoning was
+ * about a value this no longer receives: the caller used to pass "how long ago
+ * was this shot", and now passes "how many days have passed since it" — which
+ * only ever grows, so a cutoff on it means *the older the shot, the less you
+ * may record about it*. Every case it still reached was one where the person
+ * was best placed to answer and every duration was available: a long window, or
+ * their own most recent shot. "You skipped a cycle, so we won't let you say it
+ * was sore for a week" is backwards.
+ *
+ * The floor stays, because it answers a different question. It asks whether the
+ * days have HAPPENED yet, not whether they are well remembered — and the answer
+ * to that cannot degrade over time, which is exactly why one bound survived and
+ * the other did not. Recall quality is real, and the roadmap's standing answer
+ * to it is to carry uncertainty visibly (show the denominator, name the lean)
+ * rather than withhold the entry.
  */
 export function previousShotQuestions(gapDays: number | null): {
   durations: SorenessDuration[];
   lump: boolean;
 } {
-  if (gapDays === null || gapDays > SORENESS_STALE_DAYS) {
+  if (gapDays === null) {
     return { durations: [], lump: false };
   }
   // A SAME-DAY second shot is asked nothing at all. The lump question is

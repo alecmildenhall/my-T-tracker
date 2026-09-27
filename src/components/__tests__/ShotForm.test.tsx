@@ -2748,16 +2748,28 @@ describe("how the previous shot settled", () => {
   });
 
   it("drops a pick the gap can no longer settle", () => {
-    // Re-dating from a 10-day gap to a 2-day one withdraws the duration group.
-    // The "week or more" tapped a moment earlier must not still be saved: it is
-    // the one answer previousShotQuestions exists to withhold.
+    // The guard is unchanged: an answer the elapsed days cannot settle must not
+    // survive to the save. Its FIXTURE had to move, because re-dating the new
+    // shot no longer changes what may be asked — it changes the interval, and
+    // the offer is gated on days elapsed since the SUBJECT.
+    //
+    // What still withdraws the group is the subject itself changing. Dated five
+    // days back the previous shot is `older` (ten days of elapsed time, all four
+    // offered); dated today it is `recent`, one day old, which settles nothing.
     const onAddShot = vi.fn();
-    const shots: ShotEntry[] = [{ id: "prev", date: daysAgo(10) }];
+    const shots: ShotEntry[] = [
+      { id: "older", date: daysAgo(10) },
+      { id: "recent", date: daysAgo(1) },
+    ];
     render(<ShotForm onAddShot={onAddShot} shots={shots} />);
 
-    fireEvent.click(screen.getByRole("radio", { name: "A week or more" }));
     fireEvent.change(screen.getByLabelText(/^Date$/), {
-      target: { value: daysAgo(8) },
+      target: { value: daysAgo(5) },
+    });
+    fireEvent.click(screen.getByRole("radio", { name: "A week or more" }));
+
+    fireEvent.change(screen.getByLabelText(/^Date$/), {
+      target: { value: todayLocalISO() },
     });
 
     expect(
@@ -2914,14 +2926,14 @@ describe("how the previous shot settled", () => {
     expect(shot.afterLump).toBeUndefined();
   });
 
-  it("still asks nothing about a stale shot with NOTHING on record", () => {
-    // The assertion that fails if the fix is "always offer everything". The
-    // stale bound is not repealed — it is scoped to the question, and says
-    // nothing about an answer already given.
+  it("asks about a long-past shot that was never answered", () => {
+    // The reverse of what this test used to assert, and the reversal is the
+    // point. A 28-day bound used to hide the question entirely, so the older
+    // half of anyone's history could never be filled in — a gap in coverage
+    // correlated with time, in the data this feature exists to produce.
     //
-    // Note this shot has NO successor, so its window is still open and today
-    // is its honest end — which is why the stale bound still reaches it here
-    // and reaches almost nothing else after the interval change below.
+    // Ninety days on, every duration is available and the person is the only
+    // one who knows. Nothing is guessed by asking.
     const editing: ShotEntry = { id: "old", date: daysAgo(90) };
     render(
       <ShotForm
@@ -2932,22 +2944,26 @@ describe("how the previous shot settled", () => {
       />,
     );
 
-    expect(document.querySelector(".prev-shot")).toBeNull();
+    expect(document.querySelector(".prev-shot")).not.toBeNull();
+    expect(
+      screen.getByRole("group", { name: /How long was it sore/i }),
+    ).toBeTruthy();
   });
 
-  // The window is measured between SHOT DATES. Opening the form is not an
-  // event in the shot's life, and used to be the thing that decided what the
-  // form would ask.
+  // What may be ASKED is gated on days elapsed since the subject shot — whether
+  // you could know the answer yet. What an answer is ABOUT is the interval to
+  // the next shot, and that drives the label only. The tests below pin the
+  // first; the window tests further down pin the second.
   const offeredDurations = () =>
     [...document.querySelectorAll('input[name="afterSoreness"]')].map(
       (i) => (i as HTMLInputElement).value,
     );
 
-  it("measures the window between shots, not from today", () => {
-    // X's next shot came 10 days later, so X's window is a fixed 10 days and
-    // always will be. Measured before this: it rendered NOTHING, because
-    // `today - X.date` was 90 and the stale bound fired — while the legend
-    // beside it named the real 10-day window.
+  it("asks about an old shot whose window was short", () => {
+    // X's next shot came 10 days later. Measured before the stale bound was
+    // removed: this rendered NOTHING, because 90 days had passed — while the
+    // legend beside it named the real 10-day window. Ninety days of elapsed
+    // time is what makes every answer knowable, so all four are offered.
     const x: ShotEntry = { id: "x", date: daysAgo(90), injectionSite: "glute" };
     const y: ShotEntry = { id: "y", date: daysAgo(80) };
     render(
@@ -2965,51 +2981,60 @@ describe("how the previous shot settled", () => {
     expect(offeredDurations()).toHaveLength(4);
   });
 
-  it("offers the same answers for the same interval, however long ago", () => {
-    // The invariant, stated directly: recency is not an input. Two pairs with
-    // an identical 10-day window, one ancient and one current, must ask the
-    // same question — otherwise the answer someone can give depends on when
-    // they happened to tap Edit.
-    const oldA: ShotEntry = { id: "oldA", date: daysAgo(90) };
-    const oldB: ShotEntry = { id: "oldB", date: daysAgo(80) };
+  it("offers the same answers whatever bounds the window", () => {
+    // The invariant this change exists for. The interval is a reconstruction
+    // from whatever happens to be logged, so it moves when an unrelated shot is
+    // added or deleted — and what you may RECORD must not move with it.
+    //
+    // The same shot, same age, with and without a successor two days later.
+    // Measured before this: the bounded one offered nothing at all, and
+    // deleting that successor made the question reappear.
+    const x: ShotEntry = { id: "x", date: daysAgo(90) };
+    const soonAfter: ShotEntry = { id: "soonAfter", date: daysAgo(88) };
     const { unmount } = render(
       <ShotForm
         onAddShot={vi.fn()}
         onUpdateShot={vi.fn()}
-        editingShot={oldA}
-        shots={[oldA, oldB]}
+        editingShot={x}
+        shots={[x, soonAfter]}
       />,
     );
-    const ancient = offeredDurations();
+    const bounded = offeredDurations();
     unmount();
 
-    const newA: ShotEntry = { id: "newA", date: daysAgo(10) };
-    const newB: ShotEntry = { id: "newB", date: todayLocalISO() };
     render(
       <ShotForm
         onAddShot={vi.fn()}
         onUpdateShot={vi.fn()}
-        editingShot={newA}
-        shots={[newA, newB]}
+        editingShot={x}
+        shots={[x]}
       />,
     );
 
-    expect(ancient).toEqual(offeredDurations());
+    expect(bounded).toEqual(offeredDurations());
     // And not vacuously equal by both being empty.
-    expect(ancient).toHaveLength(4);
+    expect(bounded).toHaveLength(4);
   });
 
-  it("withholds on a SHORT interval even when the pair is old", () => {
-    // The mirror, so "always offer everything" cannot pass the test above. Two
-    // days is two days whether it happened this week or last year.
-    const a: ShotEntry = { id: "a", date: daysAgo(90), injectionSite: "glute" };
-    const b: ShotEntry = { id: "b", date: daysAgo(88) };
+  it("withholds on a RECENT shot, whatever its window says", () => {
+    // The mirror, so "always offer everything" cannot pass the tests above —
+    // and it is the floor's real job, stated in the terms that survive: the
+    // days must have HAPPENED, which is a fact about elapsed time and not about
+    // what bounds the window.
+    //
+    // A shot two days old with a successor a fortnight out: the window is long,
+    // and not one duration is offered, because two days cannot settle any of
+    // them. The previous version of this test asserted the opposite pairing —
+    // a short window on an old pair — which withheld an answer the person had
+    // known for three months.
+    const a: ShotEntry = { id: "a", date: daysAgo(2), injectionSite: "glute" };
+    const later: ShotEntry = { id: "later", date: daysAgo(-12) };
     render(
       <ShotForm
         onAddShot={vi.fn()}
         onUpdateShot={vi.fn()}
         editingShot={a}
-        shots={[a, b]}
+        shots={[a, later]}
       />,
     );
 
@@ -3020,11 +3045,12 @@ describe("how the previous shot settled", () => {
     expect(screen.getByRole("group", { name: /Any lump/i })).toBeTruthy();
   });
 
-  it("uses today only when the window is still open", () => {
-    // The most recent shot has no successor, so its window genuinely has not
-    // closed and today is its honest end. This is the ONE place today may
-    // decide anything — and here it withholds, because one day cannot settle
-    // any duration.
+  it("withholds on a shot logged yesterday", () => {
+    // The floor doing its original job, and the case the mode collapse was
+    // built for: tapping Edit on a shot you have just logged must not ask how
+    // long an injection given hours ago stayed sore, because the write-back
+    // stores whatever is tapped. One day settles no duration; the lump question
+    // is present tense, so it is still asked.
     const only: ShotEntry = { id: "only", date: daysAgo(1) };
     render(
       <ShotForm

@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
   SORENESS_FLOOR_DAYS,
-  SORENESS_STALE_DAYS,
   previousShotQuestions,
   settledQuestions,
   settledSummary,
@@ -21,15 +20,18 @@ describe("previousShotQuestions", () => {
     expect(previousShotQuestions(null)).toEqual({ durations: [], lump: false });
   });
 
-  it("asks nothing once the recall is too old to be worth it", () => {
-    expect(previousShotQuestions(SORENESS_STALE_DAYS)).not.toEqual({
-      durations: [],
-      lump: false,
-    });
-    expect(previousShotQuestions(SORENESS_STALE_DAYS + 1)).toEqual({
-      durations: [],
-      lump: false,
-    });
+  it("has no upper bound — a long gap is asked about normally", () => {
+    // This replaces a test that pinned `SORENESS_STALE_DAYS = 28`, deleted with
+    // the bound itself. The caller now passes how many days have PASSED rather
+    // than how long ago the shot was, and that value only ever grows — so a
+    // cutoff on it meant the older a shot got, the less you were allowed to
+    // record about it. Every case the bound still reached was one where the
+    // person was best placed to answer and every duration was available.
+    expect(previousShotQuestions(28)).toEqual(previousShotQuestions(7));
+    expect(previousShotQuestions(400)).toEqual(previousShotQuestions(7));
+    // Stated as a floor property rather than a literal, so this cannot pass by
+    // everything collapsing to empty.
+    expect(previousShotQuestions(400).durations).toHaveLength(4);
   });
 
   it("asks nothing at all about a same-day shot", () => {
@@ -83,30 +85,24 @@ describe("settledQuestions", () => {
   // because the answers survive a save whether or not anything is rendered.
 
   it("asks nothing when the gap withholds it and nothing is on record", () => {
-    // Untouched. The floor and the stale bound still do their job, and this is
-    // the assertion that fails if "always offer everything" is the fix.
-    expect(settledQuestions(SORENESS_STALE_DAYS + 1, "")).toEqual({
-      durations: [],
-      lump: false,
-    });
+    // The floor still does its job, and this is the assertion that fails if
+    // "always offer everything" is the fix. The stale case that used to lead
+    // this list is gone with the bound — a long gap is now asked normally.
     expect(settledQuestions(0, "")).toEqual({ durations: [], lump: false });
     expect(settledQuestions(null, "")).toEqual({ durations: [], lump: false });
     expect(settledQuestions(2, "")).toEqual({ durations: [], lump: true });
   });
 
-  it("keeps a stored answer correctable past the stale bound", () => {
-    // The defect. `settledQuestions(40, "week-plus")` returned nothing at all,
-    // so a shot older than 28 days rendered no chips and no Clear while History
-    // and the CSV went on showing "Sore a week or more". There was no route in
-    // the app to fix or remove it.
-    //
-    // The gap decides what may be ASKED; the record decides what stays
-    // EDITABLE. Correcting a mistap is not guessing, so the full vocabulary is
-    // offered rather than the stored value alone.
-    expect(settledQuestions(SORENESS_STALE_DAYS + 12, "week-plus")).toEqual({
+  it("asks a long-past shot normally, answered or not", () => {
+    // What used to be "keeps a stored answer correctable past the stale bound".
+    // That defect is gone twice over: the record now keeps an answer editable,
+    // AND the bound that hid the question no longer exists. So a 40-day gap is
+    // simply a gap, and a stored answer changes nothing about what is offered.
+    expect(settledQuestions(40, "week-plus")).toEqual({
       durations: [...SORENESS_DURATIONS],
-      lump: false,
+      lump: true,
     });
+    expect(settledQuestions(40, "")).toEqual(settledQuestions(40, "week-plus"));
   });
 
   it("keeps a stored answer correctable on a same-day second shot", () => {
@@ -131,13 +127,17 @@ describe("settledQuestions", () => {
   it("renders the lump group for a stored lump answer the gap withholds", () => {
     // The other half of the same rule. `afterLump` was frozen by the identical
     // branch, and "on record means editable" is one rule or it is nothing.
-    expect(settledQuestions(SORENESS_STALE_DAYS + 1, "", "yes")).toEqual({
+    //
+    // Anchored on gap 0 now that the stale bound is gone: a same-day shot is
+    // the only case left that withholds the lump question, so it is the only
+    // fixture that still exercises this.
+    expect(settledQuestions(0, "", "yes")).toEqual({
       durations: [],
       lump: true,
     });
     // "no" is an ANSWER, not silence — the distinction this codebase has paid
     // for repeatedly. A truthiness check would drop it.
-    expect(settledQuestions(SORENESS_STALE_DAYS + 1, "", "no")).toEqual({
+    expect(settledQuestions(0, "", "no")).toEqual({
       durations: [],
       lump: true,
     });

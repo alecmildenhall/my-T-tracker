@@ -623,41 +623,46 @@ export const ShotForm: React.FC<ShotFormProps> = ({
       ? nextShotAfter(subject.atDate, shots, subject.shot.id)
       : undefined;
     /**
-     * HOW LONG THE WINDOW RAN — from the SHOT DATES, never from today.
+     * TWO MEASUREMENTS, and keeping them apart is the whole point of this pair.
+     * They were one value until it became clear they answer different
+     * questions, and every defect this block has had came from conflating them.
      *
-     * Editing used to measure `today - shot.date`, which made the answer to
-     * "what may be asked" depend on WHEN THE FORM WAS OPENED. Measured: a shot
-     * whose next shot came 10 days later — a window fixed at 10 days forever —
-     * offered all four when the pair was recent and rendered NOTHING AT ALL
-     * when the same pair was 90 days old. Same question, same interval,
-     * opposite answers, decided only by recency.
+     * `interval` — WHAT AN ANSWER IS ABOUT. From the subject's date to whatever
+     * closes its window: the next shot when editing, this shot's own date when
+     * logging. Between stored dates, so it cannot move. It names the window on
+     * screen and supplies the sub-line's "N days before this one".
      *
-     * Worse, the block already DISPLAYED the right interval while reasoning
-     * about the wrong one: the legend read "2026-06-29 → 2026-07-09" (10 days)
-     * beside answers computed from 90. The label and the logic described
-     * different windows.
+     * `elapsed` — WHETHER YOU COULD KNOW IT YET. Today minus the subject's
+     * date, in BOTH modes. This is what gates the answers, and it is the same
+     * rule for logging and editing, so there is no mode branch left here.
      *
-     * That is the moving baseline this codebase has a written lesson about
-     * (`ShotDraft.dateBaseline`): a conclusion computed against one reference
-     * and read against another will eventually disagree. The interval between
-     * two logged shots cannot move, so it is the reference.
+     * Why not gate on the interval, which an earlier version of this comment
+     * argued for: the interval is a reconstruction from whatever happens to be
+     * logged, so it moves when an unrelated shot is added or deleted. Measured:
+     * a shot 60 days old whose successor came 2 days later offered NO duration
+     * answers — the person knows exactly how long it was sore — and deleting
+     * that successor made the question reappear. What you may record must not
+     * depend on unrelated logging.
      *
-     * TODAY ENTERS EXACTLY ONCE, and legitimately: the most recent shot has no
-     * successor, so its window is genuinely still open and today is its honest
-     * end. That is also the only case where "how long ago" and "how long the
-     * window has run" are the same number, which is what makes the 28-day stale
-     * bound meaningful there and inert everywhere else.
+     * Gating on elapsed is also monotonic: it only grows, so an answer once
+     * offerable stays offerable, and the set settles permanently after a week.
+     * That is the stability the interval was reached for, reached properly.
      *
-     * Logging already worked this way (`this shot's date - the previous
-     * shot's`), so this makes editing agree with it rather than inventing a
-     * second rule.
+     * The floor still does its real job — a shot logged hours ago is asked
+     * nothing, because those days have not happened yet, whatever its window
+     * says.
+     *
+     * The label and the gate therefore measure different things ON PURPOSE.
+     * That is not the mismatch this block was once fixed for: back then it
+     * DISPLAYED a 10-day window while reasoning about 90 to answer the same
+     * question. Here they answer two questions, and each uses the right number.
      */
-    const elapsed = editingShot
-      ? daysBetweenCivil(
-          subject.atDate,
-          followingShot ? followingShot.date : todayLocalISO(),
-        )
+    const interval = editingShot
+      ? followingShot
+        ? daysBetweenCivil(subject.atDate, followingShot.date)
+        : null
       : daysBetweenCivil(subject.atDate, date);
+    const elapsed = daysBetweenCivil(subject.atDate, todayLocalISO());
     /**
      * An unusable gap asks NOTHING — it no longer hides the subject.
      *
@@ -723,7 +728,13 @@ export const ShotForm: React.FC<ShotFormProps> = ({
         // The shared phrase, not a second copy of the rule: this line and the
         // off-days line above describe the SAME gap, and the local template
         // read "1 days before this one" the day after a shot.
-        editingShot ? null : gapBeforeThisOne(elapsed),
+        // `interval`, never `elapsed`: this line says how far the previous
+        // shot sat BEFORE THIS ONE, which is a fact about the two shots. Fed
+        // `elapsed` it would read "40 days before this one" for a backdated
+        // entry logged weeks later, when the gap was two.
+        editingShot || interval === null
+          ? null
+          : gapBeforeThisOne(interval),
       ]
         .filter(Boolean)
         .join(" \u00b7 "),
