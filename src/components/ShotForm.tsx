@@ -565,8 +565,15 @@ export const ShotForm: React.FC<ShotFormProps> = ({
    *
    * The elapsed days are what decide the offered answers: nobody can say "a week
    * or more" three days on. `previousShotQuestions` owns that rule; here we only
-   * work out how long it has been, from the previous shot to this one's date
-   * when logging, and from the shot to today when editing.
+   * work out how long the subject's window RAN — and it is measured BETWEEN SHOT
+   * DATES in both modes: from the previous shot to this one when logging, and
+   * from the shot to its successor when editing. Today is consulted for exactly
+   * one case, a shot with no successor, whose window is genuinely still open.
+   *
+   * This comment used to end "and from the shot to today when editing", which
+   * stayed here after the behaviour changed. See the note on `elapsed` below for
+   * what measuring to today cost, and note that a stale comment is the same
+   * defect in prose — three were found and corrected in this block already.
    */
   const liveSettledAsk = useMemo(() => {
     const none = {
