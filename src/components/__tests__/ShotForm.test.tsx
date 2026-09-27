@@ -2779,6 +2779,37 @@ describe("how the previous shot settled", () => {
     expect(onAddShot.mock.calls[0]).toHaveLength(1);
   });
 
+  it("names the INTERVAL on the sub-line, not the time since the shot", () => {
+    // ADDED BECAUSE A MUTATION SURVIVED. Feeding `elapsed` to this line instead
+    // of `interval` passed all 1098 tests: the fix was right and nothing would
+    // have noticed it being undone, which is the vacuous-guard problem wearing
+    // the opposite hat.
+    //
+    // The two numbers only diverge on a BACKDATED entry, which is why no
+    // existing fixture caught it. A shot that happened two days after the
+    // previous one, recorded 38 days later: the interval is 2, the elapsed
+    // time is 40, and this line is about the distance between the two SHOTS.
+    const shots: ShotEntry[] = [
+      { id: "prev", date: daysAgo(40), injectionSite: "glute" },
+    ];
+    render(<ShotForm onAddShot={vi.fn()} shots={shots} />);
+
+    fireEvent.change(screen.getByLabelText(/^Date$/), {
+      target: { value: daysAgo(38) },
+    });
+
+    // The WHOLE line, not a substring: "2 days" would also match "42 days",
+    // and a containment check is how the CSV guard on this branch went vacuous.
+    expect(document.querySelector(".prev-shot__sub")?.textContent).toBe(
+      `${daysAgo(40)} · glute · 2 days before this one`,
+    );
+
+    // Meanwhile the chips are gated on the 40 days that have actually passed,
+    // so the longest answer IS offered despite the two-day interval. Both
+    // numbers are on screen at once, doing different jobs.
+    expect(screen.getByRole("radio", { name: "A week or more" })).toBeTruthy();
+  });
+
   it("does not change under its own ✓ confirmation", () => {
     // The sheet must not mutate while it is confirming a save — the same rule
     // `offDaysSpan` is frozen for. Measured before the fix: the sub-line flipped
