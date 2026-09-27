@@ -2918,6 +2918,10 @@ describe("how the previous shot settled", () => {
     // The assertion that fails if the fix is "always offer everything". The
     // stale bound is not repealed — it is scoped to the question, and says
     // nothing about an answer already given.
+    //
+    // Note this shot has NO successor, so its window is still open and today
+    // is its honest end — which is why the stale bound still reaches it here
+    // and reaches almost nothing else after the interval change below.
     const editing: ShotEntry = { id: "old", date: daysAgo(90) };
     render(
       <ShotForm
@@ -2929,6 +2933,112 @@ describe("how the previous shot settled", () => {
     );
 
     expect(document.querySelector(".prev-shot")).toBeNull();
+  });
+
+  // The window is measured between SHOT DATES. Opening the form is not an
+  // event in the shot's life, and used to be the thing that decided what the
+  // form would ask.
+  const offeredDurations = () =>
+    [...document.querySelectorAll('input[name="afterSoreness"]')].map(
+      (i) => (i as HTMLInputElement).value,
+    );
+
+  it("measures the window between shots, not from today", () => {
+    // X's next shot came 10 days later, so X's window is a fixed 10 days and
+    // always will be. Measured before this: it rendered NOTHING, because
+    // `today - X.date` was 90 and the stale bound fired — while the legend
+    // beside it named the real 10-day window.
+    const x: ShotEntry = { id: "x", date: daysAgo(90), injectionSite: "glute" };
+    const y: ShotEntry = { id: "y", date: daysAgo(80) };
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        onUpdateShot={vi.fn()}
+        editingShot={x}
+        shots={[x, y]}
+      />,
+    );
+
+    expect(
+      screen.getByRole("group", { name: /How long was it sore/i }),
+    ).toBeTruthy();
+    expect(offeredDurations()).toHaveLength(4);
+  });
+
+  it("offers the same answers for the same interval, however long ago", () => {
+    // The invariant, stated directly: recency is not an input. Two pairs with
+    // an identical 10-day window, one ancient and one current, must ask the
+    // same question — otherwise the answer someone can give depends on when
+    // they happened to tap Edit.
+    const oldA: ShotEntry = { id: "oldA", date: daysAgo(90) };
+    const oldB: ShotEntry = { id: "oldB", date: daysAgo(80) };
+    const { unmount } = render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        onUpdateShot={vi.fn()}
+        editingShot={oldA}
+        shots={[oldA, oldB]}
+      />,
+    );
+    const ancient = offeredDurations();
+    unmount();
+
+    const newA: ShotEntry = { id: "newA", date: daysAgo(10) };
+    const newB: ShotEntry = { id: "newB", date: todayLocalISO() };
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        onUpdateShot={vi.fn()}
+        editingShot={newA}
+        shots={[newA, newB]}
+      />,
+    );
+
+    expect(ancient).toEqual(offeredDurations());
+    // And not vacuously equal by both being empty.
+    expect(ancient).toHaveLength(4);
+  });
+
+  it("withholds on a SHORT interval even when the pair is old", () => {
+    // The mirror, so "always offer everything" cannot pass the test above. Two
+    // days is two days whether it happened this week or last year.
+    const a: ShotEntry = { id: "a", date: daysAgo(90), injectionSite: "glute" };
+    const b: ShotEntry = { id: "b", date: daysAgo(88) };
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        onUpdateShot={vi.fn()}
+        editingShot={a}
+        shots={[a, b]}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("group", { name: /How long was it sore/i }),
+    ).toBeNull();
+    // The lump question has no floor, so it is still asked.
+    expect(screen.getByRole("group", { name: /Any lump/i })).toBeTruthy();
+  });
+
+  it("uses today only when the window is still open", () => {
+    // The most recent shot has no successor, so its window genuinely has not
+    // closed and today is its honest end. This is the ONE place today may
+    // decide anything — and here it withholds, because one day cannot settle
+    // any duration.
+    const only: ShotEntry = { id: "only", date: daysAgo(1) };
+    render(
+      <ShotForm
+        onAddShot={vi.fn()}
+        onUpdateShot={vi.fn()}
+        editingShot={only}
+        shots={[only]}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("group", { name: /How long was it sore/i }),
+    ).toBeNull();
+    expect(screen.getByRole("group", { name: /Any lump/i })).toBeTruthy();
   });
 
   // The four below are one mistake seen from four sides. Seeding these fields

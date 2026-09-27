@@ -596,22 +596,61 @@ export const ShotForm: React.FC<ShotFormProps> = ({
      * are now answered separately, because only the second depends on the gap.
      */
     const subject = editingShot
-      ? {
-          shot: editingShot,
-          elapsed: daysBetweenCivil(date, todayLocalISO()),
-          atDate: date,
-        }
+      ? { shot: editingShot, atDate: date }
       : (() => {
           const prev = previousShotBefore(date, shots);
-          return prev
-            ? {
-                shot: prev,
-                elapsed: daysBetweenCivil(prev.date, date),
-                atDate: prev.date,
-              }
-            : null;
+          return prev ? { shot: prev, atDate: prev.date } : null;
         })();
     if (!subject) return none;
+    /**
+     * The shot that CLOSES the subject's window, and the reason it is resolved
+     * here rather than beside the display below.
+     *
+     * Two different questions used to share one answer: which shot bounds the
+     * window on screen, and how many days that window ran. They are separated
+     * now because the split-dose rule suppresses the first and must not touch
+     * the second — hiding a label is a display judgement, and it has nothing to
+     * say about how long a site was actually observed.
+     */
+    const followingShot = editingShot
+      ? nextShotAfter(subject.atDate, shots, subject.shot.id)
+      : undefined;
+    /**
+     * HOW LONG THE WINDOW RAN — from the SHOT DATES, never from today.
+     *
+     * Editing used to measure `today - shot.date`, which made the answer to
+     * "what may be asked" depend on WHEN THE FORM WAS OPENED. Measured: a shot
+     * whose next shot came 10 days later — a window fixed at 10 days forever —
+     * offered all four when the pair was recent and rendered NOTHING AT ALL
+     * when the same pair was 90 days old. Same question, same interval,
+     * opposite answers, decided only by recency.
+     *
+     * Worse, the block already DISPLAYED the right interval while reasoning
+     * about the wrong one: the legend read "2026-06-29 → 2026-07-09" (10 days)
+     * beside answers computed from 90. The label and the logic described
+     * different windows.
+     *
+     * That is the moving baseline this codebase has a written lesson about
+     * (`ShotDraft.dateBaseline`): a conclusion computed against one reference
+     * and read against another will eventually disagree. The interval between
+     * two logged shots cannot move, so it is the reference.
+     *
+     * TODAY ENTERS EXACTLY ONCE, and legitimately: the most recent shot has no
+     * successor, so its window is genuinely still open and today is its honest
+     * end. That is also the only case where "how long ago" and "how long the
+     * window has run" are the same number, which is what makes the 28-day stale
+     * bound meaningful there and inert everywhere else.
+     *
+     * Logging already worked this way (`this shot's date - the previous
+     * shot's`), so this makes editing agree with it rather than inventing a
+     * second rule.
+     */
+    const elapsed = editingShot
+      ? daysBetweenCivil(
+          subject.atDate,
+          followingShot ? followingShot.date : todayLocalISO(),
+        )
+      : daysBetweenCivil(subject.atDate, date);
     /**
      * An unusable gap asks NOTHING — it no longer hides the subject.
      *
@@ -625,9 +664,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
      * an injection that has not happened is unanswerable rather than unasked.
      */
     const gap =
-      Number.isFinite(subject.elapsed) && subject.elapsed >= 0
-        ? subject.elapsed
-        : null;
+      Number.isFinite(elapsed) && elapsed >= 0 ? elapsed : null;
     const site = [subject.shot.injectionSitePosition, subject.shot.injectionSite]
       .filter(Boolean)
       .join(" ");
@@ -662,10 +699,10 @@ export const ShotForm: React.FC<ShotFormProps> = ({
     const sameDaySibling = shots.some(
       (s) => s.id !== subject.shot.id && s.date === subject.atDate,
     );
-    const nextShot =
-      editingShot && !sameDaySibling
-        ? nextShotAfter(subject.atDate, shots, subject.shot.id)
-        : undefined;
+    // Display only. `followingShot` above is the same shot without this gate,
+    // because the split-dose decision is about what the label may CLAIM, not
+    // about how long the site was observed.
+    const nextShot = sameDaySibling ? undefined : followingShot;
     return {
       ...asks,
       shotId: subject.shot.id,
@@ -679,7 +716,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
         // The shared phrase, not a second copy of the rule: this line and the
         // off-days line above describe the SAME gap, and the local template
         // read "1 days before this one" the day after a shot.
-        editingShot ? null : gapBeforeThisOne(subject.elapsed),
+        editingShot ? null : gapBeforeThisOne(elapsed),
       ]
         .filter(Boolean)
         .join(" \u00b7 "),
