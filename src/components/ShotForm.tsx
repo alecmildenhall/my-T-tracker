@@ -2232,6 +2232,22 @@ export const ShotForm: React.FC<ShotFormProps> = ({
                 </div>
               </fieldset>
             )}
+            {/* NO WINDOW IS NAMED ON THIS QUESTION, and that is a decision
+                rather than an oversight — it was true by accident first, which
+                is why it is written down now.
+
+                The span belongs to the DURATION question, which asks about a
+                period. This one is present tense: "is there a lump now?" is
+                answered by touching the site today, so a historical window does
+                not govern it, and attaching one would re-conflate the two jobs
+                this block already separated once — the sub-line says WHICH shot
+                this is, the span says what an answer is ABOUT. Only the first
+                of those applies here, and it is already on screen above.
+
+                Consequence worth knowing before someone "fixes" it: below the
+                three-day floor this is the only group that renders, so the
+                block then shows no window anywhere. That is correct for the
+                question actually being asked. */}
             {settledAsk.lump && (
               <fieldset className="prev-shot__field">
                 <legend>Any lump that hasn’t absorbed?</legend>
