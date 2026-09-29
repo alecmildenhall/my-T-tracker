@@ -2810,6 +2810,58 @@ describe("how the previous shot settled", () => {
     expect(screen.getByRole("radio", { name: "A week or more" })).toBeTruthy();
   });
 
+  it("never writes one shot's answer onto another shot's row", () => {
+    // DATA LOSS, found by review and reproduced before fixing. The
+    // unanswerable-reset was not gated on the subject being unchanged, so when
+    // re-dating changed which shot was previous, it ran after the
+    // subject-change re-seed and restored the OLD subject's baseline over the
+    // NEW subject's record.
+    //
+    // Measured before the fix: Save sent
+    // `{ id: "y", afterSoreness: "several-days" }` — X's answer, written onto
+    // Y, whose own answer was "none". Never asked again once the interval
+    // closes, so nothing in the app would have brought it back.
+    const x: ShotEntry = {
+      id: "x",
+      date: daysAgo(20),
+      injectionSite: "glute",
+      afterSoreness: "several-days",
+    };
+    const y: ShotEntry = {
+      id: "y",
+      date: daysAgo(5),
+      injectionSite: "thigh",
+      afterSoreness: "none",
+      afterLump: true,
+    };
+    const onAddShot = vi.fn();
+    render(<ShotForm onAddShot={onAddShot} shots={[x, y]} />);
+
+    // Previous shot is X — twenty days elapsed, so every answer is offered.
+    fireEvent.change(screen.getByLabelText(/^Date$/), {
+      target: { value: daysAgo(10) },
+    });
+    fireEvent.click(screen.getByRole("radio", { name: "A week or more" }));
+
+    // Re-date so the previous shot becomes Y instead.
+    fireEvent.change(screen.getByLabelText(/^Date$/), {
+      target: { value: todayLocalISO() },
+    });
+
+    // Y's OWN answer is what shows — not the one tapped about X.
+    expect(
+      (screen.getByRole("radio", { name: "Not sore" }) as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: /save shot/i }));
+
+    // And nothing is written about Y at all: the sheet is showing Y's record
+    // unchanged, so there is nothing to say about it. A patch here — with any
+    // value — would mean a shot's answer had been overwritten by another's.
+    expect(onAddShot.mock.calls[0]).toHaveLength(1);
+  });
+
   it("does not change under its own ✓ confirmation", () => {
     // The sheet must not mutate while it is confirming a save — the same rule
     // `offDaysSpan` is frozen for. Measured before the fix: the sub-line flipped

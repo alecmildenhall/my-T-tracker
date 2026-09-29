@@ -1163,11 +1163,33 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   /**
    * A pick the elapsed gap can no longer settle goes back to what is on record.
    *
-   * Re-dating a new entry from a 10-day gap to a 2-day one withdraws the whole
-   * duration group, and the "week or more" tapped a moment ago would otherwise
-   * still be saved — storing the one answer `previousShotQuestions` exists to
-   * withhold. Reset to the STORED value, never blindly to "": clearing a value
-   * that merely matches the record would erase the previous shot's real answer,
+   * GATED ON THE SUBJECT BEING THE SAME ONE, exactly like the record-sync above
+   * — and leaving that out was data loss, found by review and reproduced before
+   * fixing. When re-dating changes WHICH shot is previous, the subject-change
+   * re-seed and this reset run in the same render pass; this one ran last and
+   * won, restoring the OLD subject's baseline over the NEW subject's record.
+   *
+   * Measured: X twenty days back answered "several days", Y five days back
+   * answered "not sore". Date the entry to X, tap "a week or more", re-date so
+   * Y becomes the previous shot, and Save sent
+   * `{ id: "y", afterSoreness: "several-days" }` — one shot's answer written
+   * onto another shot's row, over the top of a real answer, unrecoverably,
+   * because this question is never asked again once the interval closes.
+   *
+   * ITS ORIGINAL RATIONALE IS DEAD AND THE GUARD IS NOT. The comment here used
+   * to say "re-dating a new entry from a 10-day gap to a 2-day one withdraws
+   * the whole duration group", which stopped being possible when gating moved
+   * from the interval to elapsed time: re-dating the new entry cannot change
+   * `today - the previous shot's date`.
+   *
+   * What keeps it alive is the same thing the sync above exists for — `shots`
+   * is live across tabs. Another tab editing the SUBJECT shot's date moves
+   * `elapsed` while `shotId` stays the same, so the offered set really can
+   * shrink underneath a pick. That is the case to keep in mind before deleting
+   * this as dead code.
+   *
+   * Reset to the STORED value, never blindly to "": clearing a value that
+   * merely matches the record would erase the previous shot's real answer,
    * which is the same defect by another door.
    */
   // NO SUBJECT IS NOT AN UNANSWERABLE GAP — the same distinction the sync above
@@ -1177,10 +1199,11 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   // unanswerable" and resets the chip the user tapped. Retyping the date brings
   // the subject back but not the answer, so an ordinary date correction ate it.
   // An unknown question withdraws nothing; only a KNOWN gap can.
-  const subjectKnown = settledAsk.shotId !== undefined;
+  const subjectUnchanged =
+    settledAsk.shotId !== undefined && settledAsk.shotId === lastSubjectId;
   if (
     !editingShot &&
-    subjectKnown &&
+    subjectUnchanged &&
     afterSoreness !== "" &&
     afterSoreness !== afterSorenessBaseline &&
     !settledAsk.durations.includes(afterSoreness)
@@ -1189,7 +1212,7 @@ export const ShotForm: React.FC<ShotFormProps> = ({
   }
   if (
     !editingShot &&
-    subjectKnown &&
+    subjectUnchanged &&
     afterLump !== "" &&
     afterLump !== afterLumpBaseline &&
     !settledAsk.lump
