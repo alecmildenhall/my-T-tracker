@@ -109,6 +109,28 @@ export function previousShotQuestions(gapDays: number | null): {
  * The LUMP answer is a parameter for the same reason and not an afterthought:
  * it was frozen by the identical branch, and "on record means editable" is one
  * rule or it is nothing.
+ *
+ * A KNOWN INVERSION IS LEFT HERE DELIBERATELY — measured, weighed, and kept.
+ * With something on record, 2 days elapsed offers all four while 4 days offers
+ * three: the shorter gap is more permissive, because the first falls into the
+ * empty-set branch above and the second does not. A review has already flagged
+ * this once; it is a decision, not an oversight.
+ *
+ * It stays because of how it is reached. `gapDays` is now days ELAPSED since
+ * the shot, which only ever grows — so ordinary logging cannot produce a stored
+ * answer on a shot younger than the floor, since no chips are offered at that
+ * age and there is nothing to store. Getting there takes an import, or
+ * re-dating an already-answered shot backwards: data this form did not create.
+ *
+ * And the fix costs more than the defect. Offering only the stored value below
+ * the floor leaves a lone chip at half width (the container switches to three
+ * columns at exactly three answers, so one renders in a two-column grid), and
+ * turns a one-tap correction into clear-and-retype. Two rare paths do not pay
+ * for that.
+ *
+ * So: not a bug to fix on sight. If it is ever revisited, the question to ask
+ * first is whether import and re-dating have become common, because that is the
+ * only thing that would change the arithmetic.
  */
 export function settledQuestions(
   gapDays: number | null,
