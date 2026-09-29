@@ -387,27 +387,6 @@ const App: React.FC = () => {
     else setLoggingNew(true);
   };
 
-  /**
-   * Tapping Edit on a row in the Home teaser: open that shot's editor.
-   *
-   * The sheet opens OVER HOME, and closing it leaves you on Home.
-   *
-   * It used to take you to History first, on the reasoning that closing should
-   * land somewhere showing what you just did. Home already does: the teaser
-   * lists the very row you tapped, so the trip bought nothing and cost the
-   * thing people actually notice — you close an editor and find yourself on a
-   * screen you never asked to be on. The roadmap's "tapping through to edit
-   * happens in the History tab" is about where the full list lives, not about
-   * moving someone mid-edit.
-   *
-   * Dropping the trip also retires the History-query reset that went with it:
-   * that existed only because a filter set earlier could hide the shot the
-   * sheet was opening over, which cannot happen on Home.
-   */
-  const openShotFromTeaser = (shot: ShotEntry) => {
-    openSheet(shot);
-  };
-
   // A left-to-right swipe goes back to Home, from wherever you are.
   //
   // "Home", not "one tab left". The first version stepped through the tab order,
@@ -728,10 +707,31 @@ const App: React.FC = () => {
             >
               + Log a shot
             </button>
+            {/* `openSheet` directly, the same handler History passes at its
+                own call site below. An `openShotFromTeaser` wrapper used to
+                sit here; once its `navigate("history")` and history-query
+                reset were removed it was an exact alias, and two names for one
+                behaviour is how two call sites drift apart.
+
+                The decision it recorded still holds, so it lives here now,
+                beside the prop someone would change. Editing from the teaser
+                opens OVER HOME and closing leaves you on Home. It used to
+                route through History first, on the reasoning that closing
+                should land somewhere showing what you just did — but Home
+                already does, since the teaser lists the very row you tapped.
+                The trip bought nothing and cost the thing people actually
+                notice: you close an editor and find yourself on a screen you
+                never asked for. The roadmap's "tapping through to edit happens
+                in the History tab" is about where the full list lives, not
+                about moving someone mid-edit.
+
+                The history-query reset went with it, and only made sense with
+                it: that existed because a filter set earlier could hide the
+                shot the sheet was opening over, which cannot happen on Home. */}
             <RecentShots
               shots={shots}
               onSeeAll={() => navigate("history")}
-              onEditShot={openShotFromTeaser}
+              onEditShot={openSheet}
               onDeleteShot={deleteShot}
               justLoggedId={washId}
               onWashEnd={() => setWashId(null)}
