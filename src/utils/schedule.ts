@@ -24,6 +24,7 @@
 // error can travel down. So there is a fixed grid, and each shot is judged
 // against it alone.
 import { civilDateParts, isShotDateInRange } from "./civilDate";
+import { compareShotsChrono } from "./sortShots";
 import { weekdayOf, WEEKDAYS } from "./weekday";
 import { isValidIntervalDays } from "../types/profile";
 import type { ScheduleMode } from "../types/profile";
@@ -528,7 +529,21 @@ export function previousShotDateBefore(
   shots: { id: string; date: string }[],
   exceptId?: string,
 ): string | undefined {
-  let best: string | undefined;
+  return previousShotBefore(date, shots, exceptId)?.date;
+}
+
+/**
+ * The same question, answered with the SHOT rather than just its date.
+ *
+ * The log form needs the id as well: the soreness answers describe the previous
+ * shot's site, so they are written onto that entry. One owner for "which shot
+ * came before this one", so the id and the date can never disagree about which
+ * shot that is.
+ */
+export function previousShotBefore<
+  T extends { id: string; date: string; time?: string },
+>(date: string, shots: T[], exceptId?: string): T | undefined {
+  let best: T | undefined;
   for (const shot of shots) {
     // `>`, not `>=`: a shot logged on the SAME civil date is still the one
     // before this one. Skipping it reached past to the shot before that, and
@@ -536,8 +551,62 @@ export function previousShotDateBefore(
     // mis-log (two entries on one day) producing a wrong value that only a hand
     // edit could repair. A shot cannot be its own predecessor because `exceptId`
     // removes it, and a brand-new shot has no id in the list yet.
+    //
+    // Date-only, deliberately, and it stays that way: `date` is a civil date
+    // with no time, so a shot at 20:00 is still ON that date rather than after
+    // it. Only the choice BETWEEN candidates below is time-aware.
     if (shot.id === exceptId || shot.date > date) continue;
-    if (best === undefined || shot.date > best) best = shot.date;
+    // THE SHARED COMPARATOR, not a `.date` compare — and `<= 0`, so the
+    // last-logged shot still wins an exact tie. Two entries on one civil date
+    // is a real protocol (a split dose, left then right) and this function no
+    // longer answers only "what date": its return value decides which ROW the
+    // soreness answers are written onto. Keeping the first match pointed at the
+    // earlier entry while History's top row for that date was the other one, so
+    // the second shot could never be asked about at all.
+    //
+    // This used to compare `shot.date >= best.date`, with a comment claiming
+    // `sortShots` broke the same tie the same way. Half true, and the false
+    // half was reachable. `compareShotsChrono` compares date AND time, so a
+    // same-date pair with DIFFERENT times was never a tie for it at all:
+    // measured on [{evening 20:00}, {morning 08:00}], this returned `morning`
+    // while History's top row was `evening`. Same visible date either way, so
+    // nothing looked wrong — but the block named the other shot's SITE and
+    // wrote the answers to that row, putting left-glute soreness on the right
+    // glute in the one chart this question exists to feed.
+    //
+    // An exact tie still returns 0 (the comparator reports a tie as a tie, and
+    // `sortShots` breaks it by stored order), so last-logged-wins is preserved
+    // rather than replaced.
+    if (best === undefined || compareShotsChrono(best, shot) <= 0) best = shot;
+  }
+  return best;
+}
+
+/**
+ * The mirror: the shot logged immediately AFTER `date`.
+ *
+ * The settled block uses it when editing, to say what window the question
+ * covers — "how long was it sore" is about the days following that shot, and
+ * the next shot is where those days stop being attributable to it.
+ *
+ * `>`, strictly, where {@link previousShotBefore} keeps a same-day shot. That
+ * is deliberate and the two must not disagree: a shot on the same civil date is
+ * the PREVIOUS one by that function's rule, so admitting it here as well would
+ * let one entry be both the predecessor and the successor of another.
+ *
+ * A separate named owner rather than an inline filter, for the reason the
+ * function above gives: one place answers "which shot came next", so the id and
+ * the date can never disagree about which shot that is.
+ */
+export function nextShotAfter<T extends { id: string; date: string }>(
+  date: string,
+  shots: T[],
+  exceptId?: string,
+): T | undefined {
+  let best: T | undefined;
+  for (const shot of shots) {
+    if (shot.id === exceptId || shot.date <= date) continue;
+    if (best === undefined || shot.date < best.date) best = shot;
   }
   return best;
 }

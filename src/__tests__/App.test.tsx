@@ -880,10 +880,12 @@ describe("App — editing from History", () => {
     expect(current()).toBe("History");
   });
 
-  it("opens a teaser shot in History, with the editor already up", () => {
-    // The roadmap's "tapping through to edit happens in the History tab",
-    // finally built: the rows looked exactly like the ones you can open a tab
-    // away, and pressing them did nothing.
+  it("opens a teaser shot's editor over Home, and stays there", () => {
+    // This used to travel to History first, so that closing landed somewhere
+    // showing what you just did. Home already does — the teaser lists the very
+    // row you tapped — so the trip bought nothing and cost the thing people
+    // notice: you close an editor and find yourself on a screen you never
+    // asked to be on.
     seedShots([
       { id: "older", date: "2026-06-01", notes: "older entry" },
       { id: "newest", date: "2026-06-08", notes: "the one tapped" },
@@ -903,20 +905,31 @@ describe("App — editing from History", () => {
     expect(sheet.getByPlaceholderText(/remember for later/i)).toHaveValue(
       "the one tapped",
     );
-    // ...and History is what is behind it, so closing lands somewhere that
-    // shows what you just did rather than back on Home.
+    // ...and HOME is what is behind it, so closing leaves you where you were.
     expect(
       within(screen.getByRole("navigation")).getByRole("button", {
-        name: "History",
+        name: "Home",
       }),
     ).toHaveAttribute("aria-current", "page");
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    return sheetGone().then(() => {
+      expect(
+        screen.getByRole("button", { name: /Log a shot/ }),
+      ).toBeInTheDocument();
+    });
   });
 
-  it("clears a History filter that would hide the shot just tapped", () => {
-    // The query survives ordinary tab changes on purpose, but this trip is one
-    // the app takes for you: a filter set earlier can exclude the very shot you
-    // tapped, so the sheet opens over a list not containing it and saving sends
-    // the entry somewhere invisible.
+  it("leaves a History filter alone when editing from the teaser", () => {
+    // This used to CLEAR the query, because the app navigated to History for
+    // you and a filter set earlier could exclude the very shot you tapped. The
+    // sheet opens over Home now, so there is no list to be excluded from and
+    // nothing to reset — which means the documented rule ("a trip to Home and
+    // back keeps the filter you were using") simply holds.
+    //
+    // Asserted by going back to History afterwards. Checking only that the shot
+    // is visible behind the sheet would pass on Home no matter what the filter
+    // did, which is what this test was doing once the navigation was removed.
     seedShots([
       {
         id: "thigh",
@@ -953,8 +966,13 @@ describe("App — editing from History", () => {
       }),
     );
     return sheetGone().then(() => {
-      // It is on screen behind, rather than filtered away.
+      // Home shows it either way — the teaser has no filter.
       expect(screen.getByText("filtered out")).toBeInTheDocument();
+
+      // ...and the filter is still in force where it belongs.
+      goTo("History");
+      expect(screen.getByText("in the filter")).toBeInTheDocument();
+      expect(screen.queryByText("filtered out")).toBeNull();
     });
   });
 

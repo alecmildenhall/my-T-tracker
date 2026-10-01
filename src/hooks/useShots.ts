@@ -1,15 +1,47 @@
 // src/hooks/useShots.ts
 import { useCallback } from "react";
 import { useLocalStorage } from "./useLocalStorage";
-import type { ShotEntry } from "../types/shot";
+import type { ShotEntry, SorenessDuration } from "../types/shot";
 import { STORAGE_KEYS } from "../storageKeys";
 import { normalizeValue, type TextField } from "../utils/suggestions";
 import { isBlank } from "../utils/strings";
 
+/**
+ * How the previous shot's site settled, answered while logging the next one.
+ *
+ * Both answers are REQUIRED keys that may hold `undefined`, never optional
+ * ones. `withAnswers` DELETES a key the caller leaves out, so with `?:` a patch
+ * meaning "I only changed the lump" silently erased the soreness answer beside
+ * it — a partial update with full-replacement semantics, which is the kind of
+ * mismatch nothing catches until the data is gone. Requiring both makes every
+ * deletion something a caller typed on purpose, and the compiler names anyone
+ * who forgets.
+ */
+export interface PreviousShotAnswers {
+  id: string;
+  afterSoreness: SorenessDuration | undefined;
+  afterLump: boolean | undefined;
+}
+
+/**
+ * Apply the answers, DELETING rather than writing `undefined` for one that was
+ * cleared. `ShotEntry` treats an absent field as "nobody answered", and an
+ * explicit `undefined` key is the same thing to JSON but not to `Object.keys`,
+ * so removing it keeps the two readings identical.
+ */
+function withAnswers(shot: ShotEntry, a: PreviousShotAnswers): ShotEntry {
+  const next: ShotEntry = { ...shot };
+  if (a.afterSoreness === undefined) delete next.afterSoreness;
+  else next.afterSoreness = a.afterSoreness;
+  if (a.afterLump === undefined) delete next.afterLump;
+  else next.afterLump = a.afterLump;
+  return next;
+}
+
 export interface UseShots {
   shots: ShotEntry[];
   /** Append a shot. Returns whether it actually reached storage. */
-  addShot: (shot: ShotEntry) => boolean;
+  addShot: (shot: ShotEntry, previous?: PreviousShotAnswers) => boolean;
   /** Replace a shot. Returns whether it actually reached storage. */
   updateShot: (id: string, updatedShot: ShotEntry) => boolean;
   deleteShot: (id: string) => boolean;
@@ -71,8 +103,38 @@ export function useShots(): UseShots {
   //    applies later, so a `persistShots` call in the same tick read a snapshot
   //    that predated it and wrote the stale list back — a delete followed by an
   //    add resurrected the deleted shot.
+  /**
+   * One write, two entries.
+   *
+   * The soreness answers in the log sheet are about the PREVIOUS shot, so
+   * saving a new shot can change two rows. They go through a single
+   * `persistShots` call rather than two, so both land or neither does: a
+   * second write that failed on its own would drop the answer while the shot
+   * saved, and report success — the silent-failure class this store exists to
+   * close.
+   */
   const addShot = useCallback(
-    (shot: ShotEntry) => persistShots((prev) => [...prev, shot]),
+    (shot: ShotEntry, previous?: PreviousShotAnswers) =>
+      persistShots((prev) => {
+        // Whether the subject is still there is ASKED, not left to `map`
+        // quietly matching nothing. It can be gone: deleted in another tab, or
+        // from History while this sheet sat parked, or replaced wholesale by an
+        // import. Dropping the answers is then the right outcome rather than a
+        // consolation — they describe a row the user no longer has, and
+        // re-adding it would resurrect something they deleted.
+        //
+        // The boolean this returns keeps its one meaning: "did the SHOT land?".
+        // It must not go false here. The caller turns false into "Couldn't save
+        // this shot", holds the sheet open and invites a second save — so
+        // reporting failure would claim a loss that did not happen and risk a
+        // duplicate entry, which is strictly worse than dropping an answer
+        // whose subject no longer exists.
+        const before =
+          previous && prev.some((s) => s.id === previous.id)
+            ? prev.map((s) => (s.id === previous.id ? withAnswers(s, previous) : s))
+            : prev;
+        return [...before, shot];
+      }),
     [persistShots]
   );
 

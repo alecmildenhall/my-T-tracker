@@ -1,6 +1,4 @@
 // src/utils/sortShots.ts
-import type { ShotEntry } from "../types/shot";
-
 /**
  * Chronological comparator for shots: by date, then time (a missing time sorts
  * as 00:00). Ascending (oldest first) — negate the result for newest-first.
@@ -26,7 +24,15 @@ import type { ShotEntry } from "../types/shot";
  * with the sort direction, and `chronological` in exportData, which relies on
  * Array#sort being stable (guaranteed since ES2019).
  */
-export function compareShotsChrono(a: ShotEntry, b: ShotEntry): number {
+// Structural params rather than `ShotEntry`, so callers holding a narrower
+// record can use the shared answer instead of rebuilding the key by hand. Every
+// `ShotEntry` caller is unchanged — this only widens what is accepted — and
+// `previousShotBefore` is the caller that needed it: it is generic over
+// `{ id, date, time? }` and was comparing `.date` alone.
+export function compareShotsChrono(
+  a: { date: string; time?: string },
+  b: { date: string; time?: string },
+): number {
   const ka = `${a.date}T${a.time ?? "00:00"}`;
   const kb = `${b.date}T${b.time ?? "00:00"}`;
   if (ka < kb) return -1;

@@ -10,6 +10,15 @@ import type { ShotEntry } from "../../types/shot";
 
 beforeEach(() => localStorage.clear());
 
+/** Soreness answers only exist on shots whose successor was logged, so the
+ *  facet fixtures carry an unanswered shot on purpose — "not recorded" is the
+ *  case these filters must exclude rather than quietly include. */
+const settled: ShotEntry[] = [
+  { id: "sore", date: "2026-06-01", afterSoreness: "week-plus", afterLump: true },
+  { id: "brief", date: "2026-06-08", afterSoreness: "day-or-two", afterLump: false },
+  { id: "unasked", date: "2026-06-15" },
+];
+
 const shots: ShotEntry[] = [
   { id: "a", date: "2026-06-01", injectionSite: "thigh", pain: "mild", notes: "felt fine" },
   { id: "b", date: "2026-06-15", injectionSite: "glute", pain: "severe", notes: "quite sore" },
@@ -689,5 +698,67 @@ describe("HistoryView", () => {
     const status = screen.getByRole("status");
     expect(status).toHaveAttribute("aria-live", "polite");
     expect(status).toHaveTextContent("Showing 3 of 3 shots");
+  });
+
+  it("filters to one soreness duration, excluding the unanswered", () => {
+    render(<Harness data={settled} />);
+    openFilters();
+
+    fireEvent.change(screen.getByLabelText("Sore for"), {
+      target: { value: "week-plus" },
+    });
+
+    expect(screen.getByText("Showing 1 of 1 shot")).toBeInTheDocument();
+    expect(screen.getByText("2026-06-01")).toBeInTheDocument();
+    // The unanswered shot is the one this must exclude.
+    expect(screen.queryByText("2026-06-15")).toBeNull();
+  });
+
+  it("filters to 'no lump' without sweeping in the shots nobody was asked", () => {
+    // The boolean trap: `false` is an answer. A truthiness test would treat it
+    // as "facet off" and show all three.
+    render(<Harness data={settled} />);
+    openFilters();
+
+    fireEvent.change(screen.getByLabelText("Left a lump"), {
+      target: { value: "no" },
+    });
+
+    expect(screen.getByText("Showing 1 of 1 shot")).toBeInTheDocument();
+    expect(screen.getByText("2026-06-08")).toBeInTheDocument();
+    expect(screen.queryByText("2026-06-15")).toBeNull();
+  });
+
+  it("shows 'Any' when the lump facet is off, never 'No'", () => {
+    // Reading it back as `afterLump ? "yes" : "no"` would display "No" for a
+    // facet nobody set — the same false/undefined collapse the filter avoids.
+    render(<Harness data={settled} />);
+    openFilters();
+
+    const select = screen.getByLabelText("Left a lump") as HTMLSelectElement;
+    expect(select.value).toBe("");
+
+    fireEvent.change(select, { target: { value: "no" } });
+    expect((screen.getByLabelText("Left a lump") as HTMLSelectElement).value).toBe("no");
+
+    fireEvent.change(screen.getByLabelText("Left a lump"), { target: { value: "" } });
+    expect((screen.getByLabelText("Left a lump") as HTMLSelectElement).value).toBe("");
+    expect(screen.getByText("Showing 3 of 3 shots")).toBeInTheDocument();
+  });
+
+  it("counts both new facets on the Filters badge", () => {
+    render(<Harness data={settled} />);
+    openFilters();
+
+    fireEvent.change(screen.getByLabelText("Sore for"), {
+      target: { value: "day-or-two" },
+    });
+    fireEvent.change(screen.getByLabelText("Left a lump"), {
+      target: { value: "no" },
+    });
+
+    expect(
+      screen.getByRole("button", { name: /Filters/ }).textContent,
+    ).toContain("2");
   });
 });

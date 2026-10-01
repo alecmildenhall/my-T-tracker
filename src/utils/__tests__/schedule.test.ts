@@ -4,6 +4,8 @@ import {
   scheduleMode,
   plannedDateRolling,
   previousShotDateBefore,
+  previousShotBefore,
+  nextShotAfter,
   snapToWeekday,
   establishAnchor,
   plannedDateFor,
@@ -13,6 +15,10 @@ import {
 } from "../schedule";
 import { WEEKDAYS, weekdayOf } from "../weekday";
 import { shotDateRange, isShotDateInRange } from "../civilDate";
+// The point of the same-date-tie tests below is that these two agree, so the
+// guard has to call BOTH rather than restate what History does.
+import { sortShots } from "../shotQuery";
+import type { ShotEntry } from "../../types/shot";
 
 /** 5 Aug 2026 is a Wednesday — the anchor day for every scenario below. */
 const WED = "2026-08-05";
@@ -291,6 +297,115 @@ describe("scheduleMode", () => {
     expect(scheduleMode(["wednesday"], 0)).toBe("none");
     expect(scheduleMode(["wednesday"], 7.5)).toBe("none");
     expect(scheduleMode(["wednesday"], 400)).toBe("none");
+  });
+});
+
+describe("nextShotAfter", () => {
+  const shots = [
+    { id: "a", date: "2026-09-01" },
+    { id: "b", date: "2026-09-08" },
+    { id: "c", date: "2026-09-15" },
+  ];
+
+  it("answers with the NEAREST later shot, not merely a later one", () => {
+    // The settled block uses this to say where the window stops. Reaching past
+    // the next shot would claim a span covering somebody else's interval.
+    expect(nextShotAfter("2026-09-01", shots)?.id).toBe("b");
+    expect(nextShotAfter("2026-09-08", shots)?.id).toBe("c");
+  });
+
+  it("answers with nothing when this is the most recent shot", () => {
+    // Not an unhandled case: the window has no end, so the form shows no
+    // boundary rather than inventing one.
+    expect(nextShotAfter("2026-09-15", shots)).toBeUndefined();
+    expect(nextShotAfter("2026-10-01", shots)).toBeUndefined();
+  });
+
+  it("excludes the shot being edited, so it cannot follow itself", () => {
+    expect(nextShotAfter("2026-09-01", shots, "b")?.id).toBe("c");
+  });
+
+  it("leaves a same-day shot to previousShotBefore, never claiming it twice", () => {
+    // The complement rule, pinned from BOTH sides because neither function is
+    // meaningful alone: previousShotBefore deliberately counts a shot on the
+    // same civil date as the one before. If this admitted it too, a single
+    // entry would be both the predecessor and the successor of another, and
+    // the settled block's window would start and end on the same shot.
+    const sameDay = [
+      { id: "earlier", date: "2026-09-08" },
+      { id: "later", date: "2026-09-08" },
+    ];
+    expect(previousShotBefore("2026-09-08", sameDay, "later")?.id).toBe("earlier");
+    expect(nextShotAfter("2026-09-08", sameDay, "later")).toBeUndefined();
+  });
+});
+
+describe("previousShotBefore — same-date ties", () => {
+  it("answers with the LAST-logged shot when two share a date", () => {
+    // A split dose is a real protocol — left then right, one civil date — and
+    // this function no longer answers only "what date". Its return value
+    // decides which ROW the soreness answers are written onto, so keeping the
+    // FIRST match pointed them at the earlier entry while History's top row for
+    // that date was the other one, and the second shot could never be asked
+    // about at all.
+    //
+    // With NO times these are an exact tie for `compareShotsChrono` too, which
+    // reports a tie as a tie and lets `sortShots` break it by stored order —
+    // so both functions take the last, and they agree.
+    //
+    // Note what the complement test above does NOT cover: it passes `exceptId`,
+    // which removes the tied shot before any comparison happens. Reverting this
+    // to `>` left the entire suite green until this case existed.
+    const splitDose = [
+      { id: "left", date: "2026-09-08" },
+      { id: "right", date: "2026-09-08" },
+    ];
+    expect(previousShotBefore("2026-09-15", splitDose)?.id).toBe("right");
+    // And on the date itself, where both are still candidates.
+    expect(previousShotBefore("2026-09-08", splitDose)?.id).toBe("right");
+  });
+
+  it("agrees with History when a same-date pair carries TIMES", () => {
+    // The half the old comment got wrong. It claimed `sortShots` "breaks the
+    // same tie the same way", but a same-date pair with different times was
+    // never a tie for `compareShotsChrono` — it compares date AND time. So the
+    // two functions picked opposite rows, and the old `.date >= .date` compare
+    // took whichever happened to be last in the ARRAY.
+    //
+    // Logged out of time order, which is what makes this reachable: you log the
+    // evening shot, then go back and add the morning one you forgot.
+    const splitDose = [
+      { id: "evening", date: "2026-09-08", time: "20:00" },
+      { id: "morning", date: "2026-09-08", time: "08:00" },
+    ];
+    expect(previousShotBefore("2026-09-15", splitDose)?.id).toBe("evening");
+    expect(sortShots(splitDose as ShotEntry[], "newest")[0]?.id).toBe("evening");
+    // Stated as the invariant rather than as two coincidental literals: these
+    // must not be able to disagree again, whatever the fixture.
+    expect(previousShotBefore("2026-09-15", splitDose)?.id).toBe(
+      sortShots(splitDose as ShotEntry[], "newest")[0]?.id,
+    );
+  });
+
+  it("still prefers the later TIME when the array order already agrees", () => {
+    // The mirror of the case above, so the test cannot pass merely by taking
+    // the FIRST element instead of the last — which is what a naive fix does,
+    // and it would be wrong here.
+    const splitDose = [
+      { id: "morning", date: "2026-09-08", time: "08:00" },
+      { id: "evening", date: "2026-09-08", time: "20:00" },
+    ];
+    expect(previousShotBefore("2026-09-15", splitDose)?.id).toBe("evening");
+  });
+
+  it("treats a missing time as 00:00, not as later than a real one", () => {
+    // `compareShotsChrono`'s documented rule, inherited rather than restated.
+    // A shot with no time logged AFTER one at 09:00 must not outrank it.
+    const pair = [
+      { id: "timed", date: "2026-09-08", time: "09:00" },
+      { id: "untimed", date: "2026-09-08" },
+    ];
+    expect(previousShotBefore("2026-09-15", pair)?.id).toBe("timed");
   });
 });
 

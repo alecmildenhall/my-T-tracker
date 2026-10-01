@@ -17,6 +17,7 @@ import { useSwipeBack } from "./hooks/useSwipeBack";
 import { useShotsContext } from "./context/ShotsContext";
 import { useProfileContext } from "./context/ProfileContext";
 import type { ShotEntry } from "./types/shot";
+import type { PreviousShotAnswers } from "./hooks/useShots";
 import type { SaveOutcome } from "./components/ShotForm";
 import type { View } from "./types/view";
 
@@ -386,33 +387,6 @@ const App: React.FC = () => {
     else setLoggingNew(true);
   };
 
-  /**
-   * Tapping a row in the Home teaser: go to History with that shot already open
-   * for editing.
-   *
-   * Both halves matter. Opening the sheet alone would leave Home behind it, so
-   * closing it would drop you back on a screen with no sign of what you just
-   * did; going to History alone would make you find the row again in a list you
-   * did not choose to be in. The roadmap's line is "tapping through to edit
-   * happens in the History tab", and this is that trip taken for you.
-   *
-   * `navigate` first, so the tab change's clean-up (retiring the
-   * acknowledgement, resetting scroll) happens before the sheet exists rather
-   * than underneath it.
-   */
-  const openShotFromTeaser = (shot: ShotEntry) => {
-    navigate("history");
-    // Clear the History query on the way. It is deliberately kept across tab
-    // changes — "a trip to Home and back keeps the filter you were using" — but
-    // this is not a trip the user took to History, it is one taken for them, and
-    // a filter set earlier can exclude the very shot they just tapped. The sheet
-    // would then open over a list not containing it, and saving would send the
-    // entry somewhere invisible. The promise of this route is "closing lands
-    // somewhere that shows what you just did", and a stale filter breaks it.
-    setHistoryQuery(emptyHistoryQuery);
-    openSheet(shot);
-  };
-
   // A left-to-right swipe goes back to Home, from wherever you are.
   //
   // "Home", not "one tab left". The first version stepped through the tab order,
@@ -550,13 +524,19 @@ const App: React.FC = () => {
   // the sheet holding open is not just a courtesy: the form is now the only copy
   // of that entry, and pressing Save again retries it instead of appending a
   // second one.
-  const handleAddShot = (shot: ShotEntry): SaveOutcome => {
+  const handleAddShot = (
+    shot: ShotEntry,
+    previous?: PreviousShotAnswers,
+  ): SaveOutcome => {
     // "ignored", not "refused": the sheet is on its way out and this submit is
     // being dropped, which is not the same event as storage rejecting a write.
     // Collapsing the two into `false` made a double-tapped Save announce
     // "Couldn't save this shot" over a shot that had just saved perfectly.
     if (closingRef.current) return "ignored";
-    if (!addShot(shot)) return "refused"; // sheet stays put, fields kept, and it says why
+    // One call, two entries: the soreness answers describe the PREVIOUS shot,
+    // and the store writes both inside a single persist so neither can land
+    // without the other.
+    if (!addShot(shot, previous)) return "refused"; // sheet stays put, fields kept, and it says why
     clearDraft();
     // Only a shot that actually reached storage is acknowledged. A refused save
     // has nothing to affirm, and a retry that succeeds is an ordinary success —
@@ -727,10 +707,31 @@ const App: React.FC = () => {
             >
               + Log a shot
             </button>
+            {/* `openSheet` directly, the same handler History passes at its
+                own call site below. An `openShotFromTeaser` wrapper used to
+                sit here; once its `navigate("history")` and history-query
+                reset were removed it was an exact alias, and two names for one
+                behaviour is how two call sites drift apart.
+
+                The decision it recorded still holds, so it lives here now,
+                beside the prop someone would change. Editing from the teaser
+                opens OVER HOME and closing leaves you on Home. It used to
+                route through History first, on the reasoning that closing
+                should land somewhere showing what you just did — but Home
+                already does, since the teaser lists the very row you tapped.
+                The trip bought nothing and cost the thing people actually
+                notice: you close an editor and find yourself on a screen you
+                never asked for. The roadmap's "tapping through to edit happens
+                in the History tab" is about where the full list lives, not
+                about moving someone mid-edit.
+
+                The history-query reset went with it, and only made sense with
+                it: that existed because a filter set earlier could hide the
+                shot the sheet was opening over, which cannot happen on Home. */}
             <RecentShots
               shots={shots}
               onSeeAll={() => navigate("history")}
-              onEditShot={openShotFromTeaser}
+              onEditShot={openSheet}
               onDeleteShot={deleteShot}
               justLoggedId={washId}
               onWashEnd={() => setWashId(null)}

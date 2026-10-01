@@ -30,6 +30,23 @@ import { previousShotDateBefore } from "./schedule";
  * numbers here has always been that `0` is an answer, not an absence.
  *
  * `excludeId` keeps a shot being EDITED from being its own predecessor.
+ *
+ * WHY THIS NEVER HAD THE BUG ITS SIBLING DID — recorded here rather than beside
+ * that fix, because the hazard is someone aligning THIS function with the shape
+ * of the broken one.
+ *
+ * This measures the interval BEFORE the shot in the form: previous shot to this
+ * one. That is the same question whether you are logging or editing, so there
+ * has never been a mode here to get wrong. The settled block measures the
+ * interval AFTER its subject, and its subject changes with mode — the previous
+ * shot when logging, the shot itself when editing — which is precisely where it
+ * broke: editing measured to TODAY, so what the form could ask depended on when
+ * the form was opened, and a window fixed at ten days offered all four answers
+ * when recent and nothing at all when old.
+ *
+ * The rule that falls out, and the reason this comment exists: a span measured
+ * between two STORED dates cannot move, while one measured against today is
+ * stable only until tomorrow. Keep this function on stored dates.
  */
 export function offDaysWindowDays(
   shots: { id: string; date: string }[],
@@ -106,7 +123,26 @@ export function offDaysWindowDays(
 export function offDaysWindowLabel(days: number | null): string {
   const anchor = "Since your previous shot";
   if (days === null) return anchor;
-  if (days === 0) return `${anchor}, taken the same day as this one`;
-  if (days === 1) return `${anchor}, taken the day before this one`;
-  return `${anchor}, taken ${days} days before this one`;
+  return `${anchor}, taken ${gapBeforeThisOne(days)}`;
+}
+
+/**
+ * The gap alone, as a fragment: "the day before this one", "4 days before this
+ * one". Exported because two surfaces in the SAME sheet describe the same gap —
+ * this module's recall-window line and the settled block's sub-line — and the
+ * second used to roll its own `${days} days before this one`, which read
+ * "1 days" at a one-day gap. That gap is reachable: the lump question has no
+ * floor, so the block renders the day after a shot.
+ *
+ * One statement of the phrasing, so the two cannot disagree about it — the same
+ * shape as the schedule sentence being asked of `describeWeeklySchedule` once
+ * rather than re-tested per caller. The reasoning behind each wording is in the
+ * long comment above `offDaysWindowLabel`, which is the caller it was written
+ * for — this sits BELOW that function so the comment cannot be read as
+ * documenting this one, which is what it did when this was declared first.
+ */
+export function gapBeforeThisOne(days: number): string {
+  if (days === 0) return "the same day as this one";
+  if (days === 1) return "the day before this one";
+  return `${days} days before this one`;
 }

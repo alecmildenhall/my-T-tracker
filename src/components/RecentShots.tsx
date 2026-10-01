@@ -26,9 +26,10 @@ export const TEASER_COUNT = 3;
 interface RecentShotsProps {
   shots: ShotEntry[];
   onSeeAll: () => void;
-  /** Edit a shot: takes you to History with its editor open. An explicit
-   *  button, not the whole row — the row is card-sized and sits beside the
-   *  button you press most, and what this opens is an editor, not a page. */
+  /** Edit a shot: opens its editor over Home, and closing it leaves you here.
+   *  An explicit button, not the whole row — the row is card-sized and sits
+   *  beside the button you press most, and what this opens is an editor, not a
+   *  page. */
   onEditShot: (shot: ShotEntry) => void;
   /** Returns whether the deletion reached storage. Behind the same confirm
    *  History uses — the reason Delete was kept off this screen was that a

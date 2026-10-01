@@ -94,6 +94,12 @@ const REASON_BY_FIELD: Record<string, string> = {
   doseMg: "its dose couldn’t be read",
   pain: "its pain level couldn’t be read",
   offDays: "its off-days answer couldn’t be read",
+  // Named like the two above, and for the same reason: the report is the only
+  // account of what a restore dropped, and "some of it couldn't be read" tells
+  // the person nothing they can act on. One line per field, which is the gap
+  // the DTO allowlist rule exists to catch.
+  afterSoreness: "its soreness answer couldn’t be read",
+  afterLump: "its lump answer couldn’t be read",
 };
 
 const FALLBACK_REASON = "some of it couldn’t be read";

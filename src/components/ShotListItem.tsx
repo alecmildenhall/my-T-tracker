@@ -6,7 +6,8 @@ import { formatTimeForDisplay } from "../utils/datetime";
 import { daysFromPlanned } from "../utils/schedule";
 import { painLabel } from "../utils/painLabel";
 import { offDaysLabel } from "../utils/offDaysLabel";
-import { isOffDaysPattern, isPainLevel } from "../types/shot";
+import { settledSummary } from "../utils/soreness";
+import { isOffDaysPattern, isPainLevel, isSorenessDuration } from "../types/shot";
 
 /** Name of the wash keyframes, shared with styles.css. */
 
@@ -101,6 +102,19 @@ export const ShotListItem: React.FC<ShotListItemProps> = ({
     details.push(`Off days: ${offDaysLabel(shot.offDays)}`);
   }
 
+  /**
+   * How the site settled gets its OWN line, not a `details` entry.
+   *
+   * Everything in `details` is a fact recorded when the shot was logged; this
+   * one was answered days later, about how the shot turned out. Reading it in
+   * the same bullet run as "Dose: 100 mg" flattens that difference, and it is
+   * the line someone scanning for a bad site is actually looking for.
+   */
+  const settled = settledSummary(
+    isSorenessDuration(shot.afterSoreness) ? shot.afterSoreness : undefined,
+    typeof shot.afterLump === "boolean" ? shot.afterLump : undefined,
+  );
+
   // The row is NOT itself a control, deliberately. Making the whole card
   // activate put a card-sized tap target a thumb's width from the button you
   // press most, and what it opened was a modal editor rather than a detail
@@ -132,6 +146,8 @@ export const ShotListItem: React.FC<ShotListItemProps> = ({
       {details.length > 0 && (
         <div className="shot-list-item__meta">{details.join(" • ")}</div>
       )}
+
+      {settled && <p className="shot-list-item__settled">{settled}</p>}
 
       {plannedLabel && (
         <p className="shot-list-item__planned">{plannedLabel}</p>

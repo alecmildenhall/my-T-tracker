@@ -78,9 +78,12 @@ export const FirstShotCard: React.FC<FirstShotCardProps> = ({
       // instant a rhythm is tapped, before the days or the weeks exist — so
       // "a mode string is present" was true of a cadence that plans nothing.
       // Tap "On certain days", leave, and the card hid itself forever over an
-      // answer it had only half received, taking with it the very line that
-      // would have said so ("Add how many weeks to plan your shot dates") and
-      // leaving Settings as the only way back.
+      // answer it had only half received, leaving Settings as the only way back.
+      //
+      // This guard matters MORE than when it was written. It used to note that
+      // the picker's own notice ("Add how many weeks to plan your shot dates")
+      // went with the card; that notice has since been removed outright, so a
+      // half-answered cadence is now silent on every surface.
       //
       // "I'd rather not track this" is a complete answer with no fields to
       // fill, which is why it is named rather than inferred from the values.

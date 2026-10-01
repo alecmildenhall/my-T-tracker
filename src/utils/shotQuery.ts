@@ -18,7 +18,7 @@
 // You *filter* by fields, *search* by text, and a *query* wraps both. Each
 // function is pure (no storage, no dates-from-now) so the whole layer is unit-
 // testable; `today`-style ambient state never leaks in here.
-import type { OffDaysPattern, PainLevel, ShotEntry } from "../types/shot";
+import type { OffDaysPattern, PainLevel, ShotEntry, SorenessDuration } from "../types/shot";
 import type { CivilDate } from "./civilDate";
 import { normalizeValue } from "./suggestions";
 import { isBlank } from "./strings";
@@ -52,6 +52,16 @@ export interface ShotFilter {
   /** Off-days pattern, matched exactly. Same rule as pain: a shot with nothing
    *  recorded never matches, because "not recorded" is not "not really". */
   offDays?: OffDaysPattern;
+  /** How long the site stayed sore, matched exactly. Same rule again: a shot
+   *  nobody was asked about never matches, because "not recorded" is not
+   *  "not sore". */
+  afterSoreness?: SorenessDuration;
+  /** Whether the shot left a lump. The first BOOLEAN facet here, so the
+   *  absent/false distinction has to be made explicitly rather than inherited:
+   *  `undefined` is "facet off", `false` is the answer "no lump", and a shot
+   *  nobody answered matches neither. A truthiness test would collapse the
+   *  first two and quietly filter nothing. */
+  afterLump?: boolean;
 }
 
 /**
@@ -127,6 +137,16 @@ export function filterShots(
     // off. An enum cannot go NaN, so the whole hazard goes with the numbers.
     if (filter.pain !== undefined && shot.pain !== filter.pain) return false;
     if (filter.offDays !== undefined && shot.offDays !== filter.offDays)
+      return false;
+    if (
+      filter.afterSoreness !== undefined &&
+      shot.afterSoreness !== filter.afterSoreness
+    )
+      return false;
+    // `!==` against the filter's boolean, not `!shot.afterLump`: filtering to
+    // "No" must match only shots actually answered "no lump", never the ones
+    // nobody was asked about, whose field is absent.
+    if (filter.afterLump !== undefined && shot.afterLump !== filter.afterLump)
       return false;
     return true;
   });

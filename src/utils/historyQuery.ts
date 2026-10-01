@@ -9,13 +9,17 @@ import type { ShotFilter } from "./shotQuery";
 import {
   OFF_DAYS_PATTERNS,
   PAIN_LEVELS,
+  SORENESS_DURATIONS,
   isOffDaysPattern,
   isPainLevel,
+  isSorenessDuration,
   type OffDaysPattern,
   type PainLevel,
+  type SorenessDuration,
 } from "../types/shot";
 import { painLabel } from "./painLabel";
 import { offDaysLabel } from "./offDaysLabel";
+import { sorenessLabel } from "./soreness";
 
 /** How many shots each "Load more" press reveals. */
 export const PAGE_SIZE = 20;
@@ -38,6 +42,22 @@ export const PAIN_BANDS: { id: PainLevel; label: string }[] = PAIN_LEVELS.map(
  *  in the log sheet. */
 export const OFF_DAYS_BANDS: { id: OffDaysPattern; label: string }[] =
   OFF_DAYS_PATTERNS.map((id) => ({ id, label: offDaysLabel(id) }));
+
+/** The soreness facet's options, derived from the same enum for the same
+ *  reason — and labelled with `sorenessLabel`, the STANDALONE wording, because
+ *  in a filter there is no question above the control to supply the frame.
+ *  "Several days" alone is several days of what. */
+export const SORENESS_BANDS: { id: SorenessDuration; label: string }[] =
+  SORENESS_DURATIONS.map((id) => ({ id, label: sorenessLabel(id) }));
+
+/** The lump facet's two answers. Not derived from an enum because there isn't
+ *  one — the value is a boolean — so the mapping between what the <select>
+ *  carries and what gets stored lives here, in one place. */
+export const LUMP_BANDS: { id: "yes" | "no"; value: boolean; label: string }[] =
+  [
+    { id: "yes", value: true, label: "Yes" },
+    { id: "no", value: false, label: "No" },
+  ];
 
 /**
  * Everything the History screen is currently asking for. Lifted to App so a trip
@@ -77,7 +97,7 @@ export const emptyHistoryQuery: HistoryQuery = {
  */
 export function countActiveFacets(query: HistoryQuery): number {
   const f = query.filter;
-  return [
+  const set = [
     f.dateFrom,
     f.dateTo,
     f.site,
@@ -85,7 +105,13 @@ export function countActiveFacets(query: HistoryQuery): number {
     f.ester,
     f.pain,
     f.offDays,
+    f.afterSoreness,
   ].filter((v) => v !== undefined && v !== "").length;
+  // Counted separately, because `afterLump` is a BOOLEAN and the test above
+  // would drop `false` — the answer "no lump" is an active facet, and a badge
+  // reading one short is exactly how a narrowed list starts looking like an
+  // inexplicably short one.
+  return set + (f.afterLump !== undefined ? 1 : 0);
 }
 
 /** The query with a pain level applied (or cleared, for the "Any" option).
@@ -109,4 +135,28 @@ export function withOffDaysBand(
 ): HistoryQuery {
   const pattern = isOffDaysPattern(id) ? id : undefined;
   return { ...query, filter: { ...query.filter, offDays: pattern } };
+}
+
+/** The query with a soreness duration applied (or cleared, for "Any").
+ *
+ *  Validated rather than cast, exactly as `withPainBand` and `withOffDaysBand`
+ *  are: `id` is whatever the <select> produced, so anything unrecognised clears
+ *  the facet instead of filtering on a value that does not exist. */
+export function withSorenessBand(
+  query: HistoryQuery,
+  id: string,
+): HistoryQuery {
+  const duration = isSorenessDuration(id) ? id : undefined;
+  return { ...query, filter: { ...query.filter, afterSoreness: duration } };
+}
+
+/** The query with the lump facet applied (or cleared, for "Any").
+ *
+ *  The <select> carries strings and the shot stores a boolean, so the mapping
+ *  happens here rather than at the call site — and it is a LOOKUP, not
+ *  `id === "yes"`, so an unrecognised value clears the facet instead of
+ *  silently meaning "no". */
+export function withLumpBand(query: HistoryQuery, id: string): HistoryQuery {
+  const band = LUMP_BANDS.find((b) => b.id === id);
+  return { ...query, filter: { ...query.filter, afterLump: band?.value } };
 }

@@ -8,11 +8,7 @@
 // Keeping one allowlist for each shape means export and the strict import schema
 // can never drift apart (which would let an export produce a file its own
 // importer rejects).
-import {
-  isOffDaysPattern,
-  isPainLevel,
-  type ShotEntry,
-} from "../types/shot";
+import { isOffDaysPattern, isPainLevel, isSorenessDuration, type ShotEntry } from "../types/shot";
 import type { Profile } from "../types/profile";
 import { isValidIntervalDays } from "../types/profile";
 import { isShotDateInRange } from "./civilDate";
@@ -53,6 +49,14 @@ export function pickShotFields(s: ShotEntry): ShotEntry {
   // so a file that cannot be restored is the worst thing it can produce.
   if (isPainLevel(s.pain)) shot.pain = s.pain;
   if (isOffDaysPattern(s.offDays)) shot.offDays = s.offDays;
+  // Guarded like pain and off days, and on the allowlist for the reason
+  // plannedFor is: a field missing here does not fail loudly, it silently does
+  // not survive a backup — and this one can never be regenerated, because the
+  // shot it describes is in the past and nothing will ask about it again.
+  if (isSorenessDuration(s.afterSoreness)) shot.afterSoreness = s.afterSoreness;
+  // `typeof === "boolean"`, never truthiness: `false` is the answer "no lump",
+  // which is a real answer and not an absent one.
+  if (typeof s.afterLump === "boolean") shot.afterLump = s.afterLump;
   const notes = nonBlankString(s.notes);
   if (notes !== undefined) shot.notes = notes;
   // The allowlist is on BOTH the export and the import path, so a field missing
